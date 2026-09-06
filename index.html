@@ -93,6 +93,7 @@ let state = {
   showEmployees: false, employees: [], showEmployeeForm: false, editingEmployeeId: null, employeeForm: null, showEmployeeCV: false, cvEmployeeId: null,
   showPayroll: false, payrollPeriod: '', payrollRows: [], showPayslip: false, payslipRecordId: null,
   showPayrollReport: false, prFromPeriod: '', prToPeriod: '', prEmployeeFilter: '', prReportRows: [],
+  showLeaves: false, employeeLeaves: [], showLeaveForm: false, leaveForm: null,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -1774,6 +1775,7 @@ const EMPLOYEES_SUBMENU = [
   { label: 'سجل الموظفين', target: '__employees__' },
   { label: 'رواتب الشهر', target: '__payroll__' },
   { label: 'تقارير الرواتب', target: '__payroll_report__' },
+  { label: 'الإجازات', target: '__leaves__' },
 ];
 const PARTIES_SUBMENU = [
   { label: 'معلومات عميل/مورد', target: 'العملاء والموردين' },
@@ -1933,6 +1935,7 @@ function renderApp() {
   ${state.showEmployees ? renderEmployeesModal() : ''}
   ${state.showPayroll ? renderPayrollModal() : ''}
   ${state.showPayrollReport ? renderPayrollReportModal() : ''}
+  ${state.showLeaves ? renderLeavesModal() : ''}
   ${state.showIncomeStatement ? renderIncomeStatementModal() : ''}
   ${state.showBalanceSheet ? renderBalanceSheetModal() : ''}
   ${state.showStatement ? renderStatementModal() : ''}
@@ -5094,6 +5097,81 @@ function renderAccountStatementModal() {
   </div>`;
 }
 
+function renderLeavesModal() {
+  const activeEmps = state.employees.filter(e => e.status === 'نشط');
+  const balances = activeEmps.map(e => ({ employee: e, ...leaveBalanceForEmployee(e, state.employeeLeaves) }));
+  const lowBalanceCount = balances.filter(b => b.remaining <= 3).length;
+  return `
+  <div id="lv-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:950px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>الإجازات</span><button id="lv-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+
+      <div class="no-print" style="padding:16px 16px 8px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:12px;color:#5F5E5A;">${lowBalanceCount > 0 ? `⚠️ ${lowBalanceCount} موظف رصيده أقل من 4 أيام` : '✓ كل الأرصدة بحالة جيدة'}</div>
+        <button id="lv-add-btn" class="btn primary" style="padding:8px 16px;">+ تسجيل إجازة</button>
+      </div>
+
+      <div style="padding:8px 16px 16px;">
+        <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:8px;">أرصدة الإجازات السنوية (${new Date().getFullYear()})</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:18px;">
+          ${balances.map(b => `
+          <div style="background:${b.remaining<=3?'#FCEBEB':'#FAF9F4'};border:1px solid ${b.remaining<=3?'#C0392B':'#EDEAE0'};border-radius:8px;padding:10px 12px;">
+            <div style="font-size:12px;font-weight:600;">${escapeHtml(b.employee.full_name)}</div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#5F5E5A;margin-top:4px;">
+              <span>مستحق: ${b.entitled}</span><span>مأخوذ: ${b.taken}</span>
+            </div>
+            <div style="font-size:14px;font-weight:700;color:${b.remaining<=3?'#C0392B':'#0F6E56'};margin-top:2px;">المتبقي: ${b.remaining} يوم</div>
+          </div>`).join('') || `<div style="grid-column:1/-1;text-align:center;color:#8B8A7A;font-size:12px;padding:16px;">لا يوجد موظفين نشطين</div>`}
+        </div>
+
+        <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:8px;">سجل الإجازات</div>
+        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>
+              ${['الموظف','النوع','من','إلى','عدد الأيام','ملاحظات'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>
+              ${state.employeeLeaves.map((l,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
+              <tr>
+                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.employees?.full_name||'—')}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.leave_type)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.start_date)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.end_date)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${l.days_count}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.notes||'—')}</td>
+              </tr>`; }).join('') || `<tr><td colspan="6" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد إجازات مسجّلة بعد</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      ${state.showLeaveForm ? renderLeaveFormBox() : ''}
+    </div>
+  </div>`;
+}
+
+function renderLeaveFormBox() {
+  const f = state.leaveForm;
+  const days = f.start_date && f.end_date ? daysBetween(f.start_date, f.end_date) : 0;
+  return `
+  <div id="lv-form-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40;" onclick="document.getElementById('lv-form-cancel-btn').click()">
+    <div style="background:#fff;border-radius:10px;width:100%;max-width:400px;padding:16px;" onclick="event.stopPropagation()">
+      <div style="font-weight:700;font-size:13.5px;margin-bottom:12px;">تسجيل إجازة</div>
+      ${partyField('الموظف *', `<select id="lv-f-employee" class="input"><option value="">اختر...</option>${state.employees.filter(e=>e.status==='نشط').map(e => `<option value="${e.id}" ${f.employee_id===e.id?'selected':''}>${escapeHtml(e.full_name)}</option>`).join('')}</select>`)}
+      ${partyField('نوع الإجازة', `<select id="lv-f-type" class="input"><option ${f.leave_type==='سنوية'?'selected':''}>سنوية</option><option ${f.leave_type==='مرضية'?'selected':''}>مرضية</option><option ${f.leave_type==='بدون راتب'?'selected':''}>بدون راتب</option></select>`)}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        ${partyField('من تاريخ', `<input id="lv-f-start" type="date" class="input" value="${escapeHtml(f.start_date)}" />`)}
+        ${partyField('إلى تاريخ', `<input id="lv-f-end" type="date" class="input" value="${escapeHtml(f.end_date)}" />`)}
+      </div>
+      <div id="lv-f-days-preview" style="font-size:12px;color:#0F6E56;font-weight:600;margin-bottom:8px;">عدد الأيام: ${days > 0 ? days : 0}</div>
+      ${partyField('ملاحظات', `<input id="lv-f-notes" class="input" value="${escapeHtml(f.notes)}" />`)}
+      <div style="display:flex;gap:6px;margin-top:12px;">
+        <button id="lv-form-save-btn" class="btn primary" style="padding:6px 14px;font-size:12px;">حفظ</button>
+        <button id="lv-form-cancel-btn" class="btn" style="padding:6px 14px;font-size:12px;">إلغاء</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderPayrollReportModal() {
   const rows = state.prReportRows;
   const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -7060,6 +7138,29 @@ async function loadPayrollReport() {
   const { data } = await q;
   state.prReportRows = data || [];
 }
+function newLeaveForm() {
+  return { employee_id:'', leave_type:'سنوية', start_date: new Date().toISOString().slice(0,10), end_date: new Date().toISOString().slice(0,10), notes:'' };
+}
+// الاستحقاق السنوي حسب نظام العمل السعودي: 21 يوم أول 5 سنوات، 30 يوم بعدها
+function leaveEntitlement(employee) {
+  if (!employee.hire_date) return 21;
+  const years = (new Date() - new Date(employee.hire_date)) / (1000*60*60*24*365.25);
+  return years >= 5 ? 30 : 21;
+}
+function daysBetween(start, end) {
+  return Math.round((new Date(end) - new Date(start)) / (1000*60*60*24)) + 1;
+}
+function leaveBalanceForEmployee(employee, leaves) {
+  const currentYear = new Date().getFullYear();
+  const takenThisYear = leaves.filter(l => l.employee_id === employee.id && l.leave_type === 'سنوية' && new Date(l.start_date).getFullYear() === currentYear)
+    .reduce((s,l) => s + Number(l.days_count||0), 0);
+  const entitled = leaveEntitlement(employee);
+  return { entitled, taken: takenThisYear, remaining: entitled - takenThisYear };
+}
+async function loadEmployeeLeaves() {
+  const { data } = await sb.from('employee_leaves').select('*, employees(full_name)').order('start_date', { ascending: false });
+  state.employeeLeaves = data || [];
+}
 function newEmployeeForm() {
   return { employee_number:'', full_name:'', nationality:'', phone:'', email:'', id_number:'', id_expiry_date:'', photo_url:'',
     job_title:'', department:'', hire_date: new Date().toISOString().slice(0,10), contract_type:'دوام كامل',
@@ -7768,6 +7869,14 @@ function bindAppEvents() {
         state.prEmployeeFilter = '';
         await loadPayrollReport();
         state.showPayrollReport = true;
+        render();
+        return;
+      }
+      if (target === '__leaves__') {
+        await loadEmployees();
+        await loadEmployeeLeaves();
+        state.showLeaveForm = false;
+        state.showLeaves = true;
         render();
         return;
       }
@@ -10954,6 +11063,38 @@ function bindAppEvents() {
       await loadPayrollReport();
       render();
     };
+  }
+
+  if (state.showLeaves) {
+    document.getElementById('lv-close').onclick = () => { state.showLeaves = false; render(); };
+    document.getElementById('lv-add-btn').onclick = () => { state.showLeaveForm = true; state.leaveForm = newLeaveForm(); render(); };
+    if (state.showLeaveForm) {
+      document.getElementById('lv-form-cancel-btn').onclick = () => { state.showLeaveForm = false; render(); };
+      const updateDaysPreview = () => {
+        const start = document.getElementById('lv-f-start').value;
+        const end = document.getElementById('lv-f-end').value;
+        const days = (start && end) ? daysBetween(start, end) : 0;
+        document.getElementById('lv-f-days-preview').textContent = `عدد الأيام: ${days > 0 ? days : 0}`;
+      };
+      document.getElementById('lv-f-start').onchange = updateDaysPreview;
+      document.getElementById('lv-f-end').onchange = updateDaysPreview;
+      document.getElementById('lv-form-save-btn').onclick = async () => {
+        const employeeId = document.getElementById('lv-f-employee').value;
+        const startDate = document.getElementById('lv-f-start').value;
+        const endDate = document.getElementById('lv-f-end').value;
+        if (!employeeId) { alert('اختر الموظف'); return; }
+        if (!startDate || !endDate || endDate < startDate) { alert('تحقق من تواريخ الإجازة'); return; }
+        const payload = {
+          employee_id: employeeId, leave_type: document.getElementById('lv-f-type').value,
+          start_date: startDate, end_date: endDate, days_count: daysBetween(startDate, endDate),
+          notes: document.getElementById('lv-f-notes').value.trim()||null,
+        };
+        await sb.from('employee_leaves').insert(payload);
+        await loadEmployeeLeaves();
+        state.showLeaveForm = false;
+        render();
+      };
+    }
   }
 
   if (state.showTopSelling) {
