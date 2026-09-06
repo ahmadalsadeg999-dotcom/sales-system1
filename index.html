@@ -95,6 +95,7 @@ let state = {
   showPayrollReport: false, prFromPeriod: '', prToPeriod: '', prEmployeeFilter: '', prReportRows: [],
   showLeaves: false, employeeLeaves: [], showLeaveForm: false, leaveForm: null,
   showEosb: false, eosbEmployeeId: null, eosbEndDate: '', eosbReason: 'استقالة', eosbSettlements: [],
+  backupSettings: null,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -3827,6 +3828,27 @@ function renderMaintenanceModal() {
           <div style="font-weight:700;font-size:13.5px;margin-bottom:4px;display:flex;align-items:center;gap:6px;color:#0F6E56;"><i class="ti ti-shield-check"></i> نسخة احتياطية تامة (بصيغة النظام الأصلية — للاسترجاع الكامل)</div>
           <div style="font-size:12px;color:#3A3826;margin-bottom:10px;">تحفظ <b>كل شي بالضبط كما هو</b> — بما فيها الروابط بين الفواتير والأصناف والعملاء (بصيغة JSON يفهمها النظام مباشرة). هذا الملف تقدر تسترجعه بالكامل مرة ثانية بدون ما تفقد أي رابط أو بيانة.</div>
           <button id="maint-json-backup-btn" class="btn primary" style="padding:8px 16px;background:linear-gradient(180deg,#1FAE86,#0F6E56);border-color:#0A5443;">${state.maintenanceBusy ? '...جاري التحضير' : 'تحميل نسخة احتياطية تامة (JSON)'}</button>
+        </div>
+
+        <div style="border:2px solid #2C4A6E;border-radius:6px;padding:14px;margin-bottom:14px;background:#F0F6FC;">
+          <div style="font-weight:700;font-size:13.5px;margin-bottom:4px;display:flex;align-items:center;gap:6px;color:#1B3352;"><i class="ti ti-cloud-upload"></i> النسخ الاحتياطي التلقائي (سحابي)</div>
+          <div style="font-size:12px;color:#3A3826;margin-bottom:10px;">يرفع نسخة تامة (نفس صيغة JSON أعلاه) تلقائياً لمكان تخزين آمن بقاعدة بياناتك — بدون أي تدخل منك، كل ما تفتح النظام والمدة المحددة تكون خلصت.</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <label style="font-size:12px;">كل</label>
+            <select id="maint-backup-frequency" class="input" style="max-width:100px;">
+              <option value="1" ${state.backupSettings?.frequency_days===1?'selected':''}>يوم</option>
+              <option value="3" ${state.backupSettings?.frequency_days===3?'selected':''}>3 أيام</option>
+              <option value="7" ${!state.backupSettings || state.backupSettings?.frequency_days===7?'selected':''}>أسبوع</option>
+              <option value="14" ${state.backupSettings?.frequency_days===14?'selected':''}>أسبوعين</option>
+              <option value="30" ${state.backupSettings?.frequency_days===30?'selected':''}>شهر</option>
+            </select>
+            <button id="maint-backup-frequency-save" class="btn" style="padding:6px 12px;font-size:12px;">حفظ</button>
+          </div>
+          <div style="font-size:11.5px;color:#5F5E5A;margin-bottom:10px;">
+            آخر نسخة سحابية: ${state.backupSettings?.last_backup_at ? new Date(state.backupSettings.last_backup_at).toLocaleString('ar-SA') : 'لسه ما أُخذت أي نسخة'}
+          </div>
+          <button id="maint-backup-now-cloud" class="btn" style="padding:7px 14px;font-size:12px;background:#1B3352;color:#fff;border-color:#1B3352;">${state.maintenanceBusy ? '...جاري الرفع' : 'رفع نسخة سحابية الآن'}</button>
+          <div style="font-size:10.5px;color:#BA7517;margin-top:8px;">⚠️ يحتاج إنشاء مكان تخزين اسمه "backups" بلوحة Supabase أول مرة (Storage ← New bucket).</div>
         </div>
 
         <div style="border:2px solid #C0392B;border-radius:6px;padding:14px;margin-bottom:14px;background:#FCEBEB;">
@@ -8183,6 +8205,8 @@ function bindAppEvents() {
         state.backupHistory = backups || [];
         const { data: closings } = await sb.from('fiscal_closings').select('*').order('closing_date', { ascending: false });
         state.fiscalClosings = closings || [];
+        const { data: bSettings } = await sb.from('backup_settings').select('*').eq('id', 1).maybeSingle();
+        state.backupSettings = bSettings || null;
         await loadChartOfAccounts();
         state.showMaintenance = true;
         render();
@@ -11640,6 +11664,30 @@ function bindAppEvents() {
     const closeMaint = () => { state.showMaintenance = false; render(); };
     document.getElementById('maint-close').onclick = closeMaint;
 
+    if (document.getElementById('maint-backup-frequency-save')) {
+      document.getElementById('maint-backup-frequency-save').onclick = async () => {
+        const freq = Number(document.getElementById('maint-backup-frequency').value);
+        await sb.from('backup_settings').update({ frequency_days: freq }).eq('id', 1);
+        const { data: fresh } = await sb.from('backup_settings').select('*').eq('id', 1).maybeSingle();
+        state.backupSettings = fresh;
+        showToast('تم حفظ إعداد التكرار');
+        render();
+      };
+    }
+    if (document.getElementById('maint-backup-now-cloud')) {
+      document.getElementById('maint-backup-now-cloud').onclick = async () => {
+        state.maintenanceBusy = true; render();
+        const result = await runAutoBackupToStorage();
+        if (result.success) {
+          const { data: fresh } = await sb.from('backup_settings').select('*').eq('id', 1).maybeSingle();
+          state.backupSettings = fresh;
+          showToast('تم رفع النسخة السحابية بنجاح');
+        } else {
+          showToast('فشل الرفع: ' + result.error + ' — تأكد من إنشاء مكان تخزين "backups" أول', 'error');
+        }
+        state.maintenanceBusy = false; render();
+      };
+    }
     document.getElementById('maint-backup-btn').onclick = async () => {
       if (typeof XLSX === 'undefined') { alert('مكتبة Excel ما تحمّلت'); return; }
       state.maintenanceBusy = true; render();
@@ -12295,6 +12343,56 @@ function bindAppEvents() {
 }
 
 // ---------- INIT ----------
+// ---------- النسخ الاحتياطي ----------
+// نفس قائمة الجداول المستخدمة بزر "تحميل نسخة احتياطية تامة" اليدوي — نعيد استخدامها للنسخة التلقائية
+const BACKUP_TABLE_ORDER = [
+  'warehouses','payment_methods','chart_of_accounts','company_settings',
+  'items','parties','item_warehouse_stock',
+  'quotations','quotation_items',
+  'purchase_invoices','purchase_invoice_items',
+  'sales_invoices','sales_invoice_items',
+  'sales_returns','sales_return_items',
+  'purchase_returns','purchase_return_items',
+  'stock_counts','stock_count_items',
+  'warehouse_transfers','warehouse_transfer_items',
+  'receipt_vouchers','payment_vouchers',
+  'journal_entries','journal_entry_lines',
+  'employees','payroll_records','employee_leaves','eosb_settlements','fixed_assets',
+];
+async function buildBackupObject() {
+  const tables = {};
+  for (const t of BACKUP_TABLE_ORDER) {
+    try { const { data } = await sb.from(t).select('*'); tables[t] = data || []; }
+    catch(e) { tables[t] = []; }
+  }
+  return { system: 'نظام المبيعات والمخزون المتكامل', format_version: 1, exported_at: new Date().toISOString(), tables };
+}
+// نسخة احتياطية تلقائية: تبني الملف وترفعه لمكان تخزين Supabase (بدون تنزيل، بدون تدخل المستخدم)
+async function runAutoBackupToStorage() {
+  const backupObj = await buildBackupObject();
+  const filename = `backup-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`;
+  const blob = new Blob([JSON.stringify(backupObj)], { type: 'application/json' });
+  const { error } = await sb.storage.from('backups').upload(filename, blob, { upsert: true });
+  if (error) return { success: false, error: error.message };
+  await sb.from('backup_settings').update({ last_backup_at: new Date().toISOString(), last_backup_path: filename }).eq('id', 1);
+  return { success: true, filename };
+}
+async function checkAndRunAutoBackup() {
+  try {
+    const { data: settings } = await sb.from('backup_settings').select('*').eq('id', 1).maybeSingle();
+    if (!settings) return;
+    state.backupSettings = settings;
+    const daysSinceLastBackup = settings.last_backup_at ? (new Date() - new Date(settings.last_backup_at)) / 86400000 : Infinity;
+    if (daysSinceLastBackup >= settings.frequency_days) {
+      const result = await runAutoBackupToStorage();
+      if (result.success) {
+        const { data: fresh } = await sb.from('backup_settings').select('*').eq('id', 1).maybeSingle();
+        state.backupSettings = fresh;
+      }
+    }
+  } catch(e) { /* لو فشل الفحص لأي سبب (مثلاً الجدول غير موجود بعد)، نكمل عادي بدون ما نوقف النظام */ }
+}
+
 async function init() {
   try {
     const { data: license } = await sb.from('license_settings').select('*').eq('id', 1).maybeSingle();
@@ -12316,6 +12414,7 @@ async function init() {
   state.session = data.session;
   if (state.session) { await loadProfile(); await loadItems(); await loadParties(); await loadPurchases(); await loadSalesInvoices(); await loadWarehouses(); await loadPaymentMethods(); }
   render();
+  if (state.session) checkAndRunAutoBackup(); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
 }
 sb.auth.onAuthStateChange((event, session) => {
   state.session = session;
