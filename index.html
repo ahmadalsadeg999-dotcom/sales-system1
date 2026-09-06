@@ -258,6 +258,7 @@ let state = {
   editingId: null,
   activeTab: 'عام',
   itemLastPurchasePrices: [],
+  itemsSoldQuantities: {},
   parties: [],
   partyQuery: '',
   partyTypeFilter: 'customer',
@@ -7457,6 +7458,15 @@ function openItemPicker(ctx) {
   state.itemPickerSelectedId = null;
   state.itemPickerContext = ctx;
   render();
+  loadItemsSoldQuantities();
+}
+// يحسب إجمالي الكمية المباعة تاريخياً لكل صنف (من فواتير البيع المعتمدة فقط) — دفعة واحدة لكل الأصناف
+async function loadItemsSoldQuantities() {
+  const { data } = await sb.from('sales_invoice_items').select('item_id, quantity, sales_invoices!inner(approved)').eq('sales_invoices.approved', true);
+  const totals = {};
+  (data || []).forEach(r => { totals[r.item_id] = (totals[r.item_id] || 0) + Number(r.quantity || 0); });
+  state.itemsSoldQuantities = totals;
+  if (state.itemPickerOpen) render();
 }
 
 function itemPickerButton(targetSelectId, qtyId, priceId, priceKey, addBtnId) {
@@ -7464,42 +7474,92 @@ function itemPickerButton(targetSelectId, qtyId, priceId, priceKey, addBtnId) {
   return `<button type="button" class="input no-print" data-open-item-picker='${ctx.replace(/'/g,"&#39;")}' style="flex:1;text-align:right;cursor:pointer;display:flex;align-items:center;gap:6px;color:#5F5E5A;background:#fff;"><i class="ti ti-list-search" style="color:#2C4A6E;"></i> اختر صنف من القائمة...</button>`;
 }
 
+// ---------- أعمدة شاشة اختيار الأصناف: قابلة للسحب (إعادة ترتيب) والسحب (تغيير عرض)، محفوظة بجهاز المستخدم ----------
+const ITEM_PICKER_COLUMNS_DEFAULT = [
+  { key:'sku', label:'رقم الصنف', width:95 },
+  { key:'name', label:'اسم الصنف', width:160 },
+  { key:'name_en', label:'الاسم بالإنجليزي', width:130 },
+  { key:'unit', label:'الوحدة', width:65 },
+  { key:'qty', label:'الرصيد', width:65 },
+  { key:'soldQty', label:'الكمية المباعة', width:95 },
+  { key:'cost', label:'آخر تكلفة', width:80 },
+  { key:'price', label:'سعر البيع', width:80 },
+  { key:'brand', label:'الماركة', width:90 },
+  { key:'model', label:'الموديل', width:80 },
+];
+function getItemPickerColumns() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('itemPickerColumns') || 'null');
+    if (Array.isArray(saved) && saved.length === ITEM_PICKER_COLUMNS_DEFAULT.length) {
+      // نتأكد كل الأعمدة الافتراضية موجودة (لو أضفنا عمود جديد بتحديث مستقبلي، نرجع للافتراضي بدل ما نفقد عمود)
+      const keys = new Set(saved.map(c => c.key));
+      if (ITEM_PICKER_COLUMNS_DEFAULT.every(c => keys.has(c.key))) return saved;
+    }
+  } catch(e) {}
+  return ITEM_PICKER_COLUMNS_DEFAULT.map(c => ({...c}));
+}
+function saveItemPickerColumns(cols) {
+  try { localStorage.setItem('itemPickerColumns', JSON.stringify(cols)); } catch(e) {}
+}
+function getItemPickerCellValue(item, key, soldQty) {
+  switch(key) {
+    case 'sku': return `<span class="mono">${escapeHtml(item.sku)}</span>`;
+    case 'name': return escapeHtml(item.name);
+    case 'name_en': return `<span dir="ltr">${escapeHtml(item.name_en||'—')}</span>`;
+    case 'unit': return escapeHtml(item.unit||'');
+    case 'qty': return `<span class="mono" style="font-weight:600;color:${item.qty<=0?'#C0392B':'#3A3826'};">${item.qty}</span>`;
+    case 'soldQty': return `<span class="mono" style="font-weight:600;color:#0F6E56;">${soldQty}</span>`;
+    case 'cost': return `<span class="mono">${fmt(item.cost)}</span>`;
+    case 'price': return `<span class="mono">${fmt(item.price)}</span>`;
+    case 'brand': return escapeHtml(item.brand||'—');
+    case 'model': return escapeHtml(item.model||'—');
+    default: return '';
+  }
+}
+
 function renderItemPickerModal() {
   const q = state.itemPickerQuery.trim().toLowerCase();
   const ctx = state.itemPickerContext || {};
   const results = !q ? state.items : state.items.filter(it =>
     (it.sku||'').toLowerCase().includes(q) || (it.name||'').toLowerCase().includes(q) ||
+    (it.name_en||'').toLowerCase().includes(q) ||
     (it.brand||'').toLowerCase().includes(q) || (it.model||'').toLowerCase().includes(q) ||
-    (it.registry_number||'').toLowerCase().includes(q)
+    (it.registry_number||'').toLowerCase().includes(q) || (it.company||'').toLowerCase().includes(q)
   );
   const selectedItem = state.items.find(it => it.id === state.itemPickerSelectedId);
+  const columns = getItemPickerColumns();
+  const gridTemplate = columns.map(c => c.width+'px').join(' ');
+  const totalWidth = columns.reduce((s,c) => s+c.width, 0);
   return `
   <div id="ipk-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
     <div style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:980px;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
-      <div class="win-title"><span>شاشة الأصناف المساعدة</span><button id="ipk-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
-      <div style="padding:10px 14px;border-bottom:1px solid #A9A48C;">
-        <input id="ipk-search" class="input" autofocus placeholder="ابحث برقم الصنف، الاسم، الماركة، الموديل، رقم السجل..." value="${escapeHtml(state.itemPickerQuery)}" />
+      <div class="win-title"><span>شاشة الأصناف المساعدة</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button id="ipk-reset-columns" title="إعادة ضبط ترتيب وحجم الأعمدة" style="background:rgba(255,255,255,0.15);border:none;border-radius:3px;color:#fff;font-size:10px;padding:2px 8px;cursor:pointer;">إعادة الضبط</button>
+          <button id="ipk-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button>
+        </div>
       </div>
-      <div style="overflow:auto;flex:1;">
-        <div style="display:grid;grid-template-columns:1fr 1.6fr 0.7fr 0.7fr 0.8fr 0.8fr 0.9fr 0.8fr 0.7fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;position:sticky;top:0;min-width:900px;">
-          ${['رقم الصنف','اسم الصنف','الوحدة','الرصيد','آخر تكلفة','سعر البيع','الماركة','الموديل','المقاس'].map(h => `<div style="padding:7px 6px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
+      <div style="padding:10px 14px;border-bottom:1px solid #A9A48C;">
+        <input id="ipk-search" class="input" autofocus placeholder="ابحث برقم الصنف، الاسم، رقم الشركة، الماركة، الموديل، رقم السجل..." value="${escapeHtml(state.itemPickerQuery)}" />
+        <div style="font-size:10px;color:#8B8A7A;margin-top:4px;">💡 اسحب اسم أي عمود لتغيير ترتيبه، أو اسحب من حافته اليسرى لتغيير عرضه — يُحفظ تلقائياً</div>
+      </div>
+      <div id="ipk-table-scroll" style="overflow:auto;flex:1;">
+        <div id="ipk-header-row" style="display:grid;grid-template-columns:${gridTemplate};background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;position:sticky;top:0;min-width:${totalWidth}px;z-index:2;">
+          ${columns.map((col,idx) => `
+            <div data-col-header="${idx}" draggable="true" style="position:relative;padding:7px 6px;border-left:1px solid #1B3352;cursor:grab;user-select:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:${col.key==='soldQty'?'center':'right'};">
+              ${col.label}
+              <div data-col-resize="${idx}" style="position:absolute;top:0;bottom:0;left:0;width:6px;cursor:col-resize;"></div>
+            </div>`).join('')}
         </div>
         ${results.map((it,i) => {
           const isSelected = it.id === state.itemPickerSelectedId;
           const baseColor = it.qty<=0?'#FCEBEB':i%2?'#F4F1EA':'#FFFDF6';
+          const soldQty = state.itemsSoldQuantities[it.id] || 0;
           return `
-          <div data-pick-item="${it.id}" style="display:grid;grid-template-columns:1fr 1.6fr 0.7fr 0.7fr 0.8fr 0.8fr 0.9fr 0.8fr 0.7fr;background:${isSelected?'#CFE8FF':baseColor};font-size:11.5px;cursor:pointer;min-width:900px;border-bottom:1px solid #E4E2DA;${isSelected?'box-shadow:inset 0 0 0 2px #2C4A6E;':''}" ${isSelected?'':`onmouseover="this.style.background='#DCEBFB'" onmouseout="this.style.background='${baseColor}'"`}>
-            <div style="padding:6px;" class="mono">${escapeHtml(it.sku)}</div>
-            <div style="padding:6px;">${escapeHtml(it.name)}</div>
-            <div style="padding:6px;">${escapeHtml(it.unit||'')}</div>
-            <div style="padding:6px;font-weight:600;color:${it.qty<=0?'#C0392B':'#3A3826'};" class="mono">${it.qty}</div>
-            <div style="padding:6px;" class="mono">${fmt(it.cost)}</div>
-            <div style="padding:6px;" class="mono">${fmt(it.price)}</div>
-            <div style="padding:6px;">${escapeHtml(it.brand||'—')}</div>
-            <div style="padding:6px;">${escapeHtml(it.model||'—')}</div>
-            <div style="padding:6px;">${escapeHtml(it.size||'—')}</div>
+          <div data-pick-item="${it.id}" style="display:grid;grid-template-columns:${gridTemplate};background:${isSelected?'#CFE8FF':baseColor};font-size:11.5px;cursor:pointer;min-width:${totalWidth}px;border-bottom:1px solid #E4E2DA;${isSelected?'box-shadow:inset 0 0 0 2px #2C4A6E;':''}" ${isSelected?'':`onmouseover="this.style.background='#DCEBFB'" onmouseout="this.style.background='${baseColor}'"`}>
+            ${columns.map(col => `<div style="padding:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${col.key==='soldQty'?'display:flex;justify-content:center;align-items:center;':'text-align:right;'}">${getItemPickerCellValue(it, col.key, soldQty)}</div>`).join('')}
           </div>`;
-        }).join('') || `<div style="padding:24px;text-align:center;font-size:12.5px;color:#6E6D5F;min-width:900px;">ما فيه أصناف مطابقة للبحث</div>`}
+        }).join('') || `<div style="padding:24px;text-align:center;font-size:12.5px;color:#6E6D5F;min-width:${totalWidth}px;">ما فيه أصناف مطابقة للبحث</div>`}
       </div>
       ${selectedItem ? `
       <div class="no-print" style="padding:10px 14px;border-top:2px solid #2C4A6E;background:#F0F7FF;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -7664,6 +7724,56 @@ function bindAppEvents() {
     const ctx = state.itemPickerContext || {};
     const closeIpk = () => { state.itemPickerOpen = false; render(); };
     document.getElementById('ipk-close').onclick = closeIpk;
+    document.getElementById('ipk-reset-columns').onclick = () => {
+      saveItemPickerColumns(ITEM_PICKER_COLUMNS_DEFAULT.map(c => ({...c})));
+      render();
+    };
+    // إعادة ترتيب الأعمدة بالسحب والإفلات
+    let dragColIdx = null;
+    document.querySelectorAll('[data-col-header]').forEach(header => {
+      header.ondragstart = (ev) => {
+        dragColIdx = parseInt(header.dataset.colHeader, 10);
+        ev.dataTransfer.effectAllowed = 'move';
+      };
+      header.ondragover = (ev) => { ev.preventDefault(); };
+      header.ondrop = (ev) => {
+        ev.preventDefault();
+        const dropIdx = parseInt(header.dataset.colHeader, 10);
+        if (dragColIdx === null || dragColIdx === dropIdx) return;
+        const columns = getItemPickerColumns();
+        const [moved] = columns.splice(dragColIdx, 1);
+        columns.splice(dropIdx, 0, moved);
+        saveItemPickerColumns(columns);
+        dragColIdx = null;
+        render();
+      };
+    });
+    // تغيير عرض الأعمدة بالسحب من حافة العمود
+    document.querySelectorAll('[data-col-resize]').forEach(handle => {
+      handle.onmousedown = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const idx = parseInt(handle.dataset.colResize, 10);
+        const columns = getItemPickerColumns();
+        const startX = ev.clientX;
+        const startWidth = columns[idx].width;
+        const onMove = (moveEv) => {
+          // بالعربي (RTL) السحب لليسار يكبّر العمود
+          const delta = startX - moveEv.clientX;
+          const newWidth = Math.max(45, startWidth + delta);
+          columns[idx].width = newWidth;
+          const gridTemplate = columns.map(c => c.width+'px').join(' ');
+          document.querySelectorAll('#ipk-header-row, [data-pick-item]').forEach(rowEl => { rowEl.style.gridTemplateColumns = gridTemplate; });
+        };
+        const onUp = () => {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          saveItemPickerColumns(columns);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      };
+    });
     const searchEl = document.getElementById('ipk-search');
     searchEl.oninput = (ev) => {
       state.itemPickerQuery = ev.target.value;
