@@ -94,6 +94,7 @@ let state = {
   showPayroll: false, payrollPeriod: '', payrollRows: [], showPayslip: false, payslipRecordId: null,
   showPayrollReport: false, prFromPeriod: '', prToPeriod: '', prEmployeeFilter: '', prReportRows: [],
   showLeaves: false, employeeLeaves: [], showLeaveForm: false, leaveForm: null,
+  showEosb: false, eosbEmployeeId: null, eosbEndDate: '', eosbReason: 'استقالة', eosbSettlements: [],
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -1776,6 +1777,7 @@ const EMPLOYEES_SUBMENU = [
   { label: 'رواتب الشهر', target: '__payroll__' },
   { label: 'تقارير الرواتب', target: '__payroll_report__' },
   { label: 'الإجازات', target: '__leaves__' },
+  { label: 'نهاية الخدمة', target: '__eosb__' },
 ];
 const PARTIES_SUBMENU = [
   { label: 'معلومات عميل/مورد', target: 'العملاء والموردين' },
@@ -1936,6 +1938,7 @@ function renderApp() {
   ${state.showPayroll ? renderPayrollModal() : ''}
   ${state.showPayrollReport ? renderPayrollReportModal() : ''}
   ${state.showLeaves ? renderLeavesModal() : ''}
+  ${state.showEosb ? renderEosbModal() : ''}
   ${state.showIncomeStatement ? renderIncomeStatementModal() : ''}
   ${state.showBalanceSheet ? renderBalanceSheetModal() : ''}
   ${state.showStatement ? renderStatementModal() : ''}
@@ -5097,6 +5100,65 @@ function renderAccountStatementModal() {
   </div>`;
 }
 
+function renderEosbModal() {
+  const emp = state.employees.find(e => e.id === state.eosbEmployeeId);
+  const calc = emp ? calcEosb(emp.hire_date, state.eosbEndDate, state.eosbReason, Number(emp.basic_salary)||0) : null;
+  return `
+  <div id="eo-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:650px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>حاسبة مكافأة نهاية الخدمة</span><button id="eo-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+
+      <div class="no-print" style="padding:16px;">
+        ${partyField('الموظف', `<select id="eo-employee" class="input"><option value="">اختر موظف...</option>${state.employees.map(e => `<option value="${e.id}" ${state.eosbEmployeeId===e.id?'selected':''}>${escapeHtml(e.full_name)} ${e.status!=='نشط'?'(متوقف)':''}</option>`).join('')}</select>`)}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          ${partyField('تاريخ انتهاء الخدمة', `<input id="eo-end-date" type="date" class="input" value="${escapeHtml(state.eosbEndDate)}" />`)}
+          ${partyField('سبب الإنهاء', `<select id="eo-reason" class="input"><option value="استقالة" ${state.eosbReason==='استقالة'?'selected':''}>استقالة</option><option value="إنهاء من صاحب العمل" ${state.eosbReason==='إنهاء من صاحب العمل'?'selected':''}>إنهاء من صاحب العمل</option><option value="انتهاء العقد" ${state.eosbReason==='انتهاء العقد'?'selected':''}>انتهاء العقد</option></select>`)}
+        </div>
+
+        ${emp && calc ? `
+        <div style="background:#FAF9F4;border-radius:10px;padding:14px;margin-top:10px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:10px;">
+            <div>سنوات الخدمة: <b class="mono">${calc.years.toFixed(2)}</b></div>
+            <div>آخر راتب أساسي: <b class="mono">${fmt(emp.basic_salary)}</b></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-top:1px dashed #DEDACB;">
+            <span>المكافأة الكاملة (قبل نسبة الاستقالة)</span><span class="mono">${fmt(calc.fullBenefit)}</span>
+          </div>
+          ${state.eosbReason==='استقالة' && calc.years < 10 ? `<div style="font-size:11px;color:#BA7517;padding:4px 0;">${calc.years<2?'أقل من سنتين خدمة — لا يستحق شي عند الاستقالة':calc.years<5?'من 2-5 سنوات استقالة — يستحق ثلث المكافأة فقط':'من 5-10 سنوات استقالة — يستحق ثلثي المكافأة فقط'}</div>` : ''}
+          <div style="display:flex;justify-content:space-between;align-items:center;border-top:2px solid #1B3352;margin-top:8px;padding-top:10px;">
+            <span style="font-weight:700;font-size:13px;">المكافأة المستحقة فعلياً</span>
+            <span style="font-weight:700;font-size:20px;color:#1B3352;" class="mono">${fmt(calc.finalBenefit)}</span>
+          </div>
+        </div>
+        <button id="eo-approve-btn" class="btn primary" style="padding:8px 16px;margin-top:12px;background:#0F6E56;border-color:#0F6E56;">اعتماد التسوية وترحيلها محاسبياً</button>
+        ` : `<div style="text-align:center;color:#8B8A7A;font-size:12px;padding:20px;">اختر موظف لعرض حساب المكافأة</div>`}
+      </div>
+
+      <div style="padding:0 16px 16px;">
+        <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:8px;">سجل التسويات السابقة</div>
+        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>
+              ${['الموظف','تاريخ الانتهاء','السبب','سنوات الخدمة','المكافأة المستحقة'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>
+              ${state.eosbSettlements.map((s,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
+              <tr>
+                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(s.employee_name)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(s.end_date)}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(s.reason)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${Number(s.years_of_service).toFixed(2)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:12px;font-weight:700;color:#1B3352;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(s.final_benefit)}</td>
+              </tr>`; }).join('') || `<tr><td colspan="5" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد تسويات مسجّلة بعد</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        <div style="font-size:10px;color:#8B8A7A;margin-top:8px;">💡 محسوبة حسب نظام العمل السعودي: نصف شهر عن كل سنة من أول 5 سنوات، وشهر كامل عن كل سنة بعدها. الاستقالة قبل سنتين = صفر، من 2-5 سنوات = الثلث، من 5-10 = الثلثين، أكثر من 10 = كاملة.</div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderLeavesModal() {
   const activeEmps = state.employees.filter(e => e.status === 'نشط');
   const balances = activeEmps.map(e => ({ employee: e, ...leaveBalanceForEmployee(e, state.employeeLeaves) }));
@@ -7161,6 +7223,27 @@ async function loadEmployeeLeaves() {
   const { data } = await sb.from('employee_leaves').select('*, employees(full_name)').order('start_date', { ascending: false });
   state.employeeLeaves = data || [];
 }
+// حساب مكافأة نهاية الخدمة حسب نظام العمل السعودي
+function calcEosb(hireDate, endDate, reason, basicSalary) {
+  const years = Math.max((new Date(endDate) - new Date(hireDate)) / (1000*60*60*24*365.25), 0);
+  const yearsAt5 = Math.min(years, 5);
+  const yearsBeyond5 = Math.max(years - 5, 0);
+  const fullBenefit = (yearsAt5 * 0.5 * basicSalary) + (yearsBeyond5 * 1 * basicSalary);
+  let finalBenefit;
+  if (reason === 'استقالة') {
+    if (years < 2) finalBenefit = 0;
+    else if (years < 5) finalBenefit = fullBenefit / 3;
+    else if (years < 10) finalBenefit = fullBenefit * 2/3;
+    else finalBenefit = fullBenefit;
+  } else {
+    finalBenefit = fullBenefit;
+  }
+  return { years, fullBenefit, finalBenefit: Math.round(finalBenefit*100)/100 };
+}
+async function loadEosbSettlements() {
+  const { data } = await sb.from('eosb_settlements').select('*').order('created_at', { ascending: false });
+  state.eosbSettlements = data || [];
+}
 function newEmployeeForm() {
   return { employee_number:'', full_name:'', nationality:'', phone:'', email:'', id_number:'', id_expiry_date:'', photo_url:'',
     job_title:'', department:'', hire_date: new Date().toISOString().slice(0,10), contract_type:'دوام كامل',
@@ -7877,6 +7960,14 @@ function bindAppEvents() {
         await loadEmployeeLeaves();
         state.showLeaveForm = false;
         state.showLeaves = true;
+        render();
+        return;
+      }
+      if (target === '__eosb__') {
+        await loadEmployees();
+        await loadEosbSettlements();
+        state.eosbEmployeeId = ''; state.eosbEndDate = new Date().toISOString().slice(0,10); state.eosbReason = 'استقالة';
+        state.showEosb = true;
         render();
         return;
       }
@@ -11092,6 +11183,42 @@ function bindAppEvents() {
         await sb.from('employee_leaves').insert(payload);
         await loadEmployeeLeaves();
         state.showLeaveForm = false;
+        render();
+      };
+    }
+  }
+
+  if (state.showEosb) {
+    document.getElementById('eo-close').onclick = () => { state.showEosb = false; render(); };
+    document.getElementById('eo-employee').onchange = (ev) => { state.eosbEmployeeId = ev.target.value; render(); };
+    document.getElementById('eo-end-date').onchange = (ev) => { state.eosbEndDate = ev.target.value; render(); };
+    document.getElementById('eo-reason').onchange = (ev) => { state.eosbReason = ev.target.value; render(); };
+    if (document.getElementById('eo-approve-btn')) {
+      document.getElementById('eo-approve-btn').onclick = async () => {
+        const emp = state.employees.find(e => e.id === state.eosbEmployeeId);
+        const calc = calcEosb(emp.hire_date, state.eosbEndDate, state.eosbReason, Number(emp.basic_salary)||0);
+        if (!confirm(`راح يُسجّل ${emp.full_name} كموظف متوقف، وتُرحّل مكافأة ${fmt(calc.finalBenefit)} كقيد محاسبي. متابعة؟`)) return;
+        setBtnLoading(document.getElementById('eo-approve-btn'), true, 'جاري الاعتماد');
+        const today = new Date().toISOString().slice(0,10);
+        let jEntryId = null;
+        if (calc.finalBenefit > 0) {
+          const jEntry = await postJournalEntry(today, `مكافأة نهاية خدمة - ${emp.full_name}`, 'eosb', emp.id, [
+            { account_code:'5202', debit: calc.finalBenefit, credit:0, description:'مكافأة نهاية خدمة' },
+            { account_code:'210101', debit:0, credit: calc.finalBenefit, description:'مستحق للموظف' },
+          ]);
+          if (!jEntry) { showToast('⚠️ فشل ترحيل القيد المحاسبي — راجع الحساب يدوياً', 'error'); }
+          else jEntryId = jEntry.id;
+        }
+        await sb.from('eosb_settlements').insert({
+          employee_id: emp.id, employee_name: emp.full_name, hire_date: emp.hire_date, end_date: state.eosbEndDate,
+          years_of_service: calc.years, reason: state.eosbReason, basic_salary: emp.basic_salary,
+          full_benefit: calc.fullBenefit, final_benefit: calc.finalBenefit, paid: calc.finalBenefit===0, payment_date: today, journal_entry_id: jEntryId,
+        });
+        await sb.from('employees').update({ status: 'متوقف' }).eq('id', emp.id);
+        await loadEmployees();
+        await loadEosbSettlements();
+        showToast('تم اعتماد تسوية نهاية الخدمة بنجاح');
+        state.eosbEmployeeId = '';
         render();
       };
     }
