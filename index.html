@@ -92,6 +92,7 @@ let state = {
   showFixedAssets: false, fixedAssets: [], showAssetForm: false, editingAssetId: null, assetForm: null,
   showEmployees: false, employees: [], showEmployeeForm: false, editingEmployeeId: null, employeeForm: null, showEmployeeCV: false, cvEmployeeId: null,
   showPayroll: false, payrollPeriod: '', payrollRows: [], showPayslip: false, payslipRecordId: null,
+  showPayrollReport: false, prFromPeriod: '', prToPeriod: '', prEmployeeFilter: '', prReportRows: [],
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -1772,6 +1773,7 @@ function stockStatus(item) {
 const EMPLOYEES_SUBMENU = [
   { label: 'سجل الموظفين', target: '__employees__' },
   { label: 'رواتب الشهر', target: '__payroll__' },
+  { label: 'تقارير الرواتب', target: '__payroll_report__' },
 ];
 const PARTIES_SUBMENU = [
   { label: 'معلومات عميل/مورد', target: 'العملاء والموردين' },
@@ -1930,6 +1932,7 @@ function renderApp() {
   ${state.showFixedAssets ? renderFixedAssetsModal() : ''}
   ${state.showEmployees ? renderEmployeesModal() : ''}
   ${state.showPayroll ? renderPayrollModal() : ''}
+  ${state.showPayrollReport ? renderPayrollReportModal() : ''}
   ${state.showIncomeStatement ? renderIncomeStatementModal() : ''}
   ${state.showBalanceSheet ? renderBalanceSheetModal() : ''}
   ${state.showStatement ? renderStatementModal() : ''}
@@ -5091,6 +5094,70 @@ function renderAccountStatementModal() {
   </div>`;
 }
 
+function renderPayrollReportModal() {
+  const rows = state.prReportRows;
+  const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const periodLabel = (p) => { const [y,m] = p.split('-'); return `${monthNames[parseInt(m,10)-1]} ${y}`; };
+  const totalPaid = rows.reduce((s,r) => s + Number(r.net_salary||0), 0);
+  const periodsSet = [...new Set(rows.map(r => r.period))].sort();
+  const monthlyTotals = periodsSet.map(p => ({ period: p, total: rows.filter(r => r.period===p).reduce((s,r)=>s+Number(r.net_salary||0),0) }));
+  const maxMonthly = Math.max(...monthlyTotals.map(m => m.total), 1);
+  return `
+  <div id="prr-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:950px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>تقارير الرواتب</span><button id="prr-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+
+      <div class="no-print" style="padding:16px;display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
+        <div>${partyField('من شهر', `<input id="prr-from" type="month" class="input" value="${escapeHtml(state.prFromPeriod)}" />`)}</div>
+        <div>${partyField('إلى شهر', `<input id="prr-to" type="month" class="input" value="${escapeHtml(state.prToPeriod)}" />`)}</div>
+        <div style="min-width:180px;">${partyField('موظف معيّن (اختياري)', `<select id="prr-employee" class="input"><option value="">كل الموظفين</option>${state.employees.map(e => `<option value="${e.id}" ${state.prEmployeeFilter===e.id?'selected':''}>${escapeHtml(e.full_name)}</option>`).join('')}</select>`)}</div>
+        <button id="prr-apply" class="btn primary" style="padding:8px 16px;">عرض</button>
+      </div>
+
+      <div class="no-print" style="border-radius:12px;overflow:hidden;margin:0 16px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.08);">
+        <div style="background:linear-gradient(135deg,#1B3352,#2C4A6E);padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="color:#fff;font-weight:700;font-size:14px;">إجمالي المدفوع بالفترة</div>
+          <div style="color:#fff;font-weight:700;font-size:18px;" class="mono">${fmt(totalPaid)}</div>
+        </div>
+        ${monthlyTotals.length > 1 ? `
+        <div style="padding:16px 18px;background:#FAF9F4;">
+          <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:10px;">مقارنة إجمالي الرواتب شهرياً</div>
+          <div style="display:flex;align-items:end;gap:8px;height:100px;">
+            ${monthlyTotals.map(m => `
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                <div style="font-size:9.5px;color:#5F5E5A;" class="mono">${fmt(m.total)}</div>
+                <div style="width:100%;background:linear-gradient(180deg,#2C4A6E,#1B3352);border-radius:4px 4px 0 0;height:${Math.max((m.total/maxMonthly)*70, 4)}px;"></div>
+                <div style="font-size:9px;color:#8B8A7A;">${periodLabel(m.period).split(' ')[0].slice(0,3)}</div>
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
+      </div>
+
+      <div style="padding:0 16px 16px;">
+        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>
+              ${['الشهر','الموظف','الأساسي','بدلات','إضافات','خصومات','الصافي'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>
+              ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
+              <tr>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${periodLabel(r.period)}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.employees?.full_name||'—')}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.basic_salary)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(Number(r.housing_allowance)+Number(r.transport_allowance))}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;color:#0F6E56;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.other_additions>0?fmt(r.other_additions):'—'}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;color:#C0392B;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.deductions>0?fmt(r.deductions):'—'}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:12px;font-weight:700;color:#1B3352;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.net_salary)}</td>
+              </tr>`; }).join('') || `<tr><td colspan="7" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد سجلات رواتب بهذي الفترة</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderPayrollModal() {
   const rows = state.payrollRows;
   const totalBasic = rows.reduce((s,r) => s + Number(r.basic_salary||0), 0);
@@ -6985,6 +7052,14 @@ async function loadPayrollForPeriod(period) {
 function calcRowNet(row) {
   return Number(row.basic_salary||0) + Number(row.housing_allowance||0) + Number(row.transport_allowance||0) + Number(row.other_additions||0) - Number(row.deductions||0);
 }
+async function loadPayrollReport() {
+  let q = sb.from('payroll_records').select('*, employees(full_name, employee_number)').order('period', { ascending: true });
+  if (state.prFromPeriod) q = q.gte('period', state.prFromPeriod);
+  if (state.prToPeriod) q = q.lte('period', state.prToPeriod);
+  if (state.prEmployeeFilter) q = q.eq('employee_id', state.prEmployeeFilter);
+  const { data } = await q;
+  state.prReportRows = data || [];
+}
 function newEmployeeForm() {
   return { employee_number:'', full_name:'', nationality:'', phone:'', email:'', id_number:'', id_expiry_date:'', photo_url:'',
     job_title:'', department:'', hire_date: new Date().toISOString().slice(0,10), contract_type:'دوام كامل',
@@ -7681,6 +7756,18 @@ function bindAppEvents() {
         state.payrollPeriod = currentPayrollPeriod();
         await loadPayrollForPeriod(state.payrollPeriod);
         state.showPayroll = true;
+        render();
+        return;
+      }
+      if (target === '__payroll_report__') {
+        await loadEmployees();
+        const now = new Date();
+        const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth()-5, 1);
+        state.prFromPeriod = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth()+1).padStart(2,'0')}`;
+        state.prToPeriod = currentPayrollPeriod();
+        state.prEmployeeFilter = '';
+        await loadPayrollReport();
+        state.showPayrollReport = true;
         render();
         return;
       }
@@ -10856,6 +10943,17 @@ function bindAppEvents() {
         render();
       };
     }
+  }
+
+  if (state.showPayrollReport) {
+    document.getElementById('prr-close').onclick = () => { state.showPayrollReport = false; render(); };
+    document.getElementById('prr-apply').onclick = async () => {
+      state.prFromPeriod = document.getElementById('prr-from').value;
+      state.prToPeriod = document.getElementById('prr-to').value;
+      state.prEmployeeFilter = document.getElementById('prr-employee').value;
+      await loadPayrollReport();
+      render();
+    };
   }
 
   if (state.showTopSelling) {
