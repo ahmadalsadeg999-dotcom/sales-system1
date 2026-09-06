@@ -91,6 +91,7 @@ let state = {
   showReportDesigner: false, rdSource: '', rdColumns: [], rdFrom: '', rdTo: '', rdRows: [], rdRan: false,
   showFixedAssets: false, fixedAssets: [], showAssetForm: false, editingAssetId: null, assetForm: null,
   showEmployees: false, employees: [], showEmployeeForm: false, editingEmployeeId: null, employeeForm: null, showEmployeeCV: false, cvEmployeeId: null,
+  showPayroll: false, payrollPeriod: '', payrollRows: [], showPayslip: false, payslipRecordId: null,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -1770,6 +1771,7 @@ function stockStatus(item) {
 
 const EMPLOYEES_SUBMENU = [
   { label: 'سجل الموظفين', target: '__employees__' },
+  { label: 'رواتب الشهر', target: '__payroll__' },
 ];
 const PARTIES_SUBMENU = [
   { label: 'معلومات عميل/مورد', target: 'العملاء والموردين' },
@@ -1927,6 +1929,7 @@ function renderApp() {
   ${state.showReportDesigner ? renderReportDesignerModal() : ''}
   ${state.showFixedAssets ? renderFixedAssetsModal() : ''}
   ${state.showEmployees ? renderEmployeesModal() : ''}
+  ${state.showPayroll ? renderPayrollModal() : ''}
   ${state.showIncomeStatement ? renderIncomeStatementModal() : ''}
   ${state.showBalanceSheet ? renderBalanceSheetModal() : ''}
   ${state.showStatement ? renderStatementModal() : ''}
@@ -5088,6 +5091,123 @@ function renderAccountStatementModal() {
   </div>`;
 }
 
+function renderPayrollModal() {
+  const rows = state.payrollRows;
+  const totalBasic = rows.reduce((s,r) => s + Number(r.basic_salary||0), 0);
+  const totalAdditions = rows.reduce((s,r) => s + Number(r.housing_allowance||0) + Number(r.transport_allowance||0) + Number(r.other_additions||0), 0);
+  const totalDeductions = rows.reduce((s,r) => s + Number(r.deductions||0), 0);
+  const totalNet = rows.reduce((s,r) => s + calcRowNet(r), 0);
+  const allPaid = rows.length > 0 && rows.every(r => r.paid);
+  const [year, month] = state.payrollPeriod.split('-');
+  const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const periodLabel = `${monthNames[parseInt(month,10)-1]} ${year}`;
+  return `
+  <div id="pr-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:1000px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>رواتب الشهر</span><button id="pr-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+
+      <div class="no-print" style="border-radius:12px;overflow:hidden;margin:16px;box-shadow:0 4px 16px rgba(0,0,0,0.08);">
+        <div style="background:linear-gradient(135deg,#1B3352,#2C4A6E);padding:16px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div>
+            <div style="color:#fff;font-weight:700;font-size:15px;">كشف رواتب ${periodLabel}</div>
+            <div style="color:rgba(255,255,255,0.75);font-size:11.5px;">${rows.length} موظف نشط</div>
+          </div>
+          <input id="pr-period" type="month" class="input" value="${escapeHtml(state.payrollPeriod)}" style="max-width:150px;" />
+        </div>
+        <div style="padding:12px 14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:#FAF9F4;">
+          <div style="background:#fff;border-radius:8px;padding:8px 10px;text-align:center;border:1px solid #EDEAE0;">
+            <div style="font-size:10px;color:#8B8A7A;">الرواتب الأساسية</div>
+            <div style="font-size:13px;font-weight:700;color:#1B3352;" class="mono">${fmt(totalBasic)}</div>
+          </div>
+          <div style="background:#fff;border-radius:8px;padding:8px 10px;text-align:center;border:1px solid #EDEAE0;">
+            <div style="font-size:10px;color:#8B8A7A;">البدلات والإضافات</div>
+            <div style="font-size:13px;font-weight:700;color:#0F6E56;" class="mono">${fmt(totalAdditions)}</div>
+          </div>
+          <div style="background:#fff;border-radius:8px;padding:8px 10px;text-align:center;border:1px solid #EDEAE0;">
+            <div style="font-size:10px;color:#8B8A7A;">الخصومات</div>
+            <div style="font-size:13px;font-weight:700;color:#C0392B;" class="mono">${fmt(totalDeductions)}</div>
+          </div>
+          <div style="background:#fff;border-radius:8px;padding:8px 10px;text-align:center;border:1px solid #EDEAE0;">
+            <div style="font-size:10px;color:#8B8A7A;">الصافي الإجمالي</div>
+            <div style="font-size:13px;font-weight:700;color:#1B3352;" class="mono">${fmt(totalNet)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="no-print" style="padding:0 16px 12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        ${allPaid ? `<span style="background:#E1F5EE;color:#0F6E56;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;">✓ تم اعتماد ودفع رواتب هذا الشهر</span>` : `
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="pr-payment-method" class="input" style="max-width:150px;">${activePaymentMethods().map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('')}</select>
+          <button id="pr-approve-btn" class="btn primary" style="padding:8px 16px;background:#0F6E56;border-color:#0F6E56;">اعتماد ودفع رواتب الشهر</button>
+        </div>`}
+        <button id="pr-print-all-btn" class="btn" style="padding:8px 16px;">طباعة الكشف</button>
+      </div>
+
+      <div style="padding:0 16px 16px;">
+        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>
+              ${['الموظف','الأساسي','سكن','مواصلات','إضافات أخرى','الخصومات','الصافي',''].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>
+              ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; const net = calcRowNet(r); return `
+              <tr>
+                <td style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:500;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.employee.full_name)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.basic_salary)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.housing_allowance)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.transport_allowance)}</td>
+                <td style="padding:5px 8px;background:${bg};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.paid ? `<span class="mono">${fmt(r.other_additions)}</span>` : `<input data-pr-additions="${r.employee_id}" class="input mono" style="max-width:80px;padding:4px 6px;font-size:11px;" value="${r.other_additions}" />`}</td>
+                <td style="padding:5px 8px;background:${bg};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.paid ? `<span class="mono">${fmt(r.deductions)}</span>` : `<input data-pr-deductions="${r.employee_id}" class="input mono" style="max-width:80px;padding:4px 6px;font-size:11px;" value="${r.deductions}" />`}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:12px;font-weight:700;color:#1B3352;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(net)}</td>
+                <td style="padding:4px;background:${bg};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.id ? `<button data-payslip-employee="${r.employee_id}" style="border:none;background:none;color:#2C4A6E;cursor:pointer;font-size:11px;">قسيمة</button>` : ''}</td>
+              </tr>`; }).join('') || `<tr><td colspan="8" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا يوجد موظفين نشطين</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      ${state.showPayslip ? renderPayslipModal() : ''}
+    </div>
+  </div>`;
+}
+
+function renderPayslipModal() {
+  const rec = state.payrollRows.find(r => r.employee_id === state.payslipRecordId);
+  if (!rec) return '';
+  const c = state.company;
+  const net = calcRowNet(rec);
+  const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const [year, month] = rec.period.split('-');
+  return `
+  <div id="ps-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50;" onclick="document.getElementById('ps-close-btn').click()">
+    <div class="print-area" style="background:#fff;border-radius:12px;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div style="background:linear-gradient(135deg,#1B3352,#2C4A6E);padding:18px;text-align:center;">
+        ${c?.logo_url ? `<img src="${escapeHtml(c.logo_url)}" style="height:30px;margin-bottom:6px;" />` : ''}
+        <div style="color:#fff;font-weight:700;font-size:15px;">قسيمة راتب</div>
+        <div style="color:rgba(255,255,255,0.8);font-size:12px;">${monthNames[parseInt(month,10)-1]} ${year}</div>
+      </div>
+      <div style="padding:18px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;">${escapeHtml(rec.employee.full_name)}</div>
+        <div style="font-size:11px;color:#8B8A7A;margin-bottom:14px;">${escapeHtml(rec.employee.job_title||'')} ${rec.employee.employee_number?'· '+escapeHtml(rec.employee.employee_number):''}</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px;">
+          <div style="display:flex;justify-content:space-between;"><span>الراتب الأساسي</span><span class="mono">${fmt(rec.basic_salary)}</span></div>
+          <div style="display:flex;justify-content:space-between;"><span>بدل سكن</span><span class="mono">${fmt(rec.housing_allowance)}</span></div>
+          <div style="display:flex;justify-content:space-between;"><span>بدل مواصلات</span><span class="mono">${fmt(rec.transport_allowance)}</span></div>
+          ${Number(rec.other_additions) > 0 ? `<div style="display:flex;justify-content:space-between;color:#0F6E56;"><span>إضافات أخرى ${rec.additions_note?'('+escapeHtml(rec.additions_note)+')':''}</span><span class="mono">+${fmt(rec.other_additions)}</span></div>` : ''}
+          ${Number(rec.deductions) > 0 ? `<div style="display:flex;justify-content:space-between;color:#C0392B;"><span>خصومات ${rec.deductions_note?'('+escapeHtml(rec.deductions_note)+')':''}</span><span class="mono">-${fmt(rec.deductions)}</span></div>` : ''}
+        </div>
+        <div style="border-top:2px solid #1B3352;margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:700;font-size:13px;">صافي الراتب</span>
+          <span style="font-weight:700;font-size:19px;color:#1B3352;" class="mono">${fmt(net)}</span>
+        </div>
+      </div>
+      <div class="no-print" style="display:flex;gap:8px;padding:0 18px 18px;">
+        <button id="ps-print-btn" class="btn primary" style="padding:8px 16px;">طباعة</button>
+        <button id="ps-close-btn" class="btn" style="padding:8px 16px;">إغلاق</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderEmployeesModal() {
   const emps = state.employees;
   const activeCount = emps.filter(e => e.status === 'نشط').length;
@@ -6842,6 +6962,29 @@ async function loadEmployees() {
   const { data } = await sb.from('employees').select('*').order('full_name', { ascending: true });
   state.employees = data || [];
 }
+function currentPayrollPeriod() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+async function loadPayrollForPeriod(period) {
+  const { data: existing } = await sb.from('payroll_records').select('*').eq('period', period);
+  const existingByEmp = {};
+  (existing || []).forEach(r => { existingByEmp[r.employee_id] = r; });
+  state.payrollRows = state.employees.filter(e => e.status === 'نشط').map(e => {
+    const existingRec = existingByEmp[e.id];
+    if (existingRec) return { ...existingRec, employee: e };
+    return {
+      id: null, employee_id: e.id, employee: e, period,
+      basic_salary: Number(e.basic_salary)||0, housing_allowance: Number(e.housing_allowance)||0, transport_allowance: Number(e.transport_allowance)||0,
+      other_additions: 0, additions_note: '', deductions: 0, deductions_note: '',
+      net_salary: (Number(e.basic_salary)||0) + (Number(e.housing_allowance)||0) + (Number(e.transport_allowance)||0),
+      paid: false, payment_date: null, payment_method: null,
+    };
+  });
+}
+function calcRowNet(row) {
+  return Number(row.basic_salary||0) + Number(row.housing_allowance||0) + Number(row.transport_allowance||0) + Number(row.other_additions||0) - Number(row.deductions||0);
+}
 function newEmployeeForm() {
   return { employee_number:'', full_name:'', nationality:'', phone:'', email:'', id_number:'', id_expiry_date:'', photo_url:'',
     job_title:'', department:'', hire_date: new Date().toISOString().slice(0,10), contract_type:'دوام كامل',
@@ -7530,6 +7673,14 @@ function bindAppEvents() {
         await loadEmployees();
         state.showEmployeeForm = false; state.editingEmployeeId = null;
         state.showEmployees = true;
+        render();
+        return;
+      }
+      if (target === '__payroll__') {
+        await loadEmployees();
+        state.payrollPeriod = currentPayrollPeriod();
+        await loadPayrollForPeriod(state.payrollPeriod);
+        state.showPayroll = true;
         render();
         return;
       }
@@ -10637,6 +10788,71 @@ function bindAppEvents() {
         else await sb.from('employees').insert(payload);
         await loadEmployees();
         state.showEmployeeForm = false;
+        render();
+      };
+    }
+  }
+
+  if (state.showPayroll) {
+    document.getElementById('pr-close').onclick = () => { state.showPayroll = false; render(); };
+    document.getElementById('pr-period').onchange = async (ev) => {
+      state.payrollPeriod = ev.target.value;
+      await loadPayrollForPeriod(state.payrollPeriod);
+      render();
+    };
+    document.querySelectorAll('[data-pr-additions]').forEach(el => {
+      el.oninput = (ev) => {
+        const row = state.payrollRows.find(r => r.employee_id === el.dataset.prAdditions);
+        row.other_additions = ev.target.value;
+        const pos = ev.target.selectionStart;
+        render();
+        const fresh = document.querySelector(`[data-pr-additions="${el.dataset.prAdditions}"]`);
+        if (fresh) { fresh.focus(); fresh.setSelectionRange(pos, pos); }
+      };
+    });
+    document.querySelectorAll('[data-pr-deductions]').forEach(el => {
+      el.oninput = (ev) => {
+        const row = state.payrollRows.find(r => r.employee_id === el.dataset.prDeductions);
+        row.deductions = ev.target.value;
+        const pos = ev.target.selectionStart;
+        render();
+        const fresh = document.querySelector(`[data-pr-deductions="${el.dataset.prDeductions}"]`);
+        if (fresh) { fresh.focus(); fresh.setSelectionRange(pos, pos); }
+      };
+    });
+    document.querySelectorAll('[data-payslip-employee]').forEach(btn => {
+      btn.onclick = () => { state.payslipRecordId = btn.dataset.payslipEmployee; state.showPayslip = true; render(); };
+    });
+    if (document.getElementById('pr-print-all-btn')) document.getElementById('pr-print-all-btn').onclick = () => { window.print(); };
+    if (state.showPayslip) {
+      document.getElementById('ps-close-btn').onclick = () => { state.showPayslip = false; render(); };
+      document.getElementById('ps-print-btn').onclick = () => { window.print(); };
+    }
+    if (document.getElementById('pr-approve-btn')) {
+      document.getElementById('pr-approve-btn').onclick = async () => {
+        const rows = state.payrollRows;
+        if (rows.length === 0) return;
+        const totalNet = rows.reduce((s,r) => s + calcRowNet(r), 0);
+        const paymentMethod = document.getElementById('pr-payment-method').value;
+        if (!confirm(`راح يترحّل قيد محاسبي واحد بإجمالي ${fmt(totalNet)} ويُعتبر مدفوع. متابعة؟`)) return;
+        setBtnLoading(document.getElementById('pr-approve-btn'), true, 'جاري الاعتماد');
+        const today = new Date().toISOString().slice(0,10);
+        // نحفظ سجل راتب كل موظف (إدراج أو تحديث لو كان محفوظ مسبقاً)
+        for (const r of rows) {
+          const net = calcRowNet(r);
+          const payload = { employee_id: r.employee_id, period: state.payrollPeriod, basic_salary: r.basic_salary, housing_allowance: r.housing_allowance, transport_allowance: r.transport_allowance,
+            other_additions: Number(r.other_additions)||0, deductions: Number(r.deductions)||0, net_salary: net, paid: true, payment_date: today, payment_method: paymentMethod };
+          if (r.id) await sb.from('payroll_records').update(payload).eq('id', r.id);
+          else await sb.from('payroll_records').insert(payload);
+        }
+        // قيد محاسبي واحد مجمّع لكل رواتب الشهر: مدين رواتب وأجور (بعد خصم الخصومات) — دائن الصندوق/البنك، بنفس الصافي المدفوع فعلياً (يتوازن دايماً)
+        const jEntry = await postJournalEntry(today, `رواتب شهر ${state.payrollPeriod}`, 'payroll', null, [
+          { account_code:'5201', debit: totalNet, credit:0, description:'صافي رواتب وبدلات الشهر (بعد الخصومات)' },
+          { account_code: cashOrBankAccount(paymentMethod), debit:0, credit: totalNet, description:'صافي المدفوع للموظفين' },
+        ]);
+        if (!jEntry) showToast('⚠️ تم حفظ الرواتب لكن فشل ترحيل القيد المحاسبي — راجع الحساب يدوياً', 'error');
+        else showToast('تم اعتماد ودفع رواتب الشهر بنجاح');
+        await loadPayrollForPeriod(state.payrollPeriod);
         render();
       };
     }
