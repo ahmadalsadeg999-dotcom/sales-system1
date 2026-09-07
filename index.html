@@ -58,6 +58,8 @@
     .print-area .win-title { display: none !important; }
     html, body { background: #fff !important; }
     .print-scroll { overflow: visible !important; }
+    #bl-print-area, #bl-print-area * { visibility: visible !important; }
+    #bl-print-area { position: absolute !important; top: 0; left: 0; display: block !important; }
     .print-grid { min-width: 0 !important; font-size: 10.5px !important; background: #fff !important; color: #000 !important; }
     .print-grid > div { padding: 3px 3px !important; border-color: #333 !important; border-width: 1px !important; }
     .print-grid:first-child > div, .print-grid.print-grid-header > div { border-color: #000 !important; font-weight: 700 !important; }
@@ -100,6 +102,7 @@ let state = {
   showCashRecon: false, cashReconciliations: [], cashReconExpected: 0, cashReconActual: '',
   showBarcodeLabels: false, labelSelections: {}, labelSearchQuery: '',
   showQuickOpen: false, quickOpenType: 'فاتورة بيع', quickOpenNumber: '', quickOpenError: '',
+  showInventoryStats: false, invStatsOpeningValue: 0,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -1857,6 +1860,7 @@ const SUBMENUS = {
     { label: 'سند تحويل بين مستودعات', target: '__transfers__' },
     { divider: true },
     { label: 'تقرير الكميات بالمستودعات', target: '__warehouse_stock_report__' },
+    { label: 'إحصائية عامة للمخزون', target: '__inventory_stats__' },
   ],
   'العملاء والموردين': PARTIES_SUBMENU,
   'شؤون الموظفين': EMPLOYEES_SUBMENU,
@@ -1960,6 +1964,7 @@ function renderApp() {
   ${state.showCashRecon ? renderCashReconModal() : ''}
   ${state.showBarcodeLabels ? renderBarcodeLabelsModal() : ''}
   ${state.showQuickOpen ? renderQuickOpenModal() : ''}
+  ${state.showInventoryStats ? renderInventoryStatsModal() : ''}
   ${state.showItemMovement ? renderItemMovementModal() : ''}
   ${state.showPaymentMethodsSettings ? renderPaymentMethodsModal() : ''}
   ${state.itemPickerOpen ? renderItemPickerModal() : ''}
@@ -3810,6 +3815,57 @@ function renderWarehouseStockReportModal() {
       <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;">
         ${iconBtn('wsr-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('wsr-print', 'ti-printer', '#5F5E5A', 'طباعة (أو حفظ PDF)')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderInventoryStatsModal() {
+  const items = state.items;
+  const currentValue = items.reduce((s,it) => s + Number(it.qty||0) * Number(it.cost||0), 0);
+  const zeroStockCount = items.filter(it => Number(it.qty||0) <= 0).length;
+  const activeCount = items.filter(it => it.active !== false).length;
+  const totalCount = items.length;
+  const opening = state.invStatsOpeningValue;
+  const diff = currentValue - opening;
+  const diffPct = opening > 0 ? (diff/opening*100) : 0;
+  return `
+  <div id="ist-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:650px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>إحصائية عامة للمخزون</span><button id="ist-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:18px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div style="background:#FAF9F4;border:1px solid #DEDACB;border-radius:10px;padding:14px;">
+            <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">تكلفة المخزون الافتتاحية</div>
+            <div style="font-size:18px;font-weight:700;color:#1B3352;" class="mono">${fmt(opening)}</div>
+          </div>
+          <div style="background:#F0F6FC;border:1px solid #B8D4EE;border-radius:10px;padding:14px;">
+            <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">تكلفة المخزون الحالية</div>
+            <div style="font-size:18px;font-weight:700;color:#1B3352;" class="mono">${fmt(currentValue)}</div>
+          </div>
+        </div>
+        ${opening > 0 ? `
+        <div style="background:${diff>=0?'#E1F5EE':'#FCEBEB'};border:1px solid ${diff>=0?'#0F6E56':'#C0392B'};border-radius:8px;padding:10px 14px;margin-bottom:16px;text-align:center;">
+          <span style="font-size:12px;color:#5F5E5A;">${diff>=0?'نمو المخزون منذ البداية':'انخفاض المخزون منذ البداية'}</span>
+          <span style="font-size:15px;font-weight:700;color:${diff>=0?'#0F6E56':'#C0392B'};margin-right:8px;" class="mono">${diff>=0?'+':''}${fmt(diff)} (${diffPct.toFixed(1)}%)</span>
+        </div>` : ''}
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+          <div style="background:#FCEBEB;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:700;color:#C0392B;">${zeroStockCount}</div>
+            <div style="font-size:10.5px;color:#5F5E5A;margin-top:2px;">صنف رصيده صفر</div>
+          </div>
+          <div style="background:#E1F5EE;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:700;color:#0F6E56;">${activeCount}</div>
+            <div style="font-size:10.5px;color:#5F5E5A;margin-top:2px;">صنف نشط بالنظام</div>
+          </div>
+          <div style="background:#F4F1EA;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:700;color:#1B3352;">${totalCount}</div>
+            <div style="font-size:10.5px;color:#5F5E5A;margin-top:2px;">إجمالي الأصناف بالنظام</div>
+          </div>
+        </div>
+        <div class="no-print" style="display:flex;justify-content:flex-end;margin-top:16px;">
+          <button id="ist-print-btn" class="btn" style="padding:7px 14px;font-size:12px;">طباعة</button>
+        </div>
       </div>
     </div>
   </div>`;
@@ -8445,6 +8501,13 @@ function bindAppEvents() {
         render();
         return;
       }
+      if (target === '__inventory_stats__') {
+        await loadItems();
+        state.invStatsOpeningValue = await calcOpeningInventoryValue();
+        state.showInventoryStats = true;
+        render();
+        return;
+      }
       if (target && target.startsWith('__report_')) {
         const kindMap = {
           '__report_sales_invoices__': 'sales_invoices',
@@ -12180,6 +12243,11 @@ function bindAppEvents() {
     document.getElementById('qo-number').onkeydown = (ev) => { if (ev.key === 'Enter') submitQuickOpen(); };
   }
 
+  if (state.showInventoryStats) {
+    document.getElementById('ist-close').onclick = () => { state.showInventoryStats = false; render(); };
+    if (document.getElementById('ist-print-btn')) document.getElementById('ist-print-btn').onclick = () => { window.print(); };
+  }
+
   if (state.showWarehouseStockReport) {
     const closeWsr = () => { state.showWarehouseStockReport = false; render(); };
     document.getElementById('wsr-close').onclick = closeWsr;
@@ -12664,6 +12732,11 @@ async function runQuickOpen(typeLabel, number) {
   state.showQuickOpen = false;
   await cfg.openFn(found.id);
   return { success:true };
+}
+
+async function calcOpeningInventoryValue() {
+  const { data } = await sb.from('journal_entry_lines').select('debit').eq('description', 'مخزون افتتاحي');
+  return (data||[]).reduce((s,r) => s + Number(r.debit||0), 0);
 }
 
 async function init() {
