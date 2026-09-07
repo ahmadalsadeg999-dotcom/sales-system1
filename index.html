@@ -6,6 +6,7 @@
 <title>نظام المبيعات - المخزون</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -96,6 +97,9 @@ let state = {
   showLeaves: false, employeeLeaves: [], showLeaveForm: false, leaveForm: null,
   showEosb: false, eosbEmployeeId: null, eosbEndDate: '', eosbReason: 'استقالة', eosbSettlements: [],
   backupSettings: null,
+  showCashRecon: false, cashReconciliations: [], cashReconExpected: 0, cashReconActual: '',
+  showBarcodeLabels: false, labelSelections: {}, labelSearchQuery: '',
+  showQuickOpen: false, quickOpenType: 'فاتورة بيع', quickOpenNumber: '', quickOpenError: '',
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -1845,6 +1849,7 @@ const SUBMENUS = {
   'الاصناف': [
     { label: 'الأصناف', target: 'الاصناف' },
     { label: 'كشف حركة صنف', target: '__item_movement__' },
+    { label: 'طباعة ملصقات باركود', target: '__barcode_labels__' },
   ],
   'المستودعات': [
     { label: 'المستودعات', target: '__warehouses__' },
@@ -1863,6 +1868,7 @@ const SUBMENUS = {
     { label: 'إعدادات طرق الدفع', target: '__payment_methods__' },
     { divider: true },
     { label: 'نسخة احتياطية وصيانة النظام', target: '__maintenance__' },
+    { label: 'تطابق الصندوق آخر اليوم', target: '__cash_recon__' },
     { label: 'إعدادات متقدمة', target: '__designer_panel__' },
   ],
 };
@@ -1951,6 +1957,9 @@ function renderApp() {
   ${state.showGenericReport ? renderGenericReportModal() : ''}
   ${state.showWarehouseStockReport ? renderWarehouseStockReportModal() : ''}
   ${state.showMaintenance ? renderMaintenanceModal() : ''}
+  ${state.showCashRecon ? renderCashReconModal() : ''}
+  ${state.showBarcodeLabels ? renderBarcodeLabelsModal() : ''}
+  ${state.showQuickOpen ? renderQuickOpenModal() : ''}
   ${state.showItemMovement ? renderItemMovementModal() : ''}
   ${state.showPaymentMethodsSettings ? renderPaymentMethodsModal() : ''}
   ${state.itemPickerOpen ? renderItemPickerModal() : ''}
@@ -2749,6 +2758,7 @@ function renderHomeSection() {
             <div style="margin-top:36px;">
               <div style="color:#B8C8DC;font-size:12px;font-weight:500;margin-bottom:12px;">${t('quick_shortcuts')}</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                ${homeShortcut('ti-search', 'فتح مستند برقمه', '__quick_open__')}
                 ${homeShortcut('ti-file-invoice', t('sc_new_sale'), 'المبيعات')}
                 ${homeShortcut('ti-shopping-cart', t('sc_new_purchase'), 'المشتريات')}
                 ${homeShortcut('ti-cube-plus', t('sc_new_item'), 'الاصناف')}
@@ -3800,6 +3810,105 @@ function renderWarehouseStockReportModal() {
       <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;">
         ${iconBtn('wsr-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('wsr-print', 'ti-printer', '#5F5E5A', 'طباعة (أو حفظ PDF)')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderQuickOpenModal() {
+  const types = quickOpenConfig().map(c => c.label);
+  return `
+  <div id="qo-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:30;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-search"></i> فتح مستند برقمه</span><button id="qo-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:18px;">
+        ${partyField('نوع المستند', `<select id="qo-type" class="input">${types.map(tp => `<option ${state.quickOpenType===tp?'selected':''}>${tp}</option>`).join('')}</select>`)}
+        ${partyField('رقم المستند', `<input id="qo-number" class="input mono" dir="ltr" placeholder="مثال: S-0012" value="${escapeHtml(state.quickOpenNumber)}" />`)}
+        ${state.quickOpenError ? `<div class="err-text" style="margin-bottom:8px;">${escapeHtml(state.quickOpenError)}</div>` : ''}
+        <button id="qo-submit" class="btn primary" style="padding:9px 18px;width:100%;">فتح</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderBarcodeLabelsModal() {
+  const q = state.labelSearchQuery.trim().toLowerCase();
+  const results = !q ? state.items : state.items.filter(it => (it.sku||'').toLowerCase().includes(q) || (it.name||'').toLowerCase().includes(q) || (it.barcode||'').toLowerCase().includes(q));
+  const selectedCount = Object.values(state.labelSelections).filter(v => v > 0).length;
+  const totalLabels = Object.values(state.labelSelections).reduce((s,v) => s + (Number(v)||0), 0);
+  return `
+  <div id="bl-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title no-print"><span>طباعة ملصقات باركود</span><button id="bl-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div class="no-print" style="padding:14px;">
+        <input id="bl-search" class="input" placeholder="ابحث بالاسم، الرقم، أو الباركود..." value="${escapeHtml(state.labelSearchQuery)}" style="margin-bottom:10px;" />
+        <div style="max-height:340px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>${['','اسم الصنف','الباركود/الرقم','السعر','عدد النسخ'].map(h => `<th style="padding:6px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${results.map((it,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; const qty = state.labelSelections[it.id] || 0; return `
+              <tr>
+                <td style="padding:5px 8px;background:${bg};border-bottom:1px solid #E4E2DA;"><input type="checkbox" data-label-check="${it.id}" ${qty>0?'checked':''} /></td>
+                <td style="padding:5px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.name)}</td>
+                <td class="mono" style="padding:5px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.barcode||it.sku)}</td>
+                <td class="mono" style="padding:5px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(it.price)}</td>
+                <td style="padding:4px 8px;background:${bg};border-bottom:1px solid #E4E2DA;"><input data-label-qty="${it.id}" class="input mono" style="max-width:60px;padding:3px 6px;" value="${qty||1}" /></td>
+              </tr>`; }).join('') || `<tr><td colspan="5" style="padding:14px;text-align:center;font-size:11.5px;color:#8B8A7A;">ما فيه أصناف مطابقة</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+          <span style="font-size:11.5px;color:#5F5E5A;">${selectedCount} صنف محدّد — ${totalLabels} ملصق إجمالي</span>
+          <button id="bl-print-btn" class="btn primary" style="padding:8px 16px;" ${totalLabels===0?'disabled':''}>طباعة الملصقات</button>
+        </div>
+      </div>
+      <div id="bl-print-area" class="print-only" style="display:none;padding:10px;"></div>
+    </div>
+  </div>`;
+}
+
+function renderCashReconModal() {
+  const expected = state.cashReconExpected;
+  const actual = Number(state.cashReconActual) || 0;
+  const hasEntered = state.cashReconActual !== '';
+  const diff = actual - expected;
+  const today = new Date().toISOString().slice(0,10);
+  return `
+  <div id="cr-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:550px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>تطابق الصندوق آخر اليوم</span><button id="cr-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:16px;">
+        <div style="background:#FAF9F4;border-radius:10px;padding:14px;margin-bottom:14px;">
+          <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">تاريخ اليوم: <span class="mono">${today}</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:600;">النقد المتوقع بالصندوق (محسوب تلقائياً من حركات اليوم)</span>
+            <span style="font-size:19px;font-weight:700;color:#1B3352;" class="mono">${fmt(expected)}</span>
+          </div>
+        </div>
+        ${partyField('النقد الفعلي بالصندوق (بعد العدّ اليدوي) *', `<input id="cr-actual" class="input mono" style="font-size:16px;" value="${escapeHtml(state.cashReconActual)}" placeholder="اكتب المبلغ اللي عددته فعلياً" />`)}
+        ${hasEntered ? `
+        <div style="background:${Math.abs(diff)<0.01?'#E1F5EE':diff>0?'#FAEEDA':'#FCEBEB'};border:1px solid ${Math.abs(diff)<0.01?'#0F6E56':diff>0?'#BA7517':'#C0392B'};border-radius:8px;padding:12px;margin:12px 0;text-align:center;">
+          <div style="font-size:12px;color:#5F5E5A;">${Math.abs(diff)<0.01?'✓ الصندوق مطابق تماماً':diff>0?'⚠️ زيادة بالصندوق':'⚠️ نقص بالصندوق'}</div>
+          <div style="font-size:20px;font-weight:700;color:${Math.abs(diff)<0.01?'#0F6E56':diff>0?'#BA7517':'#C0392B'};" class="mono">${diff>0?'+':''}${fmt(diff)}</div>
+        </div>` : ''}
+        ${partyField('ملاحظات (اختياري)', `<input id="cr-notes" class="input" placeholder="سبب الفرق لو فيه، أو أي ملاحظة" />`)}
+        <button id="cr-save-btn" class="btn primary" style="padding:8px 16px;margin-top:8px;">حفظ تطابق اليوم</button>
+
+        <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin:18px 0 8px;">آخر 15 يوم</div>
+        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>${['التاريخ','المتوقع','الفعلي','الفرق'].map(h => `<th style="padding:6px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${state.cashReconciliations.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; const d = Number(r.difference); return `
+              <tr>
+                <td class="mono" style="padding:5px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.recon_date)}</td>
+                <td class="mono" style="padding:5px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(r.expected_cash)}</td>
+                <td class="mono" style="padding:5px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(r.actual_cash)}</td>
+                <td class="mono" style="padding:5px 8px;background:${bg};font-size:11px;font-weight:600;color:${Math.abs(d)<0.01?'#0F6E56':d>0?'#BA7517':'#C0392B'};border-bottom:1px solid #E4E2DA;">${d>0?'+':''}${fmt(d)}</td>
+              </tr>`; }).join('') || `<tr><td colspan="4" style="padding:14px;text-align:center;font-size:11.5px;color:#8B8A7A;">لا توجد تطابقات مسجّلة بعد</td></tr>`}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>`;
@@ -7951,6 +8060,12 @@ function bindAppEvents() {
   document.querySelectorAll('[data-home-shortcut]').forEach(el => {
     el.onclick = async () => {
       const target = el.dataset.homeShortcut;
+      if (target === '__quick_open__') {
+        state.quickOpenType = 'فاتورة بيع'; state.quickOpenNumber = ''; state.quickOpenError = '';
+        state.showQuickOpen = true;
+        render();
+        return;
+      }
       if (target === '__receipt_vouchers__') {
         await loadParties();
         await loadReceiptVouchers();
@@ -8209,6 +8324,21 @@ function bindAppEvents() {
         state.backupSettings = bSettings || null;
         await loadChartOfAccounts();
         state.showMaintenance = true;
+        render();
+        return;
+      }
+      if (target === '__cash_recon__') {
+        state.cashReconActual = '';
+        state.cashReconExpected = await calcExpectedCashToday();
+        await loadCashReconciliations();
+        state.showCashRecon = true;
+        render();
+        return;
+      }
+      if (target === '__barcode_labels__') {
+        state.labelSelections = {};
+        state.labelSearchQuery = '';
+        state.showBarcodeLabels = true;
         render();
         return;
       }
@@ -9013,6 +9143,10 @@ function bindAppEvents() {
           errEl.textContent = `السعر أقل من التكلفة (${fmt(item.cost)})`;
           return;
         }
+        // تحذير (مو منع) لو الهامش رقيق جداً — يخلي البائع منتبه بدون ما يعطّل البيع
+        const cost = Number(item.cost || 0);
+        const marginPct = cost > 0 ? ((priceBeforeTax - cost) / cost) * 100 : 100;
+        if (cost > 0 && marginPct < 10 && !confirm(`⚠️ تنبيه: هامش الربح على هذا الصنف ضعيف جداً (${marginPct.toFixed(1)}% بس) — التكلفة ${fmt(cost)} والسعر ${fmt(priceBeforeTax)}.\n\nتبي تكمل البيع بهذا السعر؟`)) return;
         const existingLine = state.salesForm.lines.find(l => l.item_id === itemId);
         if (existingLine) { existingLine.quantity += qty; }
         else { state.salesForm.lines.push({ item_id:itemId, item_name:item.name, sku:item.sku, unit:item.unit, quantity:qty, unit_price:priceBeforeTax, tax_percent:taxPct }); }
@@ -11958,6 +12092,94 @@ function bindAppEvents() {
     };
   }
 
+  if (state.showCashRecon) {
+    document.getElementById('cr-close').onclick = () => { state.showCashRecon = false; render(); };
+    document.getElementById('cr-actual').oninput = (ev) => { state.cashReconActual = ev.target.value; render(); };
+    document.getElementById('cr-save-btn').onclick = async () => {
+      if (state.cashReconActual === '' || isNaN(Number(state.cashReconActual))) { alert('اكتب المبلغ الفعلي بالصندوق'); return; }
+      const today = new Date().toISOString().slice(0,10);
+      const actual = Number(state.cashReconActual);
+      const diff = actual - state.cashReconExpected;
+      const notes = document.getElementById('cr-notes').value.trim() || null;
+      await sb.from('cash_reconciliations').upsert({ recon_date: today, expected_cash: state.cashReconExpected, actual_cash: actual, difference: diff, notes, created_by: state.session.user.id }, { onConflict: 'recon_date' });
+      await loadCashReconciliations();
+      showToast('تم حفظ تطابق اليوم');
+      render();
+    };
+  }
+
+  if (state.showBarcodeLabels) {
+    document.getElementById('bl-close').onclick = () => { state.showBarcodeLabels = false; render(); };
+    document.getElementById('bl-search').oninput = (ev) => { state.labelSearchQuery = ev.target.value; render(); };
+    document.querySelectorAll('[data-label-check]').forEach(cb => {
+      cb.onchange = (ev) => {
+        const id = cb.dataset.labelCheck;
+        if (ev.target.checked) state.labelSelections[id] = state.labelSelections[id] || 1;
+        else delete state.labelSelections[id];
+        render();
+      };
+    });
+    document.querySelectorAll('[data-label-qty]').forEach(inp => {
+      inp.oninput = (ev) => {
+        const id = inp.dataset.labelQty;
+        const val = Math.max(1, Number(ev.target.value)||1);
+        if (state.labelSelections[id] !== undefined || document.querySelector(`[data-label-check="${id}"]`).checked) state.labelSelections[id] = val;
+      };
+    });
+    if (document.getElementById('bl-print-btn')) {
+      document.getElementById('bl-print-btn').onclick = () => {
+        const selectedItems = Object.entries(state.labelSelections).filter(([id,qty]) => qty > 0).map(([id,qty]) => ({ item: state.items.find(it=>it.id===id), qty }));
+        const printArea = document.getElementById('bl-print-area');
+        let labelsHtml = '';
+        let barcodeJobs = [];
+        let counter = 0;
+        selectedItems.forEach(({item, qty}) => {
+          const code = item.barcode || item.sku;
+          for (let i = 0; i < qty; i++) {
+            counter++;
+            const svgId = `label-barcode-${counter}`;
+            labelsHtml += `
+            <div style="display:inline-block;width:180px;padding:8px;border:1px dashed #999;margin:3px;text-align:center;vertical-align:top;">
+              <div style="font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.name)}</div>
+              <svg id="${svgId}"></svg>
+              <div style="font-size:11px;font-weight:700;">${fmt(item.price)} ﷼</div>
+            </div>`;
+            barcodeJobs.push({ svgId, code });
+          }
+        });
+        printArea.innerHTML = labelsHtml;
+        printArea.style.display = 'block';
+        barcodeJobs.forEach(({svgId, code}) => {
+          try { JsBarcode(`#${svgId}`, code, { width:1.4, height:35, fontSize:11, margin:2 }); } catch(e) {}
+        });
+        setTimeout(() => { window.print(); printArea.style.display = 'none'; }, 200);
+      };
+    }
+  }
+
+  if (state.showQuickOpen) {
+    document.getElementById('qo-close').onclick = () => { state.showQuickOpen = false; render(); };
+    document.getElementById('qo-type').onchange = (ev) => { state.quickOpenType = ev.target.value; };
+    document.getElementById('qo-number').oninput = (ev) => { state.quickOpenNumber = ev.target.value; };
+    const submitQuickOpen = async () => {
+      const number = document.getElementById('qo-number').value.trim();
+      const type = document.getElementById('qo-type').value;
+      if (!number) { state.quickOpenError = 'اكتب رقم المستند'; render(); return; }
+      state.quickOpenError = '';
+      const btn = document.getElementById('qo-submit');
+      setBtnLoading(btn, true, 'جاري البحث');
+      const result = await runQuickOpen(type, number);
+      if (!result.success) {
+        state.quickOpenError = result.message;
+        setBtnLoading(btn, false);
+        render();
+      }
+      // لو نجح، runQuickOpen خلاص سكّرت الشاشة وفتحت المستند — render() صار جواها
+    };
+    document.getElementById('qo-submit').onclick = submitQuickOpen;
+    document.getElementById('qo-number').onkeydown = (ev) => { if (ev.key === 'Enter') submitQuickOpen(); };
+  }
+
   if (state.showWarehouseStockReport) {
     const closeWsr = () => { state.showWarehouseStockReport = false; render(); };
     document.getElementById('wsr-close').onclick = closeWsr;
@@ -12391,6 +12613,57 @@ async function checkAndRunAutoBackup() {
       }
     }
   } catch(e) { /* لو فشل الفحص لأي سبب (مثلاً الجدول غير موجود بعد)، نكمل عادي بدون ما نوقف النظام */ }
+}
+
+// ---------- تطابق الصندوق آخر اليوم ----------
+async function calcExpectedCashToday() {
+  const today = new Date().toISOString().slice(0,10);
+  let expected = 0;
+  const { data: sales } = await sb.from('sales_invoices').select('paid_amount').eq('approved', true).eq('invoice_type', 'نقدي').eq('invoice_date', today);
+  (sales||[]).forEach(r => { expected += Number(r.paid_amount||0); });
+  const { data: purch } = await sb.from('purchase_invoices').select('paid_amount').eq('approved', true).eq('invoice_type', 'نقدي').eq('invoice_date', today);
+  (purch||[]).forEach(r => { expected -= Number(r.paid_amount||0); });
+  const { data: sret } = await sb.from('sales_returns').select('total').eq('approved', true).eq('payment_method', 'نقدي').eq('return_date', today);
+  (sret||[]).forEach(r => { expected -= Number(r.total||0); });
+  const { data: pret } = await sb.from('purchase_returns').select('total').eq('approved', true).eq('payment_method', 'نقدي').eq('return_date', today);
+  (pret||[]).forEach(r => { expected += Number(r.total||0); });
+  const { data: rec } = await sb.from('receipt_vouchers').select('amount').eq('approved', true).eq('payment_method', 'نقدي').eq('voucher_date', today);
+  (rec||[]).forEach(r => { expected += Number(r.amount||0); });
+  const { data: pay } = await sb.from('payment_vouchers').select('amount').eq('approved', true).eq('payment_method', 'نقدي').eq('voucher_date', today);
+  (pay||[]).forEach(r => { expected -= Number(r.amount||0); });
+  const { data: cd } = await sb.from('cash_disbursement_vouchers').select('amount, payment_method').eq('approved', true).eq('voucher_date', today);
+  (cd||[]).forEach(r => { if (r.payment_method==='نقدي') expected -= Number(r.amount||0); });
+  return expected;
+}
+async function loadCashReconciliations() {
+  const { data } = await sb.from('cash_reconciliations').select('*').order('recon_date', { ascending: false }).limit(15);
+  state.cashReconciliations = data || [];
+}
+
+// ---------- بحث سريع وفتح مستند بالرقم ----------
+function quickOpenConfig() {
+  return [
+    { label:'فاتورة بيع', activeSection:'المبيعات', listKey:'salesInvoices', numberField:'invoice_number', loadFn:loadSalesInvoices, openFn:openSalesById },
+    { label:'فاتورة شراء', activeSection:'المشتريات', listKey:'purchases', numberField:'invoice_number', loadFn:loadPurchases, openFn:openPurchaseById },
+    { label:'عرض سعر', activeSection:'__quotations__', listKey:'quotations', numberField:'quote_number', loadFn:loadQuotations, openFn:openQuoteById },
+    { label:'مردود بيع', activeSection:'__sales_returns__', listKey:'salesReturns', numberField:'return_number', loadFn:loadSalesReturns, openFn:openSalesReturnById },
+    { label:'مردود شراء', activeSection:'__purchase_returns__', listKey:'purchaseReturns', numberField:'return_number', loadFn:loadPurchaseReturns, openFn:openPurchaseReturnById },
+    { label:'سند جرد', activeSection:'__stock_counts__', listKey:'stockCounts', numberField:'count_number', loadFn:loadStockCounts, openFn:openStockCountById },
+    { label:'سند تحويل', activeSection:'__transfers__', listKey:'transfers', numberField:'transfer_number', loadFn:loadTransfers, openFn:openTransferById },
+    { label:'سند قبض', activeSection:'__receipt_vouchers__', listKey:'receiptVouchers', numberField:'voucher_number', loadFn:loadReceiptVouchers, openFn:openReceiptVoucherById },
+    { label:'سند صرف', activeSection:'__payment_vouchers__', listKey:'paymentVouchers', numberField:'voucher_number', loadFn:loadPaymentVouchers, openFn:openPaymentVoucherById },
+  ];
+}
+async function runQuickOpen(typeLabel, number) {
+  const cfg = quickOpenConfig().find(c => c.label === typeLabel);
+  if (!cfg) return { success:false, message:'نوع مستند غير معروف' };
+  await cfg.loadFn();
+  const found = state[cfg.listKey].find(x => (x[cfg.numberField]||'').trim() === number.trim());
+  if (!found) return { success:false, message:`ما لقيت ${typeLabel} برقم "${number}"` };
+  state.activeSection = cfg.activeSection;
+  state.showQuickOpen = false;
+  await cfg.openFn(found.id);
+  return { success:true };
 }
 
 async function init() {
