@@ -103,7 +103,9 @@ let state = {
   showCashRecon: false, cashReconciliations: [], cashReconExpected: 0, cashReconActual: '',
   showBarcodeLabels: false, labelSelections: {}, labelSearchQuery: '', showLabelFormatPanel: false,
   showQuickOpen: false, quickOpenType: 'فاتورة بيع', quickOpenNumber: '', quickOpenError: '',
+  showPartyPicker: false, partyPickerContext: null, partyPickerQuery: '',
   showInventoryStats: false, invStatsOpeningValue: 0,
+  showOpeningInv: false, openingInvDocs: [], showOpeningInvForm: false, openingInvForm: null, editingOpeningInvId: null,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -1862,6 +1864,7 @@ const SUBMENUS = {
     { divider: true },
     { label: 'تقرير الكميات بالمستودعات', target: '__warehouse_stock_report__' },
     { label: 'إحصائية عامة للمخزون', target: '__inventory_stats__' },
+    { label: 'المخزون الافتتاحي', target: '__opening_inventory__' },
   ],
   'العملاء والموردين': PARTIES_SUBMENU,
   'شؤون الموظفين': EMPLOYEES_SUBMENU,
@@ -1966,6 +1969,8 @@ function renderApp() {
   ${state.showBarcodeLabels ? renderBarcodeLabelsModal() : ''}
   ${state.showQuickOpen ? renderQuickOpenModal() : ''}
   ${state.showInventoryStats ? renderInventoryStatsModal() : ''}
+  ${state.showOpeningInv ? renderOpeningInvModal() : ''}
+  ${state.showPartyPicker ? renderPartyPickerModal() : ''}
   ${state.showItemMovement ? renderItemMovementModal() : ''}
   ${state.showPaymentMethodsSettings ? renderPaymentMethodsModal() : ''}
   ${state.itemPickerOpen ? renderItemPickerModal() : ''}
@@ -2209,7 +2214,7 @@ function renderQuoteFormModal() {
         <input class="input mono" value="${escapeHtml(f.quote_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-        ${partyField(t('inv_customer'), `<select id="qt-customer" class="input" ${f.status==='محول لفاتورة'?'disabled':''}><option value="">${t('inv_choose_customer')}</option>${customers.map(c => `<option value="${c.id}" ${f.customer_id===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>`)}
+        ${partyField(t('inv_customer'), partyPickerButton('qt-customer','customer',f.customer_id,f.status==='محول لفاتورة'))}
         ${partyField(t('inv_date'), `<input id="qt-date" type="date" class="input" value="${escapeHtml(f.quote_date)}" ${f.status==='محول لفاتورة'?'disabled':''} />`)}
         ${partyField(t('quote_valid_until'), `<input id="qt-valid-until" type="date" class="input" value="${escapeHtml(f.valid_until)}" ${f.status==='محول لفاتورة'?'disabled':''} />`)}
         <div>${partyField('', `<label style="font-size:12.5px;"><input id="qt-no-tax" type="checkbox" ${f.no_tax?'checked':''} ${f.status==='محول لفاتورة'?'disabled':''} /> ${t('inv_no_tax')}</label>`)}</div>
@@ -2543,7 +2548,7 @@ function renderPurchaseFormModal() {
       <div class="no-print" style="padding:6px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         ${f.invoice_type === 'نقدي'
           ? partyField(t('inv_supplier_walkin'), `<input id="pi-walkin-name" class="input" placeholder="اختياري — اكتب الاسم أو اتركه فاضي" value="${escapeHtml(f.walkin_supplier_name||'')}" ${f.approved?'disabled':''} />`)
-          : partyField(t('inv_supplier'), `<select id="pi-supplier" class="input" ${f.approved?'disabled':''}><option value="">${t('inv_choose_supplier')}</option>${suppliers.map(s => `<option value="${s.id}" ${f.supplier_id===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select>`)}
+          : partyField(t('inv_supplier'), partyPickerButton('pi-supplier','supplier',f.supplier_id,f.approved))}
         ${partyField(t('inv_supplier_ref'), `<input id="pi-supplier-ref" class="input" value="${escapeHtml(f.supplier_ref)}" ${f.approved?'disabled':''} />`)}
       </div>
 
@@ -3094,8 +3099,8 @@ function renderSalesFormModal() {
         ${f.invoice_type === 'نقدي' && f.cash_customer_mode !== 'registered'
           ? partyField(t('inv_customer_walkin'), `<div style="display:flex;gap:6px;align-items:center;"><input id="si-walkin-name" class="input" placeholder="اختياري — اكتب الاسم أو اتركه فاضي" value="${escapeHtml(f.walkin_customer_name||'')}" ${f.approved?'disabled':''} />${!f.approved?`<button type="button" id="si-cash-mode-toggle" data-mode="registered" class="btn" style="padding:6px 10px;font-size:10.5px;white-space:nowrap;" title="${t('cash_mode_registered')}"><i class="ti ti-user-search" style="font-size:14px;"></i></button>`:''}</div>`)
           : f.invoice_type === 'نقدي'
-          ? partyField(t('inv_customer'), `<div style="display:flex;gap:6px;align-items:center;"><select id="si-customer" class="input" ${f.approved?'disabled':''}><option value="">${t('inv_choose_customer')}</option>${customers.map(c => `<option value="${c.id}" ${f.customer_id===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>${!f.approved?`<button type="button" id="si-cash-mode-toggle" data-mode="walkin" class="btn" style="padding:6px 10px;font-size:10.5px;white-space:nowrap;" title="${t('cash_mode_walkin')}"><i class="ti ti-user-x" style="font-size:14px;"></i></button>`:''}</div>`)
-          : partyField(t('inv_customer'), `<select id="si-customer" class="input" ${f.approved?'disabled':''}><option value="">${t('inv_choose_customer')}</option>${customers.map(c => `<option value="${c.id}" ${f.customer_id===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>`)}
+          ? partyField(t('inv_customer'), `<div style="display:flex;gap:6px;align-items:center;">${partyPickerButton('si-customer','customer',f.customer_id,f.approved)}${!f.approved?`<button type="button" id="si-cash-mode-toggle" data-mode="walkin" class="btn" style="padding:6px 10px;font-size:10.5px;white-space:nowrap;" title="${t('cash_mode_walkin')}"><i class="ti ti-user-x" style="font-size:14px;"></i></button>`:''}</div>`)
+          : partyField(t('inv_customer'), partyPickerButton('si-customer','customer',f.customer_id,f.approved))}
         ${partyField(t('inv_customer_ref'), `<input id="si-customer-ref" class="input" value="${escapeHtml(f.customer_ref)}" ${f.approved?'disabled':''} />`)}
       </div>
       ${(!f.customer_id && !f.no_tax) ? `
@@ -3296,7 +3301,7 @@ function renderSalesReturnFormModal() {
         <input class="input mono" value="${escapeHtml(f.return_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        ${partyField(t('inv_customer'), `<select id="sr-customer" class="input" ${f.approved?'disabled':''}><option value="">${t('inv_choose_customer')}</option>${customers.map(c => `<option value="${c.id}" ${f.customer_id===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>`)}
+        ${partyField(t('inv_customer'), partyPickerButton('sr-customer','customer',f.customer_id,f.approved))}
         ${partyField(t('ret_date'), `<input id="sr-date" type="date" class="input" value="${escapeHtml(f.return_date)}" ${f.approved?'disabled':''} />`)}
         ${partyField(t('ret_payment_method'), `<select id="sr-payment-method" class="input" ${f.approved?'disabled':''}><option value="">—</option>${activePaymentMethods().map(m => `<option value="${escapeHtml(m.name)}" ${f.payment_method===m.name?'selected':''}>${escapeHtml(m.name)}</option>`).join('')}</select>`)}
         ${partyField(t('ret_warehouse'), `<select id="sr-warehouse" class="input" ${f.approved?'disabled':''}>${state.warehouses.map(w => `<option value="${w.id}" ${f.warehouse_id===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>`)}
@@ -3441,7 +3446,7 @@ function renderPurchaseReturnFormModal() {
         <input class="input mono" value="${escapeHtml(f.return_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        ${partyField(t('inv_supplier'), `<select id="pr-supplier" class="input" ${f.approved?'disabled':''}><option value="">${t('inv_choose_supplier')}</option>${suppliers.map(c => `<option value="${c.id}" ${f.supplier_id===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>`)}
+        ${partyField(t('inv_supplier'), partyPickerButton('pr-supplier','supplier',f.supplier_id,f.approved))}
         ${partyField(t('ret_date'), `<input id="pr-date" type="date" class="input" value="${escapeHtml(f.return_date)}" ${f.approved?'disabled':''} />`)}
         ${partyField(t('ret_payment_method'), `<select id="pr-payment-method" class="input" ${f.approved?'disabled':''}><option value="">—</option>${activePaymentMethods().map(m => `<option value="${escapeHtml(m.name)}" ${f.payment_method===m.name?'selected':''}>${escapeHtml(m.name)}</option>`).join('')}</select>`)}
         ${partyField('المستودع (إرجاع البضاعة منه)', `<select id="pr-warehouse" class="input" ${f.approved?'disabled':''}>${state.warehouses.map(w => `<option value="${w.id}" ${f.warehouse_id===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>`)}
@@ -3816,6 +3821,85 @@ function renderWarehouseStockReportModal() {
       <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;">
         ${iconBtn('wsr-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('wsr-print', 'ti-printer', '#5F5E5A', 'طباعة (أو حفظ PDF)')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderOpeningInvModal() {
+  return `
+  <div id="oi-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>المخزون الافتتاحي</span><button id="oi-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:14px 16px;">
+        <button id="oi-add-btn" class="btn primary" style="padding:8px 16px;margin-bottom:12px;">+ مستند مخزون افتتاحي جديد</button>
+        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>${['رقم المستند','التاريخ','المستودع','الحالة',''].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${state.openingInvDocs.map((d,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; const wh = state.warehouses.find(w=>w.id===d.warehouse_id); return `
+              <tr data-open-oi="${d.id}" style="cursor:pointer;">
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(d.doc_number)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(d.doc_date)}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(wh?.name||'—')}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${d.approved ? `<span style="background:#E1F5EE;color:#0F6E56;padding:2px 8px;border-radius:10px;">معتمد</span>` : `<span style="background:#FAEEDA;color:#BA7517;padding:2px 8px;border-radius:10px;">مسودة</span>`}</td>
+                <td style="padding:6px 8px;background:${bg};border-bottom:1px solid #E4E2DA;"><i class="ti ti-chevron-left"></i></td>
+              </tr>`; }).join('') || `<tr><td colspan="5" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد مستندات مسجّلة بعد</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      ${state.showOpeningInvForm ? renderOpeningInvFormModal() : ''}
+    </div>
+  </div>`;
+}
+
+function renderOpeningInvFormModal() {
+  const f = state.openingInvForm;
+  const total = calcOpeningInvTotal(f);
+  return `
+  <div id="oif-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40;" onclick="event.stopPropagation()">
+    <div style="background:#fff;border-radius:12px;width:100%;max-width:750px;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
+      <div class="win-title"><span>مستند مخزون افتتاحي</span><button id="oif-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      ${f.approved ? `<div style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">معتمد</div>` : ''}
+      <div style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
+        <label style="font-size:12.5px;color:#3A3826;">رقم المستند</label>
+        <input class="input mono" value="${escapeHtml(f.doc_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+      </div>
+      <div style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+        ${partyField('المستودع *', `<select id="oif-warehouse" class="input" ${f.approved||f.lines.length?'disabled':''}>${state.warehouses.map(w => `<option value="${w.id}" ${f.warehouse_id===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>`)}
+        ${partyField('التاريخ', `<input id="oif-date" type="date" class="input" value="${escapeHtml(f.doc_date)}" ${f.approved?'disabled':''} />`)}
+        ${partyField('ملاحظات', `<input id="oif-notes" class="input" value="${escapeHtml(f.notes)}" ${f.approved?'disabled':''} />`)}
+      </div>
+      <div style="padding:14px 16px;">
+        ${!f.approved ? `
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <select id="oif-item-select" class="input" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
+          ${itemPickerButton('oif-item-select',null,null,null,'oif-add-line')}
+          <button id="oif-add-line" class="btn primary" style="padding:6px 14px;">إضافة صنف</button>
+        </div>` : ''}
+        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>${['#','رقم الصنف','اسم الصنف','الوحدة','الكمية','التكلفة','الإجمالي',''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${f.lines.map((l,idx) => { const bg = idx%2?'#F4F1EA':'#FFFDF6'; const lineTotal = Number(l.quantity||0)*Number(l.cost||0); return `
+              <tr>
+                <td style="padding:6px;background:${bg};color:#8B8A7A;font-size:11px;border-bottom:1px solid #E4E2DA;">${idx+1}</td>
+                <td class="mono" style="padding:6px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.sku||'')}</td>
+                <td style="padding:6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.item_name)}</td>
+                <td style="padding:6px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.unit||'')}</td>
+                <td style="padding:4px 6px;background:${bg};border-bottom:1px solid #E4E2DA;">${f.approved?`<span class="mono">${l.quantity}</span>`:`<input data-oi-qty="${idx}" class="input mono" style="max-width:80px;padding:3px 6px;" value="${l.quantity}" />`}</td>
+                <td style="padding:4px 6px;background:${bg};border-bottom:1px solid #E4E2DA;">${f.approved?`<span class="mono">${fmt(l.cost)}</span>`:`<input data-oi-cost="${idx}" class="input mono" style="max-width:80px;padding:3px 6px;" value="${l.cost}" />`}</td>
+                <td class="mono" style="padding:6px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;">${fmt(lineTotal)}</td>
+                <td style="padding:4px;background:${bg};border-bottom:1px solid #E4E2DA;">${f.approved?'':`<button data-remove-oi-line="${idx}" style="border:none;background:none;color:#C0392B;cursor:pointer;">✕</button>`}</td>
+              </tr>`; }).join('') || `<tr><td colspan="8" style="padding:14px;text-align:center;font-size:11.5px;color:#8B8A7A;">لا توجد أصناف بعد</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+          <span style="font-size:13px;font-weight:700;color:#1B3352;">الإجمالي: <span class="mono">${fmt(total)}</span></span>
+          ${!f.approved ? `<button id="oif-save-approve" class="btn primary" style="padding:8px 16px;background:#0F6E56;border-color:#0F6E56;">حفظ واعتماد وترحيل محاسبي</button>` : ''}
+        </div>
       </div>
     </div>
   </div>`;
@@ -4282,7 +4366,7 @@ function renderVoucherFormModal(kind) {
         ${parties.length === 0 ? `<div class="err-text">ما فيه ${isReceipt?'عملاء':'موردين'} آجل مسجّلين — فعّل خيار "آجل" بكرت الطرف أول</div>` : ''}
         <div style="background:#FAF9F4;border:1px solid #DEDACB;border-radius:10px;padding:12px 14px;">
           <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:8px;display:flex;align-items:center;gap:5px;"><i class="ti ti-user" style="font-size:13px;"></i> ${partyLabel}</div>
-          ${partyField('', `<select id="${prefix}-party" class="input" ${f.approved?'disabled':''}><option value="">اختر...</option>${parties.map(p => `<option value="${p.id}" ${f[partyField_]===p.id?'selected':''}>${escapeHtml(p.name)} (${t('current_balance')}: ${fmt(p.balance)})</option>`).join('')}</select>`)}
+          ${partyField('', partyPickerButton(`${prefix}-party`, isReceipt?'customer':'supplier', f[partyField_], f.approved))}
           ${selectedParty ? `<div style="margin-top:8px;padding:8px 10px;background:#fff;border-radius:6px;border:1px solid #EDEAE0;font-size:11.5px;display:flex;justify-content:space-between;"><span style="color:#5F5E5A;">الرصيد الحالي</span><span class="mono" style="font-weight:600;color:${Number(selectedParty.balance)>0?'#C0392B':'#0F6E56'};">${fmt(selectedParty.balance)}</span></div>` : ''}
         </div>
 
@@ -5975,7 +6059,7 @@ function renderSettlementVoucherModal() {
         </div>
         ${f.approved ? `<div>${journalNumbersBadge()}</div>` : ''}
         ${partyField(t('stv_party_type'), `<select id="stv-party-type" class="input" ${f.approved?'disabled':''}><option value="customer" ${f.party_type==='customer'?'selected':''}>${t('stv_party_customer')}</option><option value="supplier" ${f.party_type==='supplier'?'selected':''}>${t('stv_party_supplier')}</option></select>`)}
-        ${partyField(t('stv_party'), `<select id="stv-party" class="input" ${f.approved?'disabled':''}><option value="">${t('stv_choose')}</option>${partiesFiltered.map(p => `<option value="${p.id}" ${f.party_id===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}</select>`)}
+        ${partyField(t('stv_party'), partyPickerButton('stv-party', f.party_type, f.party_id, f.approved))}
         ${partyField(t('stv_direction'), `<select id="stv-direction" class="input" ${f.approved?'disabled':''}><option value="decrease" ${f.direction==='decrease'?'selected':''}>${t('stv_decrease')}</option><option value="increase" ${f.direction==='increase'?'selected':''}>${t('stv_increase')}</option></select>`)}
         ${partyField(t('stv_amount'), `<input id="stv-amount" class="input mono" value="${escapeHtml(f.amount)}" ${f.approved?'disabled':''} />`)}
         ${partyField(t('stv_date'), `<input id="stv-date" type="date" class="input" value="${escapeHtml(f.voucher_date)}" ${f.approved?'disabled':''} />`)}
@@ -7694,6 +7778,55 @@ function itemPickerButton(targetSelectId, qtyId, priceId, priceKey, addBtnId) {
   return `<button type="button" class="input no-print" data-open-item-picker='${ctx.replace(/'/g,"&#39;")}' style="flex:1;text-align:right;cursor:pointer;display:flex;align-items:center;gap:6px;color:#5F5E5A;background:#fff;"><i class="ti ti-list-search" style="color:#2C4A6E;"></i> اختر صنف من القائمة...</button>`;
 }
 
+// ---------- زر+قائمة منبثقة موحّدة لاختيار عميل/مورد (تستبدل القوائم المنسدلة العادية بكل الفواتير والسندات) ----------
+function partyPickerButton(inputId, partyType, currentId, disabled) {
+  const current = currentId ? state.parties.find(p => p.id === currentId) : null;
+  const placeholder = partyType === 'customer' ? 'اختر عميل من القائمة...' : partyType === 'supplier' ? 'اختر مورد من القائمة...' : 'اختر عميل أو مورد...';
+  const ctx = JSON.stringify({ inputId, partyType });
+  if (disabled) {
+    return `<div>
+      <input type="hidden" id="${inputId}" value="${escapeHtml(currentId||'')}" />
+      <div class="input" style="background:#EDEAE0;color:#5F5E5A;display:flex;align-items:center;gap:6px;">
+        <i class="ti ti-user-search" style="color:#8B8A7A;flex-shrink:0;"></i>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${current ? escapeHtml(current.name) : '—'}</span>
+      </div>
+    </div>`;
+  }
+  return `<div>
+    <input type="hidden" id="${inputId}" value="${escapeHtml(currentId||'')}" />
+    <button type="button" class="input no-print" data-open-party-picker='${ctx.replace(/'/g,"&#39;")}' style="width:100%;text-align:right;cursor:pointer;display:flex;align-items:center;gap:6px;color:${current?'#1F2421':'#8B8A7A'};background:#fff;">
+      <i class="ti ti-user-search" style="color:#2C4A6E;flex-shrink:0;"></i>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${current ? escapeHtml(current.name) : placeholder}</span>
+    </button>
+  </div>`;
+}
+function renderPartyPickerModal() {
+  const ctx = state.partyPickerContext || {};
+  const q = state.partyPickerQuery.trim().toLowerCase();
+  let results = state.parties.filter(p => ctx.partyType ? p.party_type === ctx.partyType : true);
+  if (q) results = results.filter(p => (p.name||'').toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q) || (p.phone||'').toLowerCase().includes(q));
+  return `
+  <div id="pk-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:35;" onclick="document.getElementById('pk-close').click()">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:480px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>${ctx.partyType==='customer'?'اختيار عميل':ctx.partyType==='supplier'?'اختيار مورد':'اختيار عميل أو مورد'}</span><button id="pk-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:10px 14px;border-bottom:1px solid #A9A48C;">
+        <input id="pk-search" class="input" autofocus placeholder="ابحث بالاسم، الرقم، أو الجوال..." value="${escapeHtml(state.partyPickerQuery)}" />
+      </div>
+      <div style="overflow-y:auto;flex:1;">
+        ${results.map((p,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
+        <div data-pick-party="${p.id}" style="padding:10px 14px;background:${bg};cursor:pointer;border-bottom:1px solid #E4E2DA;display:flex;justify-content:space-between;align-items:center;" onmouseover="this.style.background='#DCEBFB'" onmouseout="this.style.background='${bg}'">
+          <div>
+            <div style="font-size:12.5px;font-weight:500;">${escapeHtml(p.name)}</div>
+            <div style="font-size:10.5px;color:#8B8A7A;">${p.code?escapeHtml(p.code)+' · ':''}${escapeHtml(p.phone||'')}</div>
+          </div>
+          <div style="font-size:11px;color:${Number(p.balance)>0?'#C0392B':'#5F5E5A'};" class="mono">${fmt(p.balance||0)}</div>
+        </div>`; }).join('') || `<div style="padding:24px;text-align:center;font-size:12.5px;color:#6E6D5F;">ما فيه ${ctx.partyType==='customer'?'عملاء':ctx.partyType==='supplier'?'موردين':'نتائج'} مطابقة</div>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+
 // ---------- أعمدة شاشة اختيار الأصناف: قابلة للسحب (إعادة ترتيب) والسحب (تغيير عرض)، محفوظة بجهاز المستخدم ----------
 const ITEM_PICKER_COLUMNS_DEFAULT = [
   { key:'sku', label:'رقم الصنف', width:95 },
@@ -7940,6 +8073,36 @@ function bindAppEvents() {
   document.querySelectorAll('[data-open-item-picker]').forEach(btn => {
     btn.onclick = () => { openItemPicker(JSON.parse(btn.dataset.openItemPicker)); };
   });
+  document.querySelectorAll('[data-open-party-picker]').forEach(btn => {
+    btn.onclick = () => {
+      state.partyPickerContext = JSON.parse(btn.dataset.openPartyPicker);
+      state.partyPickerQuery = '';
+      state.showPartyPicker = true;
+      render();
+    };
+  });
+  if (state.showPartyPicker) {
+    document.getElementById('pk-close').onclick = () => { state.showPartyPicker = false; render(); };
+    document.getElementById('pk-search').oninput = (ev) => {
+      state.partyPickerQuery = ev.target.value;
+      const pos = ev.target.selectionStart;
+      render();
+      const el = document.getElementById('pk-search');
+      if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+    };
+    document.querySelectorAll('[data-pick-party]').forEach(row => {
+      row.onclick = () => {
+        const ctx = state.partyPickerContext || {};
+        const input = document.getElementById(ctx.inputId);
+        if (input) {
+          input.value = row.dataset.pickParty;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        state.showPartyPicker = false;
+        render();
+      };
+    });
+  }
   if (state.itemPickerOpen) {
     const ctx = state.itemPickerContext || {};
     const closeIpk = () => { state.itemPickerOpen = false; render(); };
@@ -8541,6 +8704,15 @@ function bindAppEvents() {
         render();
         return;
       }
+      if (target === '__opening_inventory__') {
+        await loadItems();
+        await loadWarehouses();
+        await loadOpeningInvDocs();
+        state.showOpeningInvForm = false;
+        state.showOpeningInv = true;
+        render();
+        return;
+      }
       if (target && target.startsWith('__report_')) {
         const kindMap = {
           '__report_sales_invoices__': 'sales_invoices',
@@ -8907,10 +9079,10 @@ function bindAppEvents() {
               { account_code:'1104', debit: t.taxTotalSAR, credit:0, description:'ضريبة مدخلات' },
             ];
             if (f.invoice_type === 'آجل') {
-              jLines.push({ account_code:'210101', debit:0, credit: t.grandTotalSAR, description:'مستحق للمورد' });
+              jLines.push({ account_code: getPartyAccountCode(f.supplier_id,'supplier'), debit:0, credit: t.grandTotalSAR, description:'مستحق للمورد' });
             } else {
               jLines.push({ account_code: cashOrBankAccount(f.payment_method), debit:0, credit: (Number(f.paid_amount)||0)*t.rate, description:'مدفوع نقداً' });
-              if (t.due > 0) jLines.push({ account_code:'210101', debit:0, credit: t.dueSAR, description:'باقي غير مدفوع' });
+              if (t.due > 0) jLines.push({ account_code: getPartyAccountCode(f.supplier_id,'supplier'), debit:0, credit: t.dueSAR, description:'باقي غير مدفوع' });
             }
             const jEntry1 = await postJournalEntry(f.invoice_date, `فاتورة شراء ${f.invoice_number}`, 'purchase_invoice', state.editingPurchaseId, jLines);
             if (!jEntry1) showToast('⚠️ تم الاعتماد لكن فشل ترحيل القيد المحاسبي — راجع الحساب يدوياً', 'error');
@@ -9356,12 +9528,12 @@ function bindAppEvents() {
         {
           const jLines = [];
           if (f.invoice_type === 'آجل') {
-            jLines.push({ account_code:'110201', debit: t.grandTotal, credit:0, description:'مستحق على العميل' });
+            jLines.push({ account_code: getPartyAccountCode(f.customer_id,'customer'), debit: t.grandTotal, credit:0, description:'مستحق على العميل' });
             jLines.push({ account_code:'410102', debit:0, credit: t.subtotal - t.discount, description:'مبيعات آجلة' });
           } else {
             jLines.push({ account_code: cashOrBankAccount(f.payment_method), debit: Number(f.paid_amount)||0, credit:0, description:'مقبوض نقداً' });
             const due = t.grandTotal - (Number(f.paid_amount)||0);
-            if (due > 0 && f.customer_id) jLines.push({ account_code:'110201', debit: due, credit:0, description:'باقي غير مدفوع' });
+            if (due > 0 && f.customer_id) jLines.push({ account_code: getPartyAccountCode(f.customer_id,'customer'), debit: due, credit:0, description:'باقي غير مدفوع' });
             jLines.push({ account_code:'410101', debit:0, credit: t.subtotal - t.discount, description:'مبيعات نقدية' });
           }
           jLines.push({ account_code:'2102', debit:0, credit: t.taxTotal, description:'ضريبة مخرجات' });
@@ -9567,7 +9739,7 @@ function bindAppEvents() {
         logActivity('اعتماد مردود بيع', f.return_number);
         // القيد المحاسبي: مدين مردودات المبيعات — دائن العملاء (آجل) أو الصندوق (نقدي)، زائد رجوع تكلفة للمخزون
         {
-          const creditAccount = f.payment_method ? cashOrBankAccount(f.payment_method) : '110201';
+          const creditAccount = f.payment_method ? cashOrBankAccount(f.payment_method) : getPartyAccountCode(f.customer_id,'customer');
           const jLines = [
             { account_code:'4102', debit: t.subtotal - t.discount, credit:0, description:'مردودات مبيعات' },
             { account_code:'2102', debit: t.taxTotal, credit:0, description:'رجوع ضريبة مخرجات' },
@@ -9736,7 +9908,7 @@ function bindAppEvents() {
         logActivity('اعتماد مردود شراء', f.return_number);
         // القيد المحاسبي: مدين الموردون (آجل) أو الصندوق (نقدي) — دائن المخزون مباشرة (نظام جرد مستمر، بدون المرور بحساب مردودات وسيط) + رجوع ضريبة مدخلات
         {
-          const debitAccount = f.payment_method ? cashOrBankAccount(f.payment_method) : '210101';
+          const debitAccount = f.payment_method ? cashOrBankAccount(f.payment_method) : getPartyAccountCode(f.supplier_id,'supplier');
           const jEntry4 = await postJournalEntry(f.return_date, `مردود شراء ${f.return_number}`, 'purchase_return', state.editingPurchaseReturnId, [
             { account_code: debitAccount, debit: t.grandTotal, credit:0, description: f.payment_method?'استرداد نقدي':'خصم من مستحق المورد' },
             { account_code:'1103', debit:0, credit: t.subtotal - t.discount, description:'خصم من المخزون' },
@@ -10178,6 +10350,7 @@ function bindAppEvents() {
       if (state.editingPartyId) {
         const { error } = await sb.from('parties').update(payload).eq('id', state.editingPartyId);
         if (error) { alert('خطأ بالحفظ:\n' + error.message); return; }
+        if (payload.is_deferred) await ensurePartyAccount(state.editingPartyId, payload.party_type);
         await loadParties();
       } else {
         const prefix = payload.party_type === 'customer' ? 'C' : payload.party_type === 'supplier' ? 'S' : 'O';
@@ -10189,7 +10362,11 @@ function bindAppEvents() {
         payload.code = `${prefix}-${String(maxNum + 1).padStart(4, '0')}`;
         const { data, error } = await sb.from('parties').insert(payload).select().single();
         if (error) { alert('خطأ بالحفظ:\n' + error.message); return; }
-        if (data) { state.editingPartyId = data.id; state.partyForm.code = data.code; }
+        if (data) {
+          state.editingPartyId = data.id; state.partyForm.code = data.code;
+          await loadParties();
+          if (payload.is_deferred) await ensurePartyAccount(data.id, payload.party_type);
+        }
         await loadParties();
       }
       render();
@@ -10342,7 +10519,7 @@ function bindAppEvents() {
         // القيد المحاسبي: مدين الصندوق/البنك — دائن العملاء
         const jEntry6 = await postJournalEntry(f.voucher_date, `سند قبض ${f.voucher_number}`, 'receipt_voucher', state.editingReceiptVoucherId, [
           { account_code: cashOrBankAccount(f.payment_method), debit: Number(f.amount), credit:0, description:'تحصيل من العميل' },
-          { account_code:'110201', debit:0, credit: Number(f.amount), description:'خصم من مستحق العميل' },
+          { account_code: getPartyAccountCode(f.customer_id,'customer'), debit:0, credit: Number(f.amount), description:'خصم من مستحق العميل' },
         ]);
         if (!jEntry6) showToast('⚠️ تم الاعتماد لكن فشل ترحيل القيد المحاسبي — راجع الحساب يدوياً', 'error');
         await loadDocJournalNumbers('receipt_voucher', state.editingReceiptVoucherId);
@@ -10427,7 +10604,7 @@ function bindAppEvents() {
         logActivity('اعتماد سند صرف', f.voucher_number);
         // القيد المحاسبي: مدين الموردون — دائن الصندوق/البنك
         const jEntry7 = await postJournalEntry(f.voucher_date, `سند صرف ${f.voucher_number}`, 'payment_voucher', state.editingPaymentVoucherId, [
-          { account_code:'210101', debit: Number(f.amount), credit:0, description:'خصم من مستحق المورد' },
+          { account_code: getPartyAccountCode(f.supplier_id,'supplier'), debit: Number(f.amount), credit:0, description:'خصم من مستحق المورد' },
           { account_code: cashOrBankAccount(f.payment_method), debit:0, credit: Number(f.amount), description:'دفع للمورد' },
         ]);
         if (!jEntry7) showToast('⚠️ تم الاعتماد لكن فشل ترحيل القيد المحاسبي — راجع الحساب يدوياً', 'error');
@@ -11697,7 +11874,7 @@ function bindAppEvents() {
         f.approved = true;
         logActivity('اعتماد سند تسوية', f.voucher_number);
         // القيد المحاسبي: حسب نوع الطرف واتجاه التسوية
-        const controlAccount = f.party_type === 'customer' ? '110201' : '210101';
+        const controlAccount = getPartyAccountCode(f.party_id, f.party_type);
         const jLines = f.direction === 'decrease'
           ? (f.party_type === 'customer'
               ? [{ account_code:'5403', debit:Number(f.amount), credit:0, description:'تسوية ذمة عميل' }, { account_code:controlAccount, debit:0, credit:Number(f.amount), description:'تخفيض رصيد العميل' }]
@@ -12304,6 +12481,86 @@ function bindAppEvents() {
     if (document.getElementById('ist-print-btn')) document.getElementById('ist-print-btn').onclick = () => { window.print(); };
   }
 
+  if (state.showOpeningInv) {
+    document.getElementById('oi-close').onclick = () => { state.showOpeningInv = false; render(); };
+    document.getElementById('oi-add-btn').onclick = () => {
+      state.openingInvForm = newOpeningInvForm();
+      state.editingOpeningInvId = null;
+      state.showOpeningInvForm = true;
+      render();
+    };
+    document.querySelectorAll('[data-open-oi]').forEach(row => {
+      row.onclick = () => { openOpeningInvById(row.dataset.openOi); };
+    });
+    if (state.showOpeningInvForm) {
+      const f = state.openingInvForm;
+      document.getElementById('oif-close').onclick = () => { state.showOpeningInvForm = false; render(); };
+      if (document.getElementById('oif-warehouse')) document.getElementById('oif-warehouse').onchange = (ev) => { f.warehouse_id = ev.target.value; };
+      if (document.getElementById('oif-date')) document.getElementById('oif-date').onchange = (ev) => { f.doc_date = ev.target.value; };
+      if (document.getElementById('oif-notes')) document.getElementById('oif-notes').oninput = (ev) => { f.notes = ev.target.value; };
+      if (document.getElementById('oif-add-line')) {
+        document.getElementById('oif-add-line').onclick = () => {
+          const itemId = document.getElementById('oif-item-select').value;
+          if (!f.warehouse_id) { alert('اختر المستودع أول'); return; }
+          if (!itemId) { alert('اختر صنف أول'); return; }
+          if (f.lines.some(l => l.item_id === itemId)) { alert('هذا الصنف مضاف بالفعل'); return; }
+          const item = state.items.find(it => it.id === itemId);
+          f.lines.push({ item_id:itemId, item_name:item.name, sku:item.sku, unit:item.unit, quantity:1, cost: Number(item.cost)||0 });
+          render();
+        };
+      }
+      document.querySelectorAll('[data-oi-qty]').forEach(inp => {
+        inp.oninput = (ev) => { f.lines[parseInt(inp.dataset.oiQty,10)].quantity = ev.target.value; render(); };
+      });
+      document.querySelectorAll('[data-oi-cost]').forEach(inp => {
+        inp.oninput = (ev) => { f.lines[parseInt(inp.dataset.oiCost,10)].cost = ev.target.value; render(); };
+      });
+      document.querySelectorAll('[data-remove-oi-line]').forEach(btn => {
+        btn.onclick = () => { f.lines.splice(parseInt(btn.dataset.removeOiLine,10),1); render(); };
+      });
+      if (document.getElementById('oif-save-approve')) {
+        document.getElementById('oif-save-approve').onclick = async () => {
+          if (!f.warehouse_id) { alert('اختر المستودع'); return; }
+          if (f.lines.length === 0) { alert('أضف صنف واحد على الأقل'); return; }
+          setBtnLoading(document.getElementById('oif-save-approve'), true, 'جاري الحفظ');
+          const total = calcOpeningInvTotal(f);
+          let docId = state.editingOpeningInvId;
+          if (!docId) {
+            const maxNum = state.openingInvDocs.reduce((max,d) => { const m=(d.doc_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+            const docNumber = `OI-${String(maxNum+1).padStart(4,'0')}`;
+            const { data, error } = await sb.from('opening_inventory_docs').insert({ doc_number:docNumber, doc_date:f.doc_date, warehouse_id:f.warehouse_id, notes:f.notes||null, created_by: state.session.user.id }).select().single();
+            if (error) { alert('خطأ بالحفظ:\n'+error.message); setBtnLoading(document.getElementById('oif-save-approve'), false); return; }
+            docId = data.id;
+            f.doc_number = docNumber;
+          }
+          const { error: linesError } = await sb.from('opening_inventory_items').insert(f.lines.map(l => ({ doc_id:docId, item_id:l.item_id, quantity:Number(l.quantity), cost:Number(l.cost) })));
+          if (linesError) { alert('خطأ بحفظ الأصناف:\n'+linesError.message); setBtnLoading(document.getElementById('oif-save-approve'), false); return; }
+          // نحدّث رصيد وتكلفة كل صنف (متوسط مرجّح)، ونزيد رصيد المستودع
+          for (const l of f.lines) {
+            const item = state.items.find(it => it.id === l.item_id);
+            const oldQty = Number(item.qty)||0, oldCost = Number(item.cost)||0;
+            const addQty = Number(l.quantity), addCost = Number(l.cost);
+            const newQtyTotal = oldQty + addQty;
+            const weightedAvgCost = newQtyTotal > 0 ? ((oldQty*oldCost)+(addQty*addCost))/newQtyTotal : addCost;
+            await sb.from('items').update({ qty:newQtyTotal, cost:weightedAvgCost }).eq('id', l.item_id);
+            await adjustWarehouseStock(l.item_id, f.warehouse_id, addQty);
+          }
+          const jEntry = await postJournalEntry(f.doc_date, `مخزون افتتاحي - ${f.doc_number}`, 'opening_inventory', docId, [
+            { account_code:'1103', debit: total, credit:0, description:'مخزون افتتاحي' },
+            { account_code:'3101', debit:0, credit: total, description:'ضمن رأس المال الافتتاحي' },
+          ]);
+          await sb.from('opening_inventory_docs').update({ approved:true, journal_entry_id: jEntry?.id||null }).eq('id', docId);
+          if (!jEntry) showToast('⚠️ تم الحفظ لكن فشل ترحيل القيد المحاسبي — راجع الحساب يدوياً', 'error');
+          else showToast('تم حفظ واعتماد مستند المخزون الافتتاحي بنجاح');
+          await loadItems();
+          await loadOpeningInvDocs();
+          state.showOpeningInvForm = false;
+          render();
+        };
+      }
+    }
+  }
+
   if (state.showWarehouseStockReport) {
     const closeWsr = () => { state.showWarehouseStockReport = false; render(); };
     document.getElementById('wsr-close').onclick = closeWsr;
@@ -12793,6 +13050,50 @@ async function runQuickOpen(typeLabel, number) {
 async function calcOpeningInventoryValue() {
   const { data } = await sb.from('journal_entry_lines').select('debit').eq('description', 'مخزون افتتاحي');
   return (data||[]).reduce((s,r) => s + Number(r.debit||0), 0);
+}
+// ---------- المخزون الافتتاحي (مستند مستقل، متعدد الأصناف، برقم وتاريخ خاصين) ----------
+function newOpeningInvForm() {
+  return { doc_number:'', doc_date: new Date().toISOString().slice(0,10), warehouse_id: defaultWarehouseId(), notes:'', lines: [], approved:false };
+}
+async function loadOpeningInvDocs() {
+  const { data } = await sb.from('opening_inventory_docs').select('*').order('created_at', { ascending: false });
+  state.openingInvDocs = data || [];
+}
+function calcOpeningInvTotal(f) {
+  return f.lines.reduce((s,l) => s + Number(l.quantity||0) * Number(l.cost||0), 0);
+}
+async function openOpeningInvById(id) {
+  const doc = state.openingInvDocs.find(d => d.id === id);
+  if (!doc) return;
+  const { data: items } = await sb.from('opening_inventory_items').select('*, items(sku, name, unit)').eq('doc_id', id);
+  state.openingInvForm = {
+    doc_number: doc.doc_number, doc_date: doc.doc_date, warehouse_id: doc.warehouse_id, notes: doc.notes||'', approved: doc.approved,
+    lines: (items||[]).map(l => ({ item_id: l.item_id, sku: l.items?.sku, item_name: l.items?.name, unit: l.items?.unit, quantity: l.quantity, cost: l.cost })),
+  };
+  state.editingOpeningInvId = id;
+  state.showOpeningInvForm = true;
+  render();
+}
+
+// ---------- فتح حساب فرعي تلقائي بشجرة الحسابات لكل عميل/مورد آجل، وربطه بحركاته ----------
+async function ensurePartyAccount(partyId, partyType) {
+  const party = state.parties.find(p => p.id === partyId);
+  if (party?.account_code) return party.account_code; // موجود أصلاً، ما نكرر
+  const parentCode = partyType === 'customer' ? '110201' : '210101';
+  const { data: existing } = await sb.from('chart_of_accounts').select('code').like('code', parentCode + '%').neq('code', parentCode);
+  const maxNum = (existing||[]).reduce((max, a) => { const suffix = a.code.slice(parentCode.length); const n = parseInt(suffix,10); return isNaN(n)?max:Math.max(max,n); }, 0);
+  const newCode = parentCode + String(maxNum+1).padStart(3,'0');
+  const partyName = party ? party.name : '';
+  await sb.from('chart_of_accounts').insert({ code:newCode, parent_code:parentCode, name: partyName, account_type: partyType==='customer'?'asset':'liability', level:'3', is_posting_account:true, active:true });
+  await sb.from('parties').update({ account_code: newCode }).eq('id', partyId);
+  return newCode;
+}
+// يرجّع الحساب اللي يترحّل عليه القيد لعميل/مورد معيّن — حسابه الخاص لو موجود، وإلا الحساب المجمّع الافتراضي
+function getPartyAccountCode(partyId, partyType) {
+  const controlAccount = partyType === 'customer' ? '110201' : '210101';
+  if (!partyId) return controlAccount;
+  const party = state.parties.find(p => p.id === partyId);
+  return party?.account_code || controlAccount;
 }
 
 async function init() {
