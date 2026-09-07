@@ -42,6 +42,7 @@
   .link-btn { background:none; border:none; color:#2C4A6E; font-size:12.5px; cursor:pointer; text-decoration:underline; padding:0; }
   #root { min-height: 100vh; }
   .print-only { display: none; }
+  #bl-print-host { display: none; }
   @media print {
     .print-only { display: block !important; }
     @page { size: A4; margin: 10mm; }
@@ -58,8 +59,8 @@
     .print-area .win-title { display: none !important; }
     html, body { background: #fff !important; }
     .print-scroll { overflow: visible !important; }
-    #bl-print-area, #bl-print-area * { visibility: visible !important; }
-    #bl-print-area { position: absolute !important; top: 0; left: 0; display: block !important; }
+    #bl-print-host { display: block !important; visibility: visible !important; position: absolute !important; top: 0; left: 0; z-index: 99999; padding: 10px; background: #fff; }
+    #bl-print-host * { visibility: visible !important; }
     .print-grid { min-width: 0 !important; font-size: 10.5px !important; background: #fff !important; color: #000 !important; }
     .print-grid > div { padding: 3px 3px !important; border-color: #333 !important; border-width: 1px !important; }
     .print-grid:first-child > div, .print-grid.print-grid-header > div { border-color: #000 !important; font-weight: 700 !important; }
@@ -100,7 +101,7 @@ let state = {
   showEosb: false, eosbEmployeeId: null, eosbEndDate: '', eosbReason: 'استقالة', eosbSettlements: [],
   backupSettings: null,
   showCashRecon: false, cashReconciliations: [], cashReconExpected: 0, cashReconActual: '',
-  showBarcodeLabels: false, labelSelections: {}, labelSearchQuery: '',
+  showBarcodeLabels: false, labelSelections: {}, labelSearchQuery: '', showLabelFormatPanel: false,
   showQuickOpen: false, quickOpenType: 'فاتورة بيع', quickOpenNumber: '', quickOpenError: '',
   showInventoryStats: false, invStatsOpeningValue: 0,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
@@ -3887,15 +3888,48 @@ function renderQuickOpenModal() {
   </div>`;
 }
 
+// ---------- إعدادات تنسيق ملصقات الباركود (محفوظة بجهاز المستخدم) ----------
+const LABEL_FORMAT_DEFAULT = { showName: false, showPrice: false, showCodeText: true, widthMm: 40, heightMm: 25 };
+function getLabelFormat() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('barcodeLabelFormat') || 'null');
+    if (saved && typeof saved === 'object') return { ...LABEL_FORMAT_DEFAULT, ...saved };
+  } catch(e) {}
+  return { ...LABEL_FORMAT_DEFAULT };
+}
+function saveLabelFormat(fmt) {
+  try { localStorage.setItem('barcodeLabelFormat', JSON.stringify(fmt)); } catch(e) {}
+}
+
 function renderBarcodeLabelsModal() {
   const q = state.labelSearchQuery.trim().toLowerCase();
   const results = !q ? state.items : state.items.filter(it => (it.sku||'').toLowerCase().includes(q) || (it.name||'').toLowerCase().includes(q) || (it.barcode||'').toLowerCase().includes(q));
   const selectedCount = Object.values(state.labelSelections).filter(v => v > 0).length;
   const totalLabels = Object.values(state.labelSelections).reduce((s,v) => s + (Number(v)||0), 0);
+  const fmt_ = getLabelFormat();
   return `
   <div id="bl-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
     <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
-      <div class="win-title no-print"><span>طباعة ملصقات باركود</span><button id="bl-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div class="win-title no-print"><span>طباعة ملصقات باركود</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button id="bl-format-btn" title="إعدادات تنسيق الملصق" style="background:rgba(255,255,255,0.15);border:none;border-radius:3px;color:#fff;font-size:10px;padding:4px 10px;cursor:pointer;display:flex;align-items:center;gap:4px;"><i class="ti ti-settings" style="font-size:12px;"></i> تنسيق الملصق</button>
+          <button id="bl-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button>
+        </div>
+      </div>
+      ${state.showLabelFormatPanel ? `
+      <div class="no-print" style="padding:14px;background:#F0F6FC;border-bottom:1px solid #B8D4EE;">
+        <div style="font-size:11.5px;font-weight:600;color:#1B3352;margin-bottom:10px;">إعدادات تنسيق الملصق</div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:12px;">
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="lf-show-name" ${fmt_.showName?'checked':''} /> اسم الصنف</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="lf-show-price" ${fmt_.showPrice?'checked':''} /> السعر</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="lf-show-code-text" ${fmt_.showCodeText?'checked':''} /> رقم الباركود نصياً</label>
+        </div>
+        <div style="display:flex;gap:14px;align-items:end;">
+          <div>${partyField('العرض (مم)', `<input id="lf-width" class="input mono" style="max-width:80px;" value="${fmt_.widthMm}" />`)}</div>
+          <div>${partyField('الارتفاع (مم)', `<input id="lf-height" class="input mono" style="max-width:80px;" value="${fmt_.heightMm}" />`)}</div>
+          <button id="lf-save-btn" class="btn primary" style="padding:7px 14px;font-size:12px;">حفظ الإعدادات</button>
+        </div>
+      </div>` : ''}
       <div class="no-print" style="padding:14px;">
         <input id="bl-search" class="input" placeholder="ابحث بالاسم، الرقم، أو الباركود..." value="${escapeHtml(state.labelSearchQuery)}" style="margin-bottom:10px;" />
         <div style="max-height:340px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
@@ -3918,7 +3952,6 @@ function renderBarcodeLabelsModal() {
           <button id="bl-print-btn" class="btn primary" style="padding:8px 16px;" ${totalLabels===0?'disabled':''}>طباعة الملصقات</button>
         </div>
       </div>
-      <div id="bl-print-area" class="print-only" style="display:none;padding:10px;"></div>
     </div>
   </div>`;
 }
@@ -12189,10 +12222,28 @@ function bindAppEvents() {
         if (state.labelSelections[id] !== undefined || document.querySelector(`[data-label-check="${id}"]`).checked) state.labelSelections[id] = val;
       };
     });
+    if (document.getElementById('bl-format-btn')) {
+      document.getElementById('bl-format-btn').onclick = () => { state.showLabelFormatPanel = !state.showLabelFormatPanel; render(); };
+    }
+    if (document.getElementById('lf-save-btn')) {
+      document.getElementById('lf-save-btn').onclick = () => {
+        const fmt = {
+          showName: document.getElementById('lf-show-name').checked,
+          showPrice: document.getElementById('lf-show-price').checked,
+          showCodeText: document.getElementById('lf-show-code-text').checked,
+          widthMm: Math.max(15, Number(document.getElementById('lf-width').value) || LABEL_FORMAT_DEFAULT.widthMm),
+          heightMm: Math.max(10, Number(document.getElementById('lf-height').value) || LABEL_FORMAT_DEFAULT.heightMm),
+        };
+        saveLabelFormat(fmt);
+        state.showLabelFormatPanel = false;
+        showToast('تم حفظ إعدادات تنسيق الملصق');
+        render();
+      };
+    }
     if (document.getElementById('bl-print-btn')) {
       document.getElementById('bl-print-btn').onclick = () => {
+        const labelFmt = getLabelFormat();
         const selectedItems = Object.entries(state.labelSelections).filter(([id,qty]) => qty > 0).map(([id,qty]) => ({ item: state.items.find(it=>it.id===id), qty }));
-        const printArea = document.getElementById('bl-print-area');
         let labelsHtml = '';
         let barcodeJobs = [];
         let counter = 0;
@@ -12202,20 +12253,25 @@ function bindAppEvents() {
             counter++;
             const svgId = `label-barcode-${counter}`;
             labelsHtml += `
-            <div style="display:inline-block;width:180px;padding:8px;border:1px dashed #999;margin:3px;text-align:center;vertical-align:top;">
-              <div style="font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.name)}</div>
+            <div style="display:inline-block;width:${labelFmt.widthMm}mm;height:${labelFmt.heightMm}mm;box-sizing:border-box;padding:2mm;border:1px dashed #999;margin:1mm;text-align:center;vertical-align:top;overflow:hidden;">
+              ${labelFmt.showName ? `<div style="font-size:8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.name)}</div>` : ''}
               <svg id="${svgId}"></svg>
-              <div style="font-size:11px;font-weight:700;">${fmt(item.price)} ﷼</div>
+              ${labelFmt.showPrice ? `<div style="font-size:9px;font-weight:700;">${fmt(item.price)} ﷼</div>` : ''}
             </div>`;
             barcodeJobs.push({ svgId, code });
           }
         });
-        printArea.innerHTML = labelsHtml;
-        printArea.style.display = 'block';
+        let printHost = document.getElementById('bl-print-host');
+        if (!printHost) {
+          printHost = document.createElement('div');
+          printHost.id = 'bl-print-host';
+          document.body.appendChild(printHost);
+        }
+        printHost.innerHTML = labelsHtml;
         barcodeJobs.forEach(({svgId, code}) => {
-          try { JsBarcode(`#${svgId}`, code, { width:1.4, height:35, fontSize:11, margin:2 }); } catch(e) {}
+          try { JsBarcode(`#${svgId}`, code, { width:1.2, height:labelFmt.heightMm*2, fontSize:9, margin:1, displayValue: labelFmt.showCodeText }); } catch(e) {}
         });
-        setTimeout(() => { window.print(); printArea.style.display = 'none'; }, 200);
+        setTimeout(() => { window.print(); }, 250);
       };
     }
   }
