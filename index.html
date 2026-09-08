@@ -167,7 +167,7 @@ let state = {
   showIncomeStatement: false,
   incomeStatementFrom: '', incomeStatementTo: '',
   incomeStatementData: null,
-  incomeStatementDetail: false, incomeStatementLevel: 4, reportTemplates: [], showSaveTemplateBox: false, balanceSheetLevel: 4, showBsSaveTemplateBox: false,
+  incomeStatementDetail: false, incomeStatementLevel: 4, incomeStatementViewMode: 'modern', reportTemplates: [], showSaveTemplateBox: false, balanceSheetLevel: 4, showBsSaveTemplateBox: false,
   showBalanceSheet: false,
   balanceSheetAsOf: '',
   balanceSheetData: null,
@@ -2002,17 +2002,18 @@ function renderPartiesSection() {
           <button id="new-party-btn" class="btn primary" style="padding:8px 14px;">+ ${typeLabel(state.partyTypeFilter)} ${t('party_new')}</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} ${typeLabel(state.partyTypeFilter)}</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
-          <div style="display:grid;grid-template-columns:1.4fr 0.9fr 1fr 1fr 0.8fr 0.6fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${[t('col_name'),t('col_number'),t('col_phone'),t('col_address'),t('col_balance'),''].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
+        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+          <div style="display:grid;grid-template-columns:1.4fr 0.9fr 1fr 1fr 0.8fr 0.7fr 0.6fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;min-width:750px;">
+            ${[t('col_name'),t('col_number'),t('col_phone'),t('col_address'),t('col_balance'),'النوع',''].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
           ${list.map((p, i) => `
-            <div style="display:grid;grid-template-columns:1.4fr 0.9fr 1fr 1fr 0.8fr 0.6fr;background:${i % 2 ? '#F4F1EA' : '#FFFDF6'};font-size:12.5px;align-items:center;">
+            <div style="display:grid;grid-template-columns:1.4fr 0.9fr 1fr 1fr 0.8fr 0.7fr 0.6fr;background:${i % 2 ? '#F4F1EA' : '#FFFDF6'};font-size:12.5px;align-items:center;min-width:750px;">
               <div style="padding:7px 8px;">${escapeHtml(p.name)}${!p.active ? ` <span style="color:#C0392B;">${t('party_inactive')}</span>` : ''}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.code || '—')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.phone || '—')}</div>
               <div style="padding:7px 8px;">${escapeHtml(p.address || '—')}</div>
               <div style="padding:7px 8px;color:${Number(p.balance) > 0 ? '#C0392B' : '#1F2421'};">${Number(p.balance).toFixed(2)}</div>
+              <div style="padding:7px 8px;">${p.is_deferred ? `<span style="background:#FAEEDA;color:#BA7517;padding:2px 8px;border-radius:10px;font-size:10.5px;white-space:nowrap;">آجل</span>` : `<span style="background:#E1F5EE;color:#0F6E56;padding:2px 8px;border-radius:10px;font-size:10.5px;white-space:nowrap;">نقدي</span>`}</div>
               <div style="padding:4px 6px;display:flex;gap:4px;">
                 <button data-edit-party="${p.id}" style="border:1px solid #A9A48C;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:pointer;">✎</button>
                 <button data-del-party="${p.id}" style="border:1px solid #A9A48C;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:pointer;color:#C0392B;">✕</button>
@@ -5061,27 +5062,39 @@ function renderIncomeStatementModal() {
   <div id="is-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
     <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${t('is_full_title')}</span><button id="is-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
-      <div class="no-print" style="padding:16px;display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
-        <div>${partyField(t('is_from'), `<input id="is-from" type="date" class="input" value="${escapeHtml(state.incomeStatementFrom)}" />`)}</div>
-        <div>${partyField(t('is_to'), `<input id="is-to" type="date" class="input" value="${escapeHtml(state.incomeStatementTo)}" />`)}</div>
-        <button id="is-apply" class="btn primary" style="padding:8px 16px;">${t('je_apply')}</button>
-        <button id="is-print" class="btn" style="padding:8px 16px;">${t('tb_print')}</button>
-        <button id="is-excel" class="btn" style="padding:8px 16px;">${t('je_excel')}</button>
-      </div>
-      <div class="no-print" style="padding:0 16px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <span style="font-size:11.5px;color:#5F5E5A;">مستوى التفصيل:</span>
-        <div style="display:flex;gap:2px;">
-          ${[1,2,3,4].map(lv => `<button data-is-level="${lv}" style="width:28px;height:28px;border:1px solid ${state.incomeStatementLevel===lv?'#2C4A6E':'#DEDACB'};background:${state.incomeStatementLevel===lv?'#2C4A6E':'#fff'};color:${state.incomeStatementLevel===lv?'#fff':'#3A3826'};font-size:12px;font-weight:600;cursor:pointer;border-radius:4px;">${lv}</button>`).join('')}
+      <div class="no-print" style="padding:14px 16px;background:#FAF9F4;border-bottom:1px solid #DEDACB;">
+        <div style="font-size:10px;font-weight:600;color:#8B8A7A;margin-bottom:6px;">الفترة</div>
+        <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:12px;">
+          <div>${partyField(t('is_from'), `<input id="is-from" type="date" class="input" value="${escapeHtml(state.incomeStatementFrom)}" />`)}</div>
+          <div>${partyField(t('is_to'), `<input id="is-to" type="date" class="input" value="${escapeHtml(state.incomeStatementTo)}" />`)}</div>
+          <button id="is-apply" class="btn primary" style="padding:8px 16px;">${t('je_apply')}</button>
         </div>
-        <button id="is-save-template" class="btn" style="padding:6px 12px;font-size:11.5px;margin-right:auto;"><i class="ti ti-device-floppy" style="font-size:13px;"></i> حفظ كقالب</button>
-        ${state.reportTemplates.filter(t=>t.report_type==='income_statement').length ? `
-        <select id="is-load-template" class="input" style="max-width:180px;font-size:11.5px;">
-          <option value="">قوالب محفوظة...</option>
-          ${state.reportTemplates.filter(t=>t.report_type==='income_statement').map(t => `<option value="${t.id}">${escapeHtml(t.name)} (مستوى ${t.display_level})</option>`).join('')}
-        </select>` : ''}
+
+        <div style="font-size:10px;font-weight:600;color:#8B8A7A;margin-bottom:6px;border-top:1px solid #DEDACB;padding-top:10px;">شكل العرض</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+          <span style="font-size:11.5px;color:#5F5E5A;">مستوى التفصيل:</span>
+          <div style="display:flex;gap:2px;">
+            ${[1,2,3,4].map(lv => `<button data-is-level="${lv}" style="width:28px;height:28px;border:1px solid ${state.incomeStatementLevel===lv?'#2C4A6E':'#DEDACB'};background:${state.incomeStatementLevel===lv?'#2C4A6E':'#fff'};color:${state.incomeStatementLevel===lv?'#fff':'#3A3826'};font-size:12px;font-weight:600;cursor:pointer;border-radius:4px;">${lv}</button>`).join('')}
+          </div>
+          <div style="width:1px;height:22px;background:#DEDACB;"></div>
+          <button id="is-toggle-view" class="btn" style="padding:6px 12px;font-size:11.5px;background:#EFECFF;border-color:#6C5CE7;color:#4B3FB0;"><i class="ti ti-arrows-left-right" style="font-size:13px;"></i> ${state.incomeStatementViewMode==='modern'?'عرض مدين/دائن':'العرض الحديث'}</button>
+        </div>
+
+        <div style="font-size:10px;font-weight:600;color:#8B8A7A;margin-bottom:6px;border-top:1px solid #DEDACB;padding-top:10px;">القوالب والتصدير</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button id="is-print" class="btn" style="padding:6px 12px;font-size:11.5px;">${t('tb_print')}</button>
+          <button id="is-excel" class="btn" style="padding:6px 12px;font-size:11.5px;">${t('je_excel')}</button>
+          <div style="width:1px;height:22px;background:#DEDACB;"></div>
+          <button id="is-save-template" class="btn" style="padding:6px 12px;font-size:11.5px;"><i class="ti ti-device-floppy" style="font-size:13px;"></i> حفظ كقالب</button>
+          ${state.reportTemplates.filter(t=>t.report_type==='income_statement').length ? `
+          <select id="is-load-template" class="input" style="max-width:180px;font-size:11.5px;">
+            <option value="">قوالب محفوظة...</option>
+            ${state.reportTemplates.filter(t=>t.report_type==='income_statement').map(t => `<option value="${t.id}">${escapeHtml(t.name)} (مستوى ${t.display_level})</option>`).join('')}
+          </select>` : ''}
+        </div>
       </div>
       ${state.showSaveTemplateBox ? `
-      <div class="no-print" style="padding:0 16px 16px;display:flex;gap:8px;align-items:center;">
+      <div class="no-print" style="padding:12px 16px;background:#FAF9F4;border-bottom:1px solid #DEDACB;display:flex;gap:8px;align-items:center;">
         <input id="is-template-name" class="input" placeholder="اسم القالب (مثلاً: تقرير 1 - ملخص الإدارة)" style="max-width:280px;" />
         <button id="is-template-confirm" class="btn primary" style="padding:6px 14px;font-size:12px;">حفظ</button>
         <button id="is-template-cancel" class="btn" style="padding:6px 14px;font-size:12px;">إلغاء</button>
@@ -5091,7 +5104,7 @@ function renderIncomeStatementModal() {
           <div style="text-align:center;font-weight:700;font-size:14px;margin:8px 0;">${escapeHtml(state.company?.name_ar||'')} — ${t('is_full_title')}</div>
           <div style="text-align:center;font-size:11px;color:#5F5E5A;margin-bottom:10px;">${t('is_period_from')} ${escapeHtml(state.incomeStatementFrom||t('is_beginning'))} ${t('is_period_to')} ${escapeHtml(state.incomeStatementTo||t('is_today'))}</div>
         </div>
-        ${d ? `
+        ${d ? (state.incomeStatementViewMode === 'modern' ? `
         <div style="border:1px solid #000;overflow:hidden;">
           <div style="background:var(--print-accent,#FFF2CC);font-weight:700;font-size:12.5px;padding:8px;border-bottom:1px solid #000;">${t('is_trading_section')}</div>
           ${detailRows(d.salesRows)}
@@ -5120,11 +5133,47 @@ function renderIncomeStatementModal() {
           </div>
         </div>
         <div class="no-print" style="font-size:11px;color:#5F5E5A;margin-top:8px;">${t('is_inventory_ref')}: <b class="mono">${fmt(d.inventoryValue)}</b></div>
-        ` : `<div style="text-align:center;padding:24px;color:#6E6D5F;font-size:12.5px;">${t('is_no_data')}</div>`}
+        ` : renderIncomeStatementTForm(d)) : `<div style="text-align:center;padding:24px;color:#6E6D5F;font-size:12.5px;">${t('is_no_data')}</div>`}
       </div>
       <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;">${iconBtn('is-exit','ti-door-exit','#C0392B',t('btn_exit'))}</div>
     </div>
   </div>`;
+}
+
+function renderIncomeStatementTForm(d) {
+  const totalExpenseSide = d.netCogs + d.totalOperating + d.totalOtherExpense;
+  const totalRevenueSide = d.netSales + d.totalOtherRevenue;
+  const isProfit = d.netIncome >= 0;
+  const row = (label, amount, opts) => {
+    opts = opts || {};
+    return `<div style="display:flex;justify-content:space-between;padding:${opts.bold?'7px':'5px'} 10px;font-size:${opts.bold?'12px':'11px'};${opts.bold?'font-weight:700;background:#F4F1EA;':'border-bottom:1px solid #eee;'}"><span>${label}</span><span class="mono">${fmt(amount)}</span></div>`;
+  };
+  const expenseRows = [
+    ...d.cogsRows.map(r => row(r.name, r.amount)),
+    d.purchaseReturnsRows.length ? row('يُخصم: مردودات مشتريات', -d.purchaseReturnsRows.reduce((s,r)=>s+r.amount,0)) : '',
+    ...d.operatingRows.map(r => row(r.name, r.amount)),
+    ...d.adminRows.map(r => row(r.name, r.amount)),
+    ...d.otherExpenseRows.map(r => row(r.name, r.amount)),
+  ].filter(Boolean).join('');
+  const revenueRows = [
+    ...d.salesRows.map(r => row(r.name, r.amount)),
+    d.salesReturnsRows.length ? row('يُخصم: مردودات مبيعات', -d.salesReturnsRows.reduce((s,r)=>s+r.amount,0)) : '',
+    ...d.otherRevenueRows.map(r => row(r.name, r.amount)),
+  ].filter(Boolean).join('');
+  const balancedTotal = isProfit ? totalRevenueSide : totalExpenseSide;
+  return `
+  <div style="border:2px solid #000;">
+    <div style="background:#FDF3E2;font-weight:700;font-size:12.5px;padding:8px;text-align:center;border-bottom:2px solid #000;">مدين — المصاريف</div>
+    ${expenseRows}
+    ${isProfit ? row('صافي الربح (يُرحّل لحق الملكية)', d.netIncome, { bold:true }) : ''}
+    <div style="display:flex;justify-content:space-between;padding:8px 10px;font-weight:700;font-size:12.5px;background:#1B3352;color:#fff;border-top:2px solid #000;border-bottom:4px double #000;"><span>إجمالي المصاريف</span><span class="mono">${fmt(balancedTotal)}</span></div>
+
+    <div style="background:#E1F5EE;font-weight:700;font-size:12.5px;padding:8px;text-align:center;border-bottom:2px solid #000;">دائن — الإيرادات</div>
+    ${revenueRows}
+    ${!isProfit ? row('صافي الخسارة', -d.netIncome, { bold:true }) : ''}
+    <div style="display:flex;justify-content:space-between;padding:8px 10px;font-weight:700;font-size:12.5px;background:#1B3352;color:#fff;border-top:2px solid #000;"><span>إجمالي الإيرادات</span><span class="mono">${fmt(balancedTotal)}</span></div>
+  </div>
+  <div class="no-print" style="font-size:11px;color:#5F5E5A;margin-top:8px;">${t('is_inventory_ref')}: <b class="mono">${fmt(d.inventoryValue)}</b></div>`;
 }
 
 function renderBalanceSheetModal() {
@@ -11325,6 +11374,9 @@ function bindAppEvents() {
     });
     if (document.getElementById('is-save-template')) {
       document.getElementById('is-save-template').onclick = () => { state.showSaveTemplateBox = true; render(); };
+    }
+    if (document.getElementById('is-toggle-view')) {
+      document.getElementById('is-toggle-view').onclick = () => { state.incomeStatementViewMode = state.incomeStatementViewMode==='modern'?'tform':'modern'; render(); };
     }
     if (document.getElementById('is-template-cancel')) {
       document.getElementById('is-template-cancel').onclick = () => { state.showSaveTemplateBox = false; render(); };
