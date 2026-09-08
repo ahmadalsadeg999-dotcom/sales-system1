@@ -56,6 +56,11 @@
     .print-area .win-title { border-radius: 0 !important; }
     .no-print { display: none !important; }
     td.no-print, th.no-print { display: none !important; }
+    /* تقسيم صفحات صحيح للجداول الطويلة (فواتير فيها أصناف كثيرة) — يمنع قصّ صف بالمنتصف، ويكرر رأس الجدول بكل صفحة */
+    table { page-break-inside: auto; }
+    tr { page-break-inside: avoid; page-break-after: auto; }
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
     .print-area .win-title { display: none !important; }
     html, body { background: #fff !important; }
     .print-scroll { overflow: visible !important; }
@@ -106,6 +111,7 @@ let state = {
   showPartyPicker: false, partyPickerContext: null, partyPickerQuery: '',
   showInventoryStats: false, invStatsOpeningValue: 0,
   showOpeningInv: false, openingInvDocs: [], showOpeningInvForm: false, openingInvForm: null, editingOpeningInvId: null,
+  reportsHubCategory: 'accounting',
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -1339,11 +1345,36 @@ function saveAreaAsPDF(areaSelector, filename, btnId) {
   if (!el || !window.html2pdf) { alert('تعذّر إنشاء ملف PDF — تأكد من الاتصال بالإنترنت وحاول من جديد'); return; }
   const btn = btnId ? document.getElementById(btnId) : null;
   if (btn) setBtnLoading(btn, true, 'جاري الإنشاء');
-  // نحسب الارتفاع الحقيقي الكامل للمحتوى (بدون قصّ التمرير) قبل التصوير
-  const prevMaxHeight = el.style.maxHeight, prevOverflowY = el.style.overflowY, prevHeight = el.style.height;
+  const overlay = el.parentElement;
+  // نحفظ كل الأنماط الأصلية اللي راح نعدّلها مؤقتاً، عشان نرجّعها بعد التصوير بالضبط
+  const prev = {
+    maxHeight: el.style.maxHeight, overflowY: el.style.overflowY, height: el.style.height,
+    width: el.style.width, maxWidth: el.style.maxWidth, boxShadow: el.style.boxShadow, border: el.style.border, borderRadius: el.style.borderRadius,
+    position: el.style.position, margin: el.style.margin,
+    overlayPosition: overlay?.style.position, overlayDisplay: overlay?.style.display, overlayPadding: overlay?.style.padding, overlayBackground: overlay?.style.background,
+  };
+  const noPrintEls = Array.from(el.querySelectorAll('.no-print'));
+  const printOnlyEls = Array.from(el.querySelectorAll('.print-only'));
+  const prevNoPrintDisplay = noPrintEls.map(n => n.style.display);
+  const prevPrintOnlyDisplay = printOnlyEls.map(n => n.style.display);
+  // نطبّق التوسعة والتنسيق الرسمي على العنصر الأصلي فعلياً (مو بس على نسخة مستنسخة) — عشان نقيس الأبعاد الحقيقية النهائية بعدها
   el.style.maxHeight = 'none'; el.style.overflowY = 'visible'; el.style.height = 'auto';
+  el.style.width = '100%'; el.style.maxWidth = '100%'; el.style.boxShadow = 'none'; el.style.border = 'none'; el.style.borderRadius = '0';
+  el.style.position = 'static'; el.style.margin = '0';
+  if (overlay) { overlay.style.position = 'static'; overlay.style.display = 'block'; overlay.style.padding = '0'; overlay.style.background = 'none'; }
+  noPrintEls.forEach(n => { n.style.display = 'none'; });
+  printOnlyEls.forEach(n => { n.style.display = 'block'; });
+  // نقيس الأبعاد الحقيقية النهائية بعد التوسعة الكاملة — هذا يضمن التقاط العرض الصحيح كامل، مو العرض الضيق القديم
   const fullHeight = el.scrollHeight;
   const fullWidth = el.scrollWidth;
+  const restoreAll = () => {
+    el.style.maxHeight = prev.maxHeight; el.style.overflowY = prev.overflowY; el.style.height = prev.height;
+    el.style.width = prev.width; el.style.maxWidth = prev.maxWidth; el.style.boxShadow = prev.boxShadow; el.style.border = prev.border; el.style.borderRadius = prev.borderRadius;
+    el.style.position = prev.position; el.style.margin = prev.margin;
+    if (overlay) { overlay.style.position = prev.overlayPosition; overlay.style.display = prev.overlayDisplay; overlay.style.padding = prev.overlayPadding; overlay.style.background = prev.overlayBackground; }
+    noPrintEls.forEach((n,i) => { n.style.display = prevNoPrintDisplay[i]; });
+    printOnlyEls.forEach((n,i) => { n.style.display = prevPrintOnlyDisplay[i]; });
+  };
   html2pdf().set({
     margin: 8,
     html2canvas: {
@@ -1353,17 +1384,11 @@ function saveAreaAsPDF(areaSelector, filename, btnId) {
       windowHeight: fullHeight,
       width: fullWidth,
       windowWidth: fullWidth,
-      onclone: (clonedDoc) => {
-        // نخفي كل عناصر "لا تُطبع" (أزرار، خانات بحث وفلاتر) بالنسخة المستنسخة بس قبل التصوير
-        clonedDoc.querySelectorAll('.no-print').forEach(node => { node.style.display = 'none'; });
-        const modalBox = clonedDoc.querySelector(areaSelector);
-        if (modalBox) { modalBox.style.maxHeight = 'none'; modalBox.style.overflowY = 'visible'; modalBox.style.height = 'auto'; }
-      },
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['css', 'legacy'] },
   }).from(el).outputPdf('blob').then((blob) => {
-    el.style.maxHeight = prevMaxHeight; el.style.overflowY = prevOverflowY; el.style.height = prevHeight;
+    restoreAll();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1374,7 +1399,7 @@ function saveAreaAsPDF(areaSelector, filename, btnId) {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
     if (btn) setBtnLoading(btn, false);
   }).catch(() => {
-    el.style.maxHeight = prevMaxHeight; el.style.overflowY = prevOverflowY; el.style.height = prevHeight;
+    restoreAll();
     if (btn) setBtnLoading(btn, false);
     alert('حدث خطأ أثناء إنشاء ملف PDF');
   });
@@ -2813,7 +2838,66 @@ function renderHomeSection() {
       </div>`;
 }
 
+const REPORTS_HUB_CATEGORIES = [
+  { key:'accounting', label:'المحاسبة', icon:'ti-calculator', reports: [
+    { label:'الأستاذ العام', target:'__general_ledger__', desc:'كل الحركات المحاسبية مرتّبة حسب الحساب' },
+    { label:'ميزان المراجعة', target:'__trial_balance__', desc:'أرصدة كل الحسابات بلمحة واحدة' },
+    { label:'قائمة الدخل (الأرباح والخسائر)', target:'__income_statement__', desc:'الإيرادات والمصاريف وصافي الربح لفترة معيّنة' },
+    { label:'قائمة المركز المالي (الميزانية)', target:'__balance_sheet__', desc:'الأصول والخصوم وحقوق الملكية بتاريخ معيّن' },
+    { label:'كشف الإقرار الضريبي', target:'__vat_report__', desc:'ضريبة المخرجات والمدخلات لتقديمها للهيئة' },
+    { label:'كشف الأرباح والخسائر', target:'__profit_report__', desc:'تفصيل الربح لكل فاتورة بيع' },
+    { label:'مصمّم التقارير', target:'__report_designer__', desc:'ابنِ تقرير مخصّص من أي بيانات بالنظام' },
+  ]},
+  { key:'inventory', label:'المخزون', icon:'ti-package', reports: [
+    { label:'تقرير الكميات بالمستودعات', target:'__warehouse_stock_report__', desc:'رصيد كل صنف بكل مستودع' },
+    { label:'إحصائية عامة للمخزون', target:'__inventory_stats__', desc:'قيمة المخزون الحالية والافتتاحية، وعدد الأصناف' },
+  ]},
+  { key:'sales', label:'المبيعات', icon:'ti-trending-up', reports: [
+    { label:'كشف فواتير المبيعات', target:'__report_sales_invoices__', desc:'كل فواتير البيع بفترة معيّنة' },
+    { label:'كشف عروض الأسعار', target:'__report_quotations__', desc:'كل عروض الأسعار المُرسلة' },
+    { label:'كشف مردودات المبيعات', target:'__report_sales_returns__', desc:'كل مردودات البيع المسجّلة' },
+  ]},
+  { key:'purchases', label:'المشتريات', icon:'ti-shopping-cart', reports: [
+    { label:'كشف فواتير المشتريات', target:'__purchases_report__', desc:'كل فواتير الشراء بفترة معيّنة' },
+    { label:'كشف مردودات المشتريات', target:'__report_purchase_returns__', desc:'كل مردودات الشراء المسجّلة' },
+    { label:'كشف صافي مشتريات الموردين', target:'__net_purchases_report__', desc:'إجمالي المشتريات لكل مورد بعد المردودات' },
+  ]},
+  { key:'parties', label:'العملاء والموردون', icon:'ti-users', reports: [
+    { label:'كشف العملاء والموردين', target:'__parties_report__', desc:'كل العملاء والموردين وأرصدتهم' },
+    { label:'كشف اعمار الذمم', target:'__aging_report__', desc:'المستحقات المتأخرة مصنّفة حسب عمرها' },
+  ]},
+  { key:'employees', label:'الموظفون', icon:'ti-id-badge-2', reports: [
+    { label:'تقارير الرواتب', target:'__payroll_report__', desc:'سجل رواتب الموظفين لعدة أشهر' },
+  ]},
+];
+
 function renderDashboardSection() {
+  const activeCategory = state.reportsHubCategory || 'accounting';
+  const category = REPORTS_HUB_CATEGORIES.find(c => c.key === activeCategory) || REPORTS_HUB_CATEGORIES[0];
+  return `
+      <div style="display:flex;min-height:520px;">
+        <div style="width:210px;flex-shrink:0;border-left:1px solid #DEDACB;background:#FAF9F4;">
+          <div style="padding:16px 14px 10px;font-size:13px;font-weight:700;color:#1B3352;">مركز التقارير</div>
+          ${REPORTS_HUB_CATEGORIES.map(c => `
+            <button data-reports-hub-cat="${c.key}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:right;padding:10px 14px;border:none;background:${c.key===activeCategory?'#fff':'transparent'};border-right:3px solid ${c.key===activeCategory?'#2C4A6E':'transparent'};cursor:pointer;font-size:12.5px;font-weight:${c.key===activeCategory?'600':'400'};color:${c.key===activeCategory?'#1B3352':'#5F5E5A'};">
+              <i class="ti ${c.icon}" style="font-size:16px;"></i> ${c.label}
+            </button>`).join('')}
+        </div>
+        <div style="flex:1;padding:20px 24px;">
+          <div style="font-size:15px;font-weight:700;color:#1B3352;margin-bottom:4px;">${category.label}</div>
+          <div style="font-size:11.5px;color:#8B8A7A;margin-bottom:18px;">${category.reports.length} تقرير متاح</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            ${category.reports.map(r => `
+              <button data-submenu data-submenu-target="${r.target}" style="text-align:right;background:#fff;border:1px solid #DEDACB;border-radius:10px;padding:14px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.04);">
+                <div style="font-size:12.5px;font-weight:600;color:#1B3352;margin-bottom:4px;">${r.label}</div>
+                <div style="font-size:10.5px;color:#8B8A7A;line-height:1.5;">${r.desc}</div>
+              </button>`).join('')}
+          </div>
+        </div>
+      </div>`;
+}
+
+function renderDashboardSectionOld() {
   const from = state.dashboardFrom, to = state.dashboardTo;
   const inRange = (dateStr) => (!from || dateStr >= from) && (!to || dateStr <= to);
 
@@ -4321,27 +4405,27 @@ function renderVoucherFormModal(kind) {
           <div style="text-align:right;font-size:11px;line-height:1.5;">${c?.name_ar ? `<div style="font-weight:700;font-size:13px;">${escapeHtml(c.name_ar)}</div>` : ''}${c?.address ? `<div>${escapeHtml(c.address)}</div>` : ''}</div>
         </div>
         <div style="text-align:center;margin:10px 0 4px;">
-          <span style="display:inline-block;background:${accent};color:#fff;font-weight:700;font-size:15px;padding:6px 28px;border-radius:20px;letter-spacing:0.5px;">${title}</span>
+          <span style="display:inline-block;background:'#1B3352';color:#fff;font-weight:700;font-size:15px;padding:6px 28px;border-radius:20px;letter-spacing:0.5px;">${title}</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:10px;color:#8B8A7A;padding:4px 2px 10px;">
           <span>صفحة 1/1</span><span>${new Date().toLocaleString('ar-SA')}</span>
         </div>
         <div style="border:1.5px solid #1B3352;border-radius:8px;overflow:hidden;margin-bottom:12px;">
           <div style="display:grid;grid-template-columns:repeat(4,1fr);font-size:11px;text-align:right;">
-            <div style="padding:7px 10px;background:${accentBg};font-weight:600;color:${accent};border-left:1px solid #DEDACB;border-bottom:1px solid #DEDACB;">رقم السند</div>
+            <div style="padding:7px 10px;background:#E8EEF5;font-weight:600;color:#1B3352;border-left:1px solid #DEDACB;border-bottom:1px solid #DEDACB;">رقم السند</div>
             <div style="padding:7px 10px;border-left:1px solid #DEDACB;border-bottom:1px solid #DEDACB;" class="mono">${escapeHtml(f.voucher_number)}</div>
-            <div style="padding:7px 10px;background:${accentBg};font-weight:600;color:${accent};border-left:1px solid #DEDACB;border-bottom:1px solid #DEDACB;">التاريخ</div>
+            <div style="padding:7px 10px;background:#E8EEF5;font-weight:600;color:#1B3352;border-left:1px solid #DEDACB;border-bottom:1px solid #DEDACB;">التاريخ</div>
             <div style="padding:7px 10px;border-bottom:1px solid #DEDACB;" class="mono">${escapeHtml(f.voucher_date)}</div>
-            <div style="padding:7px 10px;background:${accentBg};font-weight:600;color:${accent};border-left:1px solid #DEDACB;">${isReceipt?'استلمنا من':'صرفنا إلى'}</div>
+            <div style="padding:7px 10px;background:#E8EEF5;font-weight:600;color:#1B3352;border-left:1px solid #DEDACB;">${isReceipt?'استلمنا من':'صرفنا إلى'}</div>
             <div style="padding:7px 10px;border-left:1px solid #DEDACB;font-weight:600;">${escapeHtml(selectedParty?.name || '—')}</div>
-            <div style="padding:7px 10px;background:${accentBg};font-weight:600;color:${accent};border-left:1px solid #DEDACB;">طريقة الدفع</div>
+            <div style="padding:7px 10px;background:#E8EEF5;font-weight:600;color:#1B3352;border-left:1px solid #DEDACB;">طريقة الدفع</div>
             <div style="padding:7px 10px;">${escapeHtml(f.payment_method||'—')}</div>
           </div>
         </div>
-        <div style="border:2px solid ${accent};border-radius:8px;padding:14px;text-align:center;margin-bottom:8px;background:${accentBg2};position:relative;">
-          <i class="ti ${icon}" style="position:absolute;top:10px;${isReceipt?'left':'right'}:14px;font-size:20px;color:${accent};opacity:0.5;"></i>
+        <div style="border:2px solid #1B3352;border-radius:8px;padding:14px;text-align:center;margin-bottom:8px;background:#E8EEF5;position:relative;">
+          <i class="ti ${icon}" style="position:absolute;top:10px;${isReceipt?'left':'right'}:14px;font-size:20px;color:#1B3352;opacity:0.5;"></i>
           <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;letter-spacing:0.5px;">المبلغ الإجمالي</div>
-          <div style="font-size:26px;font-weight:700;color:${accent};" class="mono">${fmt(f.amount)} <span style="font-size:14px;">﷼</span></div>
+          <div style="font-size:26px;font-weight:700;color:#1B3352;" class="mono">${fmt(f.amount)} <span style="font-size:14px;">﷼</span></div>
         </div>
         <div style="border:1px solid #A9A48C;border-radius:6px;padding:8px 12px;font-size:11px;background:#FDFBF3;margin-bottom:10px;"><b>المبلغ كتابة:</b> ${numberToArabicWords(Number(f.amount)||0)}</div>
         ${f.notes ? `<div style="font-size:11px;color:#5F5E5A;margin-bottom:10px;"><b>ملاحظات:</b> ${escapeHtml(f.notes)}</div>` : ''}
@@ -4390,6 +4474,7 @@ function renderVoucherFormModal(kind) {
         ${iconBtn(`${prefix}-next`, 'ti-player-track-next', '#27AE60', 'التالي', (isReceipt?state.receiptVouchers:state.paymentVouchers).length===0)}
         ${iconBtn(`${prefix}-prev`, 'ti-player-track-prev', '#2E86C1', 'السابق', (isReceipt?state.receiptVouchers:state.paymentVouchers).length===0)}
         ${iconBtn(`${prefix}-print`, 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number)}
+        ${iconBtn(`${prefix}-pdf`, 'ti-file-type-pdf', '#D9534F', 'حفظ PDF', !f.voucher_number)}
         ${f.approved ? '' : iconBtn(`${prefix}-save`, 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && canApprove()) ? iconBtn(`${prefix}-approve`, 'ti-lock', '#0F6E56', 'ترحيل') : ''}
       </div>
@@ -5070,16 +5155,6 @@ function renderIncomeStatementModal() {
           <button id="is-apply" class="btn primary" style="padding:8px 16px;">${t('je_apply')}</button>
         </div>
 
-        <div style="font-size:10px;font-weight:600;color:#8B8A7A;margin-bottom:6px;border-top:1px solid #DEDACB;padding-top:10px;">شكل العرض</div>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
-          <span style="font-size:11.5px;color:#5F5E5A;">مستوى التفصيل:</span>
-          <div style="display:flex;gap:2px;">
-            ${[1,2,3,4].map(lv => `<button data-is-level="${lv}" style="width:28px;height:28px;border:1px solid ${state.incomeStatementLevel===lv?'#2C4A6E':'#DEDACB'};background:${state.incomeStatementLevel===lv?'#2C4A6E':'#fff'};color:${state.incomeStatementLevel===lv?'#fff':'#3A3826'};font-size:12px;font-weight:600;cursor:pointer;border-radius:4px;">${lv}</button>`).join('')}
-          </div>
-          <div style="width:1px;height:22px;background:#DEDACB;"></div>
-          <button id="is-toggle-view" class="btn" style="padding:6px 12px;font-size:11.5px;background:#EFECFF;border-color:#6C5CE7;color:#4B3FB0;"><i class="ti ti-arrows-left-right" style="font-size:13px;"></i> ${state.incomeStatementViewMode==='modern'?'عرض مدين/دائن':'العرض الحديث'}</button>
-        </div>
-
         <div style="font-size:10px;font-weight:600;color:#8B8A7A;margin-bottom:6px;border-top:1px solid #DEDACB;padding-top:10px;">القوالب والتصدير</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button id="is-print" class="btn" style="padding:6px 12px;font-size:11.5px;">${t('tb_print')}</button>
@@ -5104,40 +5179,66 @@ function renderIncomeStatementModal() {
           <div style="text-align:center;font-weight:700;font-size:14px;margin:8px 0;">${escapeHtml(state.company?.name_ar||'')} — ${t('is_full_title')}</div>
           <div style="text-align:center;font-size:11px;color:#5F5E5A;margin-bottom:10px;">${t('is_period_from')} ${escapeHtml(state.incomeStatementFrom||t('is_beginning'))} ${t('is_period_to')} ${escapeHtml(state.incomeStatementTo||t('is_today'))}</div>
         </div>
-        ${d ? (state.incomeStatementViewMode === 'modern' ? `
-        <div style="border:1px solid #000;overflow:hidden;">
-          <div style="background:var(--print-accent,#FFF2CC);font-weight:700;font-size:12.5px;padding:8px;border-bottom:1px solid #000;">${t('is_trading_section')}</div>
-          ${detailRows(d.salesRows)}
-          ${detailRows(d.salesReturnsRows.map(r=>({...r,amount:-r.amount})))}
-          ${line(t('is_net_sales'), d.netSales)}
-          ${detailRows(d.cogsRows.map(r=>({...r,amount:-r.amount})))}
-          ${detailRows(d.purchaseReturnsRows)}
-          ${line(t('is_cogs'), -d.netCogs)}
-          ${line(t('is_gross_profit'), d.grossProfit, { bold:true, bg:'#E1F5EE', borderTop:true })}
-
-          <div style="background:var(--print-accent,#FFF2CC);font-weight:700;font-size:12.5px;padding:8px;border-top:2px solid #000;border-bottom:1px solid #000;">${t('is_opex_section')}</div>
-          ${detailRows(d.operatingRows)}
-          ${detailRows(d.adminRows)}
-          ${!state.incomeStatementDetail && d.operatingRows.length===0 && d.adminRows.length===0 ? `<div style="padding:8px 10px;font-size:11px;color:#8B8A7A;">${t('is_no_opex')}</div>` : ''}
-          ${line(t('is_total_opex'), d.totalOperating)}
-          ${line(t('is_operating_profit'), d.operatingProfit, { bold:true, bg:'#F4F1EA', borderTop:true })}
-
-          <div style="background:var(--print-accent,#FFF2CC);font-weight:700;font-size:12.5px;padding:8px;border-top:2px solid #000;border-bottom:1px solid #000;">${t('is_other_section')}</div>
-          ${detailRows(d.otherRevenueRows)}
-          ${line(t('is_total_other_rev'), d.totalOtherRevenue)}
-          ${detailRows(d.otherExpenseRows)}
-          ${line(t('is_total_other_exp'), d.totalOtherExpense)}
-
-          <div style="display:flex;justify-content:space-between;padding:12px 10px;font-weight:700;font-size:14px;background:${d.netIncome>=0?'#E1F5EE':'#FCEBEB'};border-top:2px solid #000;">
-            <span>${d.netIncome>=0?t('is_net_profit_period'):t('is_net_loss_period')}</span><span class="mono" style="color:${d.netIncome>=0?'#0F6E56':'#C0392B'};">${fmt(Math.abs(d.netIncome))}</span>
+        ${d ? renderIncomeStatementOdooStyle(d) : `<div style="text-align:center;padding:24px;color:#6E6D5F;font-size:12.5px;">${t('is_no_data')}</div>`}
+        ${d ? `
+        <div style="display:flex;justify-content:space-between;margin-top:40px;padding:0 10px;">
+          <div style="text-align:center;width:45%;">
+            <div style="border-top:1px solid #000;padding-top:6px;font-size:11.5px;font-weight:600;">المحاسب</div>
+            <div style="font-size:10px;color:#8B8A7A;margin-top:2px;">التوقيع والتاريخ</div>
           </div>
-        </div>
-        <div class="no-print" style="font-size:11px;color:#5F5E5A;margin-top:8px;">${t('is_inventory_ref')}: <b class="mono">${fmt(d.inventoryValue)}</b></div>
-        ` : renderIncomeStatementTForm(d)) : `<div style="text-align:center;padding:24px;color:#6E6D5F;font-size:12.5px;">${t('is_no_data')}</div>`}
+          <div style="text-align:center;width:45%;">
+            <div style="border-top:1px solid #000;padding-top:6px;font-size:11.5px;font-weight:600;">المدير المالي</div>
+            <div style="font-size:10px;color:#8B8A7A;margin-top:2px;">التوقيع والتاريخ</div>
+          </div>
+        </div>` : ''}
       </div>
       <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;">${iconBtn('is-exit','ti-door-exit','#C0392B',t('btn_exit'))}</div>
     </div>
   </div>`;
+}
+
+function renderIncomeStatementOdooStyle(d) {
+  const totalRevenue = d.netSales + d.totalOtherRevenue;
+  const pct = (v) => totalRevenue > 0 ? Math.round(Math.abs(v)/totalRevenue*100) + '%' : '—';
+  const sectionHeader = (icon, label, amount, bg, color) => `
+    <div style="display:flex;align-items:center;padding:10px 14px;background:${bg};font-weight:700;font-size:13px;border-top:1px solid #DEDACB;">
+      <i class="ti ${icon}" style="font-size:16px;margin-left:8px;color:${color};"></i>
+      <span style="flex:1;color:${color};">${label}</span><span style="width:100px;text-align:left;color:${color};" class="mono">${fmt(amount)}</span><span style="width:50px;text-align:left;color:${color};font-size:11px;">${pct(amount)}</span>
+    </div>`;
+  const detailRow = (label, amount) => `
+    <div style="padding:7px 14px 7px 42px;display:flex;align-items:center;font-size:12px;border-bottom:1px solid #EDEAE0;">
+      <span style="flex:1;color:#5F5E5A;">${escapeHtml(label)}</span><span style="width:100px;text-align:left;" class="mono">${fmt(amount)}</span><span style="width:50px;text-align:left;color:#8B8A7A;font-size:10.5px;">${pct(amount)}</span>
+    </div>`;
+  const revenueRows = [...d.salesRows, ...(d.salesReturnsRows.length ? [{name:'يُخصم: مردودات مبيعات', amount:-d.salesReturnsRows.reduce((s,r)=>s+r.amount,0)}] : []), ...d.otherRevenueRows];
+  const costRows = [...d.cogsRows, ...(d.purchaseReturnsRows.length ? [{name:'يُخصم: مردودات مشتريات', amount:-d.purchaseReturnsRows.reduce((s,r)=>s+r.amount,0)}] : [])];
+  const opexRows = [...d.operatingRows, ...d.adminRows, ...d.otherExpenseRows];
+  const totalOpex = d.totalOperating + d.totalOtherExpense;
+  return `
+  <div style="display:flex;padding:6px 14px;font-size:10px;color:#8B8A7A;">
+    <span style="flex:1;">البند</span><span style="width:100px;text-align:left;">المبلغ</span><span style="width:50px;text-align:left;">النسبة</span>
+  </div>
+  <div style="border:1px solid #DEDACB;border-radius:8px;overflow:hidden;">
+    ${sectionHeader('ti-trending-up', 'الإيرادات', totalRevenue, '#E1F5EE', '#0F6E56')}
+    ${revenueRows.map(r => detailRow(r.name, r.amount)).join('')}
+
+    ${sectionHeader('ti-package', 'تكلفة المبيعات', d.netCogs, '#FCEBEB', '#C0392B')}
+    ${costRows.map(r => detailRow(r.name, r.amount)).join('')}
+
+    <div style="display:flex;align-items:center;padding:10px 14px;font-weight:700;font-size:13px;border-top:2px solid #A9A48C;">
+      <i class="ti ti-report-money" style="font-size:16px;margin-left:8px;color:#5F5E5A;"></i>
+      <span style="flex:1;">إجمالي الربح</span><span style="width:100px;text-align:left;" class="mono">${fmt(d.grossProfit)}</span><span style="width:50px;text-align:left;color:#8B8A7A;font-size:11px;">${pct(d.grossProfit)}</span>
+    </div>
+
+    ${opexRows.length > 0 ? `
+    ${sectionHeader('ti-receipt', 'المصاريف', totalOpex, '#FAEEDA', '#BA7517')}
+    ${opexRows.map(r => detailRow(r.name, r.amount)).join('')}` : ''}
+
+    <div style="display:flex;align-items:center;padding:14px;background:${d.netIncome>=0?'#0F6E56':'#C0392B'};font-weight:700;font-size:14px;border-top:1px solid #DEDACB;">
+      <i class="ti ${d.netIncome>=0?'ti-circle-check':'ti-alert-circle'}" style="font-size:18px;margin-left:8px;color:#fff;"></i>
+      <span style="flex:1;color:#fff;">${d.netIncome>=0?'صافي الربح':'صافي الخسارة'}</span><span style="width:100px;text-align:left;color:#fff;" class="mono">${fmt(Math.abs(d.netIncome))}</span><span style="width:50px;text-align:left;color:#fff;font-size:11px;">${pct(d.netIncome)}</span>
+    </div>
+  </div>
+  <div class="no-print" style="font-size:11px;color:#5F5E5A;margin-top:8px;">${t('is_inventory_ref')}: <b class="mono">${fmt(d.inventoryValue)}</b></div>`;
 }
 
 function renderIncomeStatementTForm(d) {
@@ -6111,6 +6212,7 @@ function renderSettlementVoucherModal() {
         ${partyField(t('stv_party'), partyPickerButton('stv-party', f.party_type, f.party_id, f.approved))}
         ${partyField(t('stv_direction'), `<select id="stv-direction" class="input" ${f.approved?'disabled':''}><option value="decrease" ${f.direction==='decrease'?'selected':''}>${t('stv_decrease')}</option><option value="increase" ${f.direction==='increase'?'selected':''}>${t('stv_increase')}</option></select>`)}
         ${partyField(t('stv_amount'), `<input id="stv-amount" class="input mono" value="${escapeHtml(f.amount)}" ${f.approved?'disabled':''} />`)}
+        ${partyField('طريقة السداد', `<select id="stv-payment-method" class="input" ${f.approved?'disabled':''}><option value="كاش" ${f.payment_method==='كاش'?'selected':''}>كاش</option><option value="تحويل" ${f.payment_method==='تحويل'?'selected':''}>تحويل</option><option value="شبكة" ${f.payment_method==='شبكة'?'selected':''}>شبكة</option></select>`)}
         ${partyField(t('stv_date'), `<input id="stv-date" type="date" class="input" value="${escapeHtml(f.voucher_date)}" ${f.approved?'disabled':''} />`)}
         ${partyField(t('stv_reason'), `<textarea id="stv-notes" class="input" rows="2" ${f.approved?'disabled':''}>${escapeHtml(f.notes)}</textarea>`)}
         <div id="stv-error" class="err-text"></div>
@@ -7376,12 +7478,12 @@ async function loadSettlementVouchers() {
   state.settlementVouchers = data || [];
 }
 function newSettlementVoucherForm() {
-  return { voucher_number: nextDocNumber(state.settlementVouchers, 'voucher_number', 'ST', 4), party_type:'customer', party_id:'', amount:'', direction:'decrease', voucher_date:new Date().toISOString().slice(0,10), notes:'', approved:false };
+  return { voucher_number: nextDocNumber(state.settlementVouchers, 'voucher_number', 'ST', 4), party_type:'customer', party_id:'', amount:'', direction:'decrease', payment_method:'كاش', voucher_date:new Date().toISOString().slice(0,10), notes:'', approved:false };
 }
 async function openSettlementVoucherById(id) {
   const v = state.settlementVouchers.find(x => x.id === id);
   if (!v) return;
-  state.settlementVoucherForm = { voucher_number:v.voucher_number, party_type:v.party_type, party_id:v.party_id, amount:String(v.amount), direction:v.direction, voucher_date:v.voucher_date, notes:v.notes||'', approved:!!v.approved };
+  state.settlementVoucherForm = { voucher_number:v.voucher_number, party_type:v.party_type, party_id:v.party_id, amount:String(v.amount), direction:v.direction, payment_method:v.payment_method||'كاش', voucher_date:v.voucher_date, notes:v.notes||'', approved:!!v.approved };
   state.editingSettlementVoucherId = id;
   state.showSettlementVoucher = true;
   if (v.approved) await loadDocJournalNumbers('settlement_voucher', id); else state.docJournalNumbers = [];
@@ -8288,6 +8390,9 @@ function bindAppEvents() {
       render();
     };
   }
+  document.querySelectorAll('[data-reports-hub-cat]').forEach(btn => {
+    btn.onclick = () => { state.reportsHubCategory = btn.dataset.reportsHubCat; render(); };
+  });
   document.querySelectorAll('[data-dash-viewall]').forEach(btn => {
     btn.onclick = async () => {
       const target = btn.dataset.dashViewall;
@@ -10524,6 +10629,9 @@ function bindAppEvents() {
       if (prev) openReceiptVoucherById(prev.id);
     };
     if (document.getElementById('rv-print')) document.getElementById('rv-print').onclick = () => { window.print(); };
+    if (document.getElementById('rv-pdf')) document.getElementById('rv-pdf').onclick = () => {
+      saveAreaAsPDF('#rv-overlay .print-area', `سند_قبض_${state.receiptVoucherForm.voucher_number}.pdf`, 'rv-pdf');
+    };
     if (document.getElementById('rv-party')) document.getElementById('rv-party').onchange = (ev) => { state.receiptVoucherForm.customer_id = ev.target.value; render(); };
     if (document.getElementById('rv-amount')) document.getElementById('rv-amount').oninput = (ev) => {
       state.receiptVoucherForm.amount = ev.target.value;
@@ -10610,6 +10718,9 @@ function bindAppEvents() {
       if (prev) openPaymentVoucherById(prev.id);
     };
     if (document.getElementById('pv-print')) document.getElementById('pv-print').onclick = () => { window.print(); };
+    if (document.getElementById('pv-pdf')) document.getElementById('pv-pdf').onclick = () => {
+      saveAreaAsPDF('#pv-overlay .print-area', `سند_صرف_${state.paymentVoucherForm.voucher_number}.pdf`, 'pv-pdf');
+    };
     if (document.getElementById('pv-party')) document.getElementById('pv-party').onchange = (ev) => { state.paymentVoucherForm.supplier_id = ev.target.value; render(); };
     if (document.getElementById('pv-amount')) document.getElementById('pv-amount').oninput = (ev) => {
       state.paymentVoucherForm.amount = ev.target.value;
@@ -11369,14 +11480,8 @@ function bindAppEvents() {
       await loadIncomeStatement();
       render();
     };
-    document.querySelectorAll('[data-is-level]').forEach(btn => {
-      btn.onclick = () => { state.incomeStatementLevel = Number(btn.dataset.isLevel); render(); };
-    });
     if (document.getElementById('is-save-template')) {
       document.getElementById('is-save-template').onclick = () => { state.showSaveTemplateBox = true; render(); };
-    }
-    if (document.getElementById('is-toggle-view')) {
-      document.getElementById('is-toggle-view').onclick = () => { state.incomeStatementViewMode = state.incomeStatementViewMode==='modern'?'tform':'modern'; render(); };
     }
     if (document.getElementById('is-template-cancel')) {
       document.getElementById('is-template-cancel').onclick = () => { state.showSaveTemplateBox = false; render(); };
@@ -11896,6 +12001,7 @@ function bindAppEvents() {
       document.getElementById('stv-party').onchange = (ev) => { f.party_id = ev.target.value; };
       document.getElementById('stv-direction').onchange = (ev) => { f.direction = ev.target.value; };
       document.getElementById('stv-amount').oninput = (ev) => { f.amount = ev.target.value; };
+      document.getElementById('stv-payment-method').onchange = (ev) => { f.payment_method = ev.target.value; };
       document.getElementById('stv-date').onchange = (ev) => { f.voucher_date = ev.target.value; };
       document.getElementById('stv-notes').oninput = (ev) => { f.notes = ev.target.value; };
     }
@@ -11905,7 +12011,7 @@ function bindAppEvents() {
         errEl.textContent = '';
         if (!f.party_id) { errEl.textContent = 'اختر الطرف'; return; }
         if (!f.amount || Number(f.amount) <= 0) { errEl.textContent = 'أدخل مبلغ صحيح'; return; }
-        const payload = { voucher_number:f.voucher_number, party_type:f.party_type, party_id:f.party_id, amount:Number(f.amount), direction:f.direction, voucher_date:f.voucher_date, notes:f.notes||null };
+        const payload = { voucher_number:f.voucher_number, party_type:f.party_type, party_id:f.party_id, amount:Number(f.amount), direction:f.direction, payment_method:f.payment_method, voucher_date:f.voucher_date, notes:f.notes||null };
         const { data, error } = await sb.from('settlement_vouchers').insert(payload).select().single();
         if (error) { errEl.textContent = 'خطأ: ' + error.message; return; }
         state.editingSettlementVoucherId = data.id;
@@ -12532,6 +12638,7 @@ function bindAppEvents() {
     document.getElementById('ist-close').onclick = () => { state.showInventoryStats = false; render(); };
     if (document.getElementById('ist-print-btn')) document.getElementById('ist-print-btn').onclick = () => { window.print(); };
   }
+
 
   if (state.showOpeningInv) {
     document.getElementById('oi-close').onclick = () => { state.showOpeningInv = false; render(); };
