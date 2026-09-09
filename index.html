@@ -1643,11 +1643,14 @@ async function adjustWarehouseStock(itemId, warehouseId, delta) {
   const { data } = await sb.from('item_warehouse_stock').select('qty').eq('item_id', itemId).eq('warehouse_id', warehouseId).maybeSingle();
   const current = data ? Number(data.qty) : 0;
   const next = current + delta;
+  let error;
   if (data) {
-    await sb.from('item_warehouse_stock').update({ qty: next }).eq('item_id', itemId).eq('warehouse_id', warehouseId);
+    ({ error } = await sb.from('item_warehouse_stock').update({ qty: next }).eq('item_id', itemId).eq('warehouse_id', warehouseId));
   } else {
-    await sb.from('item_warehouse_stock').insert({ item_id: itemId, warehouse_id: warehouseId, qty: next });
+    ({ error } = await sb.from('item_warehouse_stock').insert({ item_id: itemId, warehouse_id: warehouseId, qty: next }));
   }
+  if (error) { console.error('فشل تحديث رصيد المستودع للصنف', itemId, error); showToast('⚠️ تعذّر تحديث رصيد المستودع — راجع المخزون يدوياً', 'error'); return false; }
+  return true;
 }
 async function loadItemWarehouseBreakdown(itemId) {
   const { data } = await sb.from('item_warehouse_stock').select('qty, warehouses(name)').eq('item_id', itemId);
@@ -1790,7 +1793,8 @@ async function adminCreateUser(username, password, role, displayName) {
   if (error) throw error;
   if (data.user) {
     await new Promise(r => setTimeout(r, 800));
-    await sb.from('profiles').update({ role, display_name: displayName || username }).eq('id', data.user.id);
+    const { error: profileErr } = await sb.from('profiles').update({ role, display_name: displayName || username }).eq('id', data.user.id);
+    if (profileErr) throw new Error('تم إنشاء المستخدم لكن فشل حفظ بياناته (الدور والاسم) — عدّلها يدوياً من قائمة المستخدمين');
   }
 }
 
@@ -7822,7 +7826,8 @@ async function postAssetDepreciation(asset, asOfDate) {
     { account_code: accumDepreciationAccount(asset.category), debit: 0, credit: due, description: `مجمع إهلاك ${asset.name}` },
   ]);
   if (!entry) return { failed: true, asset };
-  await sb.from('fixed_assets').update({ accumulated_depreciation: Number(asset.accumulated_depreciation||0) + due, last_depreciation_date: asOfDate }).eq('id', asset.id);
+  const { error: assetUpdateErr } = await sb.from('fixed_assets').update({ accumulated_depreciation: Number(asset.accumulated_depreciation||0) + due, last_depreciation_date: asOfDate }).eq('id', asset.id);
+  if (assetUpdateErr) { console.error('فشل تحديث سجل الأصل بعد ترحيل الإهلاك', asset.id, assetUpdateErr); return { failed: true, asset, journalPostedButAssetNotUpdated: true }; }
   return { posted: true, asset, amount: due };
 }
 
@@ -9244,6 +9249,8 @@ function bindAppEvents() {
           }
           if (!confirm('اعتماد الفاتورة يزيد المخزون تلقائياً ويربط رصيد المورد لو آجل، ولا يمكن التراجع عنه من هنا. متابعة؟')) return;
           const t = calcPurchaseTotals(f);
+          const saveWarnings = [];
+          const trackedCall = async (promise, label) => { const { error } = await promise; if (error) saveWarnings.push(`${label}: ${error.message}`); };
           for (const l of f.lines) {
             const item = state.items.find(it => it.id === l.item_id);
             const oldQty = Number(item.qty) || 0;
@@ -9252,13 +9259,13 @@ function bindAppEvents() {
             // المتوسط المرجّح: التكلفة الجديدة = (الكمية القديمة × تكلفتها + الكمية المشتراة × تكلفتها بالريال) ÷ إجمالي الكمية
             const newQtyTotal = oldQty + l.quantity;
             const weightedAvgCost = newQtyTotal > 0 ? ((oldQty * oldCost) + (l.quantity * unitCostSAR)) / newQtyTotal : unitCostSAR;
-            await sb.from('items').update({ qty: newQtyTotal, cost: weightedAvgCost, last_cost: unitCostSAR }).eq('id', l.item_id);
+            await trackedCall(sb.from('items').update({ qty: newQtyTotal, cost: weightedAvgCost, last_cost: unitCostSAR }).eq('id', l.item_id), `تحديث رصيد صنف ${item.sku||l.item_id}`);
             if (f.warehouse_id) await adjustWarehouseStock(l.item_id, f.warehouse_id, l.quantity);
           }
           if (f.invoice_type === 'آجل') {
             const supplier = state.parties.find(p => p.id === f.supplier_id);
             if (supplier) {
-              await sb.from('parties').update({ balance: Number(supplier.balance || 0) + t.dueSAR }).eq('id', supplier.id);
+              await trackedCall(sb.from('parties').update({ balance: Number(supplier.balance || 0) + t.dueSAR }).eq('id', supplier.id), 'تحديث رصيد المورد');
               await loadParties();
             }
           } else if (t.due !== 0) {
@@ -9266,14 +9273,15 @@ function bindAppEvents() {
             if (f.supplier_id) {
               const supplier = state.parties.find(p => p.id === f.supplier_id);
               if (supplier) {
-                await sb.from('parties').update({ balance: Number(supplier.balance || 0) + t.dueSAR }).eq('id', supplier.id);
+                await trackedCall(sb.from('parties').update({ balance: Number(supplier.balance || 0) + t.dueSAR }).eq('id', supplier.id), 'تحديث رصيد المورد');
                 await loadParties();
               }
             } else if (t.due > 0) {
               showToast(`تنبيه: يوجد مبلغ غير مدفوع ${fmt(t.due)} لمورد غير مسجّل — لن يُحفظ كدين قابل للمتابعة`, 'error');
             }
           }
-          await sb.from('purchase_invoices').update({ approved: true }).eq('id', state.editingPurchaseId);
+          await trackedCall(sb.from('purchase_invoices').update({ approved: true }).eq('id', state.editingPurchaseId), 'اعتماد الفاتورة نفسها');
+          if (saveWarnings.length > 0) alert('⚠️ تحذير: بعض التحديثات فشلت أثناء الاعتماد، راجعها يدوياً:\n\n' + saveWarnings.join('\n'));
           state.purchaseForm.approved = true;
           logActivity('اعتماد فاتورة شراء', f.invoice_number);
           // القيد المحاسبي: مدين المخزون + ضريبة مدخلات — دائن الموردون (آجل) أو الصندوق/البنك (نقدي)
@@ -9711,16 +9719,18 @@ function bindAppEvents() {
         if (!confirm('اعتماد الفاتورة ينقص المخزون تلقائياً ويربط رصيد العميل لو آجل، ولا يمكن التراجع من هنا. متابعة؟')) return;
         const t = calcLineTotals(f);
         let cogs = 0;
+        const saveWarnings = [];
+        const trackedCall = async (promise, label) => { const { error } = await promise; if (error) saveWarnings.push(`${label}: ${error.message}`); };
         for (const l of f.lines) {
           const item = state.items.find(it => it.id === l.item_id);
-          if (item) { cogs += l.quantity * Number(item.cost||0); await sb.from('items').update({ qty: Number(item.qty) - l.quantity }).eq('id', l.item_id); }
+          if (item) { cogs += l.quantity * Number(item.cost||0); await trackedCall(sb.from('items').update({ qty: Number(item.qty) - l.quantity }).eq('id', l.item_id), `تحديث رصيد صنف ${item.sku||l.item_id}`); }
           if (f.warehouse_id) await adjustWarehouseStock(l.item_id, f.warehouse_id, -l.quantity);
         }
         if (f.invoice_type === 'آجل') {
           const customer = state.parties.find(p => p.id === f.customer_id);
           if (customer) {
             const due = t.grandTotal - (Number(f.paid_amount)||0);
-            await sb.from('parties').update({ balance: Number(customer.balance||0) + due }).eq('id', customer.id);
+            await trackedCall(sb.from('parties').update({ balance: Number(customer.balance||0) + due }).eq('id', customer.id), 'تحديث رصيد العميل');
             await loadParties();
           }
         } else {
@@ -9730,7 +9740,7 @@ function bindAppEvents() {
             if (f.customer_id) {
               const customer = state.parties.find(p => p.id === f.customer_id);
               if (customer) {
-                await sb.from('parties').update({ balance: Number(customer.balance||0) + due }).eq('id', customer.id);
+                await trackedCall(sb.from('parties').update({ balance: Number(customer.balance||0) + due }).eq('id', customer.id), 'تحديث رصيد العميل');
                 await loadParties();
               }
             } else if (due > 0) {
@@ -9738,7 +9748,8 @@ function bindAppEvents() {
             }
           }
         }
-        await sb.from('sales_invoices').update({ approved: true }).eq('id', state.editingSalesId);
+        await trackedCall(sb.from('sales_invoices').update({ approved: true }).eq('id', state.editingSalesId), 'اعتماد الفاتورة نفسها');
+        if (saveWarnings.length > 0) alert('⚠️ تحذير: بعض التحديثات فشلت أثناء الاعتماد، راجعها يدوياً:\n\n' + saveWarnings.join('\n'));
         state.salesForm.approved = true;
         logActivity('اعتماد فاتورة بيع', f.invoice_number);
         // القيد المحاسبي: مدين الصندوق/البنك أو العملاء — دائن المبيعات + ضريبة مخرجات، زائد قيد تكلفة البضاعة المباعة
@@ -9937,9 +9948,11 @@ function bindAppEvents() {
         if (!confirm('اعتماد سند المردود يزيد المخزون تلقائياً، وينقص رصيد العميل فقط لو كان مردود آجل (بدون طريقة دفع محددة). متابعة؟')) return;
         const t = calcReturnTotals(f, 'unit_price');
         let returnCost = 0;
+        const saveWarnings = [];
+        const trackedCall = async (promise, label) => { const { error } = await promise; if (error) saveWarnings.push(`${label}: ${error.message}`); };
         for (const l of f.lines) {
           const item = state.items.find(it => it.id === l.item_id);
-          if (item) { returnCost += l.quantity * Number(item.cost||0); await sb.from('items').update({ qty: Number(item.qty) + l.quantity }).eq('id', l.item_id); }
+          if (item) { returnCost += l.quantity * Number(item.cost||0); await trackedCall(sb.from('items').update({ qty: Number(item.qty) + l.quantity }).eq('id', l.item_id), `تحديث رصيد صنف ${item.sku||l.item_id}`); }
           if (f.warehouse_id) await adjustWarehouseStock(l.item_id, f.warehouse_id, l.quantity);
         }
         // لو محدد طريقة دفع = استرجاع نقدي فعلي (يظهر بكشف الصندوق)، ما نلمس رصيد العميل
@@ -9947,7 +9960,7 @@ function bindAppEvents() {
         if (!f.payment_method) {
           const customer = state.parties.find(p => p.id === f.customer_id);
           if (customer) {
-            await sb.from('parties').update({ balance: Number(customer.balance||0) - t.grandTotal }).eq('id', customer.id);
+            await trackedCall(sb.from('parties').update({ balance: Number(customer.balance||0) - t.grandTotal }).eq('id', customer.id), 'تحديث رصيد العميل');
             await loadParties();
           }
         }
@@ -10658,7 +10671,7 @@ function bindAppEvents() {
     document.getElementById('pr-excel').onclick = () => {
       const headers = ['م','رقم الفاتورة','اسم المورد','النوع','المجموع','الخصم','الصافي','الضريبة','المجموع/ض','الحالة'];
       const rows = state.purchasesReportResults.map((p,i) => [i+1, p.invoice_number, p.parties?.name||'—', p.invoice_type||'', Number(p.subtotal||0), Number(p.discount||0), Number(p.subtotal||0)-Number(p.discount||0), Number(p.tax_total||0), Number(p.total||0), p.approved?'معتمدة':'مسودة']);
-      exportToExcel('كشف فواتير المشتريات.xlsx', headers, rows);
+      exportFormattedAccountingSheet('كشف فواتير المشتريات.xlsx', 'فواتير المشتريات', headers, rows);
     };
   }
 
@@ -10903,7 +10916,7 @@ function bindAppEvents() {
     document.getElementById('pf-excel').onclick = () => {
       const headers = ['رقم الفاتورة','العميل','التاريخ','الإيراد','التكلفة','الربح','الهامش %'];
       const rows = state.profitReportRows.map(r => [r.invoice_number, r.customer, r.date, r.revenue, r.cogs, r.profit, r.margin.toFixed(1)]);
-      exportToExcel('كشف الأرباح والخسائر.xlsx', headers, rows);
+      exportFormattedAccountingSheet('كشف الأرباح والخسائر.xlsx', 'الأرباح والخسائر', headers, rows);
     };
   }
 
@@ -11303,7 +11316,7 @@ function bindAppEvents() {
     document.getElementById('gsm-excel').onclick = () => {
       const headers = ['التاريخ','نوع الحركة','رقم المستند','الصنف','رقم الصنف','الكمية'];
       const rows = state.gsmRows.map(r => [r.date, r.type, r.doc, r.item, r.sku, r.change]);
-      exportToExcel('كشف حركة المخزون العامة.xlsx', headers, rows);
+      exportFormattedAccountingSheet('كشف حركة المخزون العامة.xlsx', 'حركة المخزون', headers, rows);
     };
   }
 
@@ -11528,7 +11541,7 @@ function bindAppEvents() {
         });
       });
       const headers = ['التاريخ','رقم القيد','نوع السند','بيان القيد','رمز الحساب','اسم الحساب','بيان السطر','مدين','دائن'];
-      exportToExcel('دفتر اليومية.xlsx', headers, rows);
+      exportFormattedAccountingSheet('دفتر اليومية.xlsx', 'دفتر اليومية', headers, rows);
     };
   }
 
@@ -11778,7 +11791,7 @@ function bindAppEvents() {
         const cols = src.columns.filter(c => state.rdColumns.includes(c.key));
         const headers = cols.map(c => c.label);
         const rows = state.rdRows.map(row => cols.map(c => row[c.key] ?? ''));
-        exportToExcel(`Report-${state.rdSource}.xlsx`, headers, rows);
+        exportFormattedAccountingSheet(`Report-${state.rdSource}.xlsx`, 'تقرير مخصص', headers, rows);
       };
     }
   }
@@ -12064,7 +12077,7 @@ function bindAppEvents() {
     document.getElementById('tsell-excel').onclick = () => {
       const headers = ['رقم الصنف', 'اسم الصنف', 'الكمية المباعة', 'قيمة المبيعات'];
       const rows = state.topSellingRows.map(r => [r.sku, r.name, r.qty, r.revenue]);
-      exportToExcel('أفضل الأصناف مبيعاً.xlsx', headers, rows);
+      exportFormattedAccountingSheet('أفضل الأصناف مبيعاً.xlsx', 'الأكثر مبيعاً', headers, rows);
     };
   }
 
@@ -12081,7 +12094,7 @@ function bindAppEvents() {
     document.getElementById('slow-excel').onclick = () => {
       const headers = ['رقم الصنف', 'اسم الصنف', 'الرصيد الحالي', 'قيمة المخزون الراكد'];
       const rows = state.slowMovingRows.map(r => [r.sku, r.name, r.qty, r.value]);
-      exportToExcel('الأصناف الراكدة.xlsx', headers, rows);
+      exportFormattedAccountingSheet('الأصناف الراكدة.xlsx', 'الأصناف الراكدة', headers, rows);
     };
   }
 
@@ -12235,7 +12248,7 @@ function bindAppEvents() {
     document.getElementById('npr-excel').onclick = () => {
       const headers = ['المورد', 'إجمالي المشتريات', 'مردودات', 'صافي المشتريات'];
       const rows = state.netPurchasesRows.map(r => [r.name, r.purchases, r.returns, r.net]);
-      exportToExcel('كشف صافي مشتريات الموردين.xlsx', headers, rows);
+      exportFormattedAccountingSheet('كشف صافي مشتريات الموردين.xlsx', 'صافي المشتريات', headers, rows);
     };
   }
 
@@ -12253,7 +12266,7 @@ function bindAppEvents() {
     document.getElementById('aging-excel').onclick = () => {
       const headers = ['الاسم', '0-30 يوم', '31-60 يوم', '61-90 يوم', 'أكثر من 90', 'الإجمالي'];
       const rows = state.agingReportRows.map(r => [r.party.name, r.buckets.b0_30, r.buckets.b31_60, r.buckets.b61_90, r.buckets.b90plus, r.total]);
-      exportToExcel('كشف أعمار الذمم.xlsx', headers, rows);
+      exportFormattedAccountingSheet('كشف أعمار الذمم.xlsx', 'أعمار الذمم', headers, rows);
     };
   }
 
@@ -12276,7 +12289,7 @@ function bindAppEvents() {
       if (q) list = list.filter(p => p.name.toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q));
       const headers = ['الكود','الاسم','النوع','الجوال','الرصيد'];
       const rows = list.map(p => [p.code||'', p.name, p.party_type==='customer'?'عميل':'مورد', p.mobile||p.phone||'', p.balance]);
-      exportToExcel('كشف العملاء والموردين.xlsx', headers, rows);
+      exportFormattedAccountingSheet('كشف العملاء والموردين.xlsx', 'العملاء والموردون', headers, rows);
     };
   }
 
@@ -12295,7 +12308,7 @@ function bindAppEvents() {
     document.getElementById('cb-excel').onclick = () => {
       const headers = ['التاريخ','نوع الحركة','رقم المستند','وارد','صادر','الرصيد'];
       const rows = state.cashboxRows.map(r => [r.date, r.type, r.doc, r.cashIn, r.cashOut, r.balance]);
-      exportToExcel('كشف حساب الصندوق.xlsx', headers, rows);
+      exportFormattedAccountingSheet('كشف حساب الصندوق.xlsx', 'حساب الصندوق', headers, rows);
     };
   }
 
@@ -12315,7 +12328,7 @@ function bindAppEvents() {
         if (!item) return;
         const headers = ['التاريخ', 'نوع الحركة', 'رقم المستند', 'الكمية', 'الرصيد بعدها'];
         const rows = state.itemMovementRows.map(r => [r.date, r.type, r.doc, r.change, r.balance]);
-        exportToExcel(`كشف حركة ${item.sku}.xlsx`, headers, rows);
+        exportFormattedAccountingSheet(`كشف حركة ${item.sku}.xlsx`, 'حركة الصنف', headers, rows);
       };
     }
   }
@@ -12831,7 +12844,7 @@ function bindAppEvents() {
       const results = filteredWarehouseStockPivot();
       const headers = ['رقم الصنف', 'اسم الصنف', ...state.warehouses.map(w => w.name), 'الإجمالي'];
       const rows = results.map(r => [r.sku, r.name, ...state.warehouses.map(w => r.perWarehouse[w.id]||0), r.total]);
-      exportToExcel('تقرير الكميات بالمستودعات.xlsx', headers, rows);
+      exportFormattedAccountingSheet('تقرير الكميات بالمستودعات.xlsx', 'كميات المستودعات', headers, rows);
     };
   }
 
@@ -12874,7 +12887,7 @@ function bindAppEvents() {
         r[dateField], r.parties?.tax_number||'', Number(r.subtotal||0), Number(r.tax_total||0), Number(r.total||0), r.payment_method||'',
         ...(cfg.hasStatus?[r.approved?'معتمدة':'مسودة']:[]),
       ]);
-      exportToExcel(`${cfg.title}.xlsx`, headers, rows);
+      exportFormattedAccountingSheet(`${cfg.title}.xlsx`, cfg.title.slice(0,31), headers, rows);
     };
   }
 
