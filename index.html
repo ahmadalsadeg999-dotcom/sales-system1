@@ -7549,6 +7549,19 @@ async function loadAlerts() {
   }
   if (over90Count > 0) alerts.push({ severity:'high', text:`${over90Count} عميل متأخر بالسداد أكثر من 90 يوم (${fmt(over90Total)})`, target:'__aging_report__' });
 
+  // 2ب) تذكير استباقي: عملاء تقترب فواتيرهم من موعد الاستحقاق (حسب مدة الائتمان المحدّدة لكل عميل)
+  let dueSoonCount = 0;
+  const creditCustomers = customers.filter(c => Number(c.credit_period_days||0) > 0);
+  for (const c of creditCustomers.slice(0, 60)) {
+    const { data: oldestInv } = await sb.from('sales_invoices').select('invoice_date').eq('customer_id', c.id).eq('approved', true).eq('invoice_type', 'آجل').order('invoice_date', { ascending: true }).limit(1);
+    if (!oldestInv || !oldestInv[0]) continue;
+    const dueDate = new Date(oldestInv[0].invoice_date);
+    dueDate.setDate(dueDate.getDate() + Number(c.credit_period_days));
+    const daysUntilDue = Math.round((dueDate - new Date(today)) / 86400000);
+    if (daysUntilDue >= 0 && daysUntilDue <= 5) dueSoonCount++;
+  }
+  if (dueSoonCount > 0) alerts.push({ severity:'medium', text:`${dueSoonCount} عميل يقترب موعد استحقاقه خلال 5 أيام`, target:'__aging_report__' });
+
   // 3) فواتير محفوظة كمسودة أكثر من 3 أيام
   const threeDaysAgo = new Date(); threeDaysAgo.setDate(threeDaysAgo.getDate()-3);
   const { data: oldDraftSales } = await sb.from('sales_invoices').select('id').eq('approved', false).lte('created_at', threeDaysAgo.toISOString());
