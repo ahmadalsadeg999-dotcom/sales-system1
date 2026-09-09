@@ -2599,6 +2599,7 @@ function renderPurchaseFormModal() {
         </div>
         <div class="no-print" id="pi-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
         <div class="no-print" style="display:flex;gap:8px;margin-bottom:10px;">
+          <input id="pi-quick-sku" class="input mono" style="max-width:140px;" placeholder="رقم الصنف (Enter)" dir="ltr" />
           <select id="pi-item-select" class="input" style="display:none;">
             <option value="">اختر صنف...</option>
             ${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}
@@ -3220,6 +3221,7 @@ function renderSalesFormModal() {
         <div id="si-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
         <div id="si-last-prices" style="display:none;margin-bottom:8px;padding:6px 12px;background:#FDFBF3;border:1px solid #DEDACB;border-radius:4px;font-size:11.5px;color:#3A3826;"></div>
         <div style="display:flex;gap:8px;margin-bottom:6px;">
+          <input id="si-quick-sku" class="input mono" style="max-width:140px;" placeholder="رقم الصنف (Enter)" dir="ltr" />
           <select id="si-item-select" class="input" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
           ${itemPickerButton('si-item-select','si-item-qty','si-item-price','price','si-add-line')}
           <input id="si-item-qty" class="input" style="max-width:80px;" placeholder="الكمية" />
@@ -9091,6 +9093,19 @@ function bindAppEvents() {
       };
     }
     wireItemPickBehavior('pi-item-select', 'pi-item-info', 'pi-item-qty', 'pi-item-cost', 'cost');
+    if (document.getElementById('pi-quick-sku')) {
+      document.getElementById('pi-quick-sku').onkeydown = (ev) => {
+        if (ev.key !== 'Enter') return;
+        const code = ev.target.value.trim();
+        if (!code) return;
+        const item = state.items.find(it => (it.sku||'').toLowerCase() === code.toLowerCase());
+        if (!item) { showToast(`ما لقيت صنف برقم "${code}"`, 'error'); return; }
+        const sel = document.getElementById('pi-item-select');
+        sel.value = item.id;
+        sel.dispatchEvent(new Event('change'));
+        ev.target.value = '';
+      };
+    }
     if (document.getElementById('pi-add-line')) {
       document.getElementById('pi-add-line').onclick = () => {
         const itemId = document.getElementById('pi-item-select').value;
@@ -9512,6 +9527,19 @@ function bindAppEvents() {
       };
     }
     wireItemPickBehavior('si-item-select', 'si-item-info', 'si-item-qty', 'si-item-price', 'price');
+    if (document.getElementById('si-quick-sku')) {
+      document.getElementById('si-quick-sku').onkeydown = (ev) => {
+        if (ev.key !== 'Enter') return;
+        const code = ev.target.value.trim();
+        if (!code) return;
+        const item = state.items.find(it => (it.sku||'').toLowerCase() === code.toLowerCase());
+        if (!item) { showToast(`ما لقيت صنف برقم "${code}"`, 'error'); return; }
+        const sel = document.getElementById('si-item-select');
+        sel.value = item.id;
+        sel.dispatchEvent(new Event('change'));
+        ev.target.value = '';
+      };
+    }
     if (document.getElementById('si-item-select')) {
       // نعدّل السعر المعبّى تلقائياً حسب "مستوى السعر" المسجّل بكرت العميل المختار (جملة/تجزئة)
       document.getElementById('si-item-select').addEventListener('change', (ev) => {
