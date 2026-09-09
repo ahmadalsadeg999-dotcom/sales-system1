@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&family=Cairo:wght@400;500;700&family=Almarai:wght@400;700&family=Noto+Kufi+Arabic:wght@400;700&display=swap');
@@ -1403,6 +1404,25 @@ function saveAreaAsPDF(areaSelector, filename, btnId) {
     if (btn) setBtnLoading(btn, false);
     alert('حدث خطأ أثناء إنشاء ملف PDF');
   });
+}
+
+// تصدير محاسبي منسّق (خط عريض + تلوين رأس الجدول) — لمشاركته مع محاسب خارجي بشكل احترافي
+function exportFormattedAccountingSheet(filename, sheetName, headers, rows) {
+  if (typeof XLSX === 'undefined') { alert('مكتبة تصدير Excel ما تحمّلت، تأكد من الاتصال بالإنترنت'); return; }
+  const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1B3352' } }, alignment: { horizontal: 'center' } };
+  const data = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  headers.forEach((h, i) => {
+    const cellRef = XLSX.utils.encode_cell({ r:0, c:i });
+    if (ws[cellRef]) ws[cellRef].s = headerStyle;
+  });
+  ws['!cols'] = headers.map((h, i) => {
+    const maxLen = Math.max(h.length, ...rows.map(r => String(r[i]??'').length));
+    return { wch: Math.min(Math.max(maxLen + 2, 10), 35) };
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, filename);
 }
 
 function exportToExcel(filename, headers, rows) {
@@ -5296,6 +5316,7 @@ function renderBalanceSheetModal() {
         <div>${partyField(t('bs_as_of'), `<input id="bs-asof" type="date" class="input" value="${escapeHtml(state.balanceSheetAsOf)}" />`)}</div>
         <button id="bs-apply" class="btn primary" style="padding:8px 16px;">${t('je_apply')}</button>
         <button id="bs-print" class="btn" style="padding:8px 16px;">${t('tb_print')}</button>
+        <button id="bs-excel" class="btn" style="padding:8px 16px;">${t('je_excel')}</button>
       </div>
       <div class="no-print" style="padding:0 16px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <span style="font-size:11.5px;color:#5F5E5A;">مستوى التفصيل:</span>
@@ -5406,6 +5427,7 @@ function renderGeneralLedgerModal() {
         <button id="gl-apply" class="btn primary" style="padding:8px 16px;">تطبيق</button>
         <button id="gl-print" class="btn" style="padding:8px 16px;">طباعة</button>
         <button id="gl-pdf" class="btn" style="padding:8px 16px;"><i class="ti ti-file-type-pdf" style="font-size:14px;"></i> حفظ PDF</button>
+        <button id="gl-excel-formatted" class="btn" style="padding:8px 16px;background:#0F6E56;color:#fff;border-color:#0F6E56;"><i class="ti ti-file-spreadsheet" style="font-size:14px;"></i> تصدير اكسل</button>
       </div>
       <div style="padding:0 16px 16px;">
         ${state.generalLedgerData.length === 0 ? `<div style="padding:24px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد حركات بالفترة المحددة</div>` : ''}
@@ -10832,7 +10854,7 @@ function bindAppEvents() {
     document.getElementById('vat-excel').onclick = () => {
       const d = state.vatReportData;
       if (!d) { alert('اضغط عرض أول'); return; }
-      exportToExcel('كشف الإقرار الضريبي.xlsx',
+      exportFormattedAccountingSheet('كشف الإقرار الضريبي.xlsx', 'الإقرار الضريبي',
         ['البند','القيمة'],
         [['إجمالي المبيعات', d.salesSubtotal], ['ضريبة المخرجات', d.outputVat], ['إجمالي المشتريات', d.purchSubtotal], ['ضريبة المدخلات', d.inputVat], ['صافي الضريبة المستحقة', d.netVat]]);
     };
@@ -11568,7 +11590,7 @@ function bindAppEvents() {
         ['إجمالي المصروفات الأخرى', d.totalOtherExpense],
         [d.netIncome>=0?'صافي الربح للفترة':'صافي الخسارة للفترة', Math.abs(d.netIncome)],
       ];
-      exportToExcel('قائمة الدخل.xlsx', headers, rows);
+      exportFormattedAccountingSheet('قائمة الدخل.xlsx', 'قائمة الدخل', headers, rows);
     };
   }
 
@@ -11577,6 +11599,26 @@ function bindAppEvents() {
     document.getElementById('bs-close').onclick = closeBs;
     document.getElementById('bs-exit').onclick = closeBs;
     document.getElementById('bs-print').onclick = () => { window.print(); };
+    if (document.getElementById('bs-excel')) {
+      document.getElementById('bs-excel').onclick = () => {
+        const d = state.balanceSheetData;
+        if (!d) { showToast('اضغط "تطبيق" أول'); return; }
+        const headers = ['البند', 'المبلغ'];
+        const rows = [
+          ['الأصول', ''],
+          ...d.assetRows.map(r => [r.name, r.amount]),
+          ['إجمالي الأصول', d.totalAssets],
+          ['الخصوم', ''],
+          ...d.liabilityRows.map(r => [r.name, r.amount]),
+          ['إجمالي الخصوم', d.totalLiabilities],
+          ['حقوق الملكية', ''],
+          ...d.equityRows.map(r => [r.name, r.amount]),
+          ['إجمالي حقوق الملكية', d.totalEquity],
+          ['إجمالي الخصوم وحقوق الملكية', d.totalLiabilities + d.totalEquity],
+        ];
+        exportFormattedAccountingSheet('قائمة المركز المالي.xlsx', 'الميزانية', headers, rows);
+      };
+    }
     document.getElementById('bs-apply').onclick = async () => {
       state.balanceSheetAsOf = document.getElementById('bs-asof').value;
       await loadBalanceSheet();
@@ -11624,7 +11666,7 @@ function bindAppEvents() {
       const rows = state.trialBalanceRows.map(r => ({ ...r, balance: (r.account_type==='asset'||r.account_type==='expense') ? (r.debit - r.credit) : (r.credit - r.debit) }));
       const headers = ['رقم الحساب', 'اسم الحساب', 'مدين', 'دائن', 'الرصيد'];
       const exportRows = rows.map(r => [r.code, r.name, r.debit, r.credit, r.balance]);
-      exportToExcel('ميزان المراجعة.xlsx', headers, exportRows);
+      exportFormattedAccountingSheet('ميزان المراجعة.xlsx', 'ميزان المراجعة', headers, exportRows);
     };
   }
 
@@ -11633,6 +11675,18 @@ function bindAppEvents() {
     document.getElementById('gl-close').onclick = closeGl;
     document.getElementById('gl-print').onclick = () => { window.print(); };
     document.getElementById('gl-pdf').onclick = () => { saveAreaAsPDF('#gl-overlay .print-area', 'General-Ledger.pdf', 'gl-pdf'); };
+    if (document.getElementById('gl-excel-formatted')) {
+      document.getElementById('gl-excel-formatted').onclick = () => {
+        const headers = ['التاريخ', 'رقم القيد', 'رقم الحساب', 'اسم الحساب', 'البيان', 'مدين', 'دائن', 'الرصيد'];
+        const rows = [];
+        state.generalLedgerData.forEach(acc => {
+          acc.lines.forEach(l => {
+            rows.push([l.date, l.entryNumber, acc.code, acc.name, l.desc, l.debit || '', l.credit || '', l.balance]);
+          });
+        });
+        exportFormattedAccountingSheet(`تصدير-محاسبي-${state.generalLedgerFrom||'الكل'}-${state.generalLedgerTo||'الكل'}.xlsx`, 'الأستاذ العام', headers, rows);
+      };
+    }
     document.getElementById('gl-apply').onclick = async () => {
       state.generalLedgerFrom = document.getElementById('gl-from').value;
       state.generalLedgerTo = document.getElementById('gl-to').value;
