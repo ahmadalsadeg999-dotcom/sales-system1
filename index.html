@@ -9693,7 +9693,8 @@ function bindAppEvents() {
           state.editingSalesId = data.id;
           state.salesForm.invoice_number = invoiceNumber;
           if (state.pendingQuoteConvertId) {
-            await sb.from('quotations').update({ status:'محول لفاتورة', converted_to_invoice_id: data.id }).eq('id', state.pendingQuoteConvertId);
+            const { error: qConvErr } = await sb.from('quotations').update({ status:'محول لفاتورة', converted_to_invoice_id: data.id }).eq('id', state.pendingQuoteConvertId);
+            if (qConvErr) console.error('فشل تحديث حالة عرض السعر بعد التحويل', qConvErr);
             state.pendingQuoteConvertId = null;
             await loadQuotations();
           }
@@ -9787,27 +9788,29 @@ function bindAppEvents() {
         // 1) إرجاع الكميات للمخزون (عكس الخصم اللي صار وقت الاعتماد)
         for (const l of f.lines) {
           const item = state.items.find(it => it.id === l.item_id);
-          if (item) await sb.from('items').update({ qty: Number(item.qty) + l.quantity }).eq('id', l.item_id);
+          if (item) { const { error: qErr } = await sb.from('items').update({ qty: Number(item.qty) + l.quantity }).eq('id', l.item_id); if (qErr) console.error('فشل تحديث رصيد صنف بعد مردود بيع', l.item_id, qErr); }
           if (f.warehouse_id) await adjustWarehouseStock(l.item_id, f.warehouse_id, l.quantity);
         }
         // 2) عكس أثر رصيد العميل (بنفس منطق الاحتساب وقت الاعتماد بالضبط)
         const due = t.grandTotal - (Number(f.paid_amount)||0);
         if (f.invoice_type === 'آجل' && f.customer_id) {
           const customer = state.parties.find(p => p.id === f.customer_id);
-          if (customer) await sb.from('parties').update({ balance: Number(customer.balance||0) - due }).eq('id', customer.id);
+          if (customer) { const { error: balErr } = await sb.from('parties').update({ balance: Number(customer.balance||0) - due }).eq('id', customer.id); if (balErr) showToast('⚠️ الفاتورة اتحفظت لكن فشل تحديث رصيد العميل — راجعه يدوياً', 'error'); }
         } else if (f.invoice_type !== 'آجل' && due !== 0 && f.customer_id) {
           const customer = state.parties.find(p => p.id === f.customer_id);
-          if (customer) await sb.from('parties').update({ balance: Number(customer.balance||0) - due }).eq('id', customer.id);
+          if (customer) { const { error: balErr2 } = await sb.from('parties').update({ balance: Number(customer.balance||0) - due }).eq('id', customer.id); if (balErr2) showToast('⚠️ الفاتورة اتحفظت لكن فشل تحديث رصيد العميل — راجعه يدوياً', 'error'); }
         }
         await loadParties();
         // 3) حذف القيد المحاسبي المرتبط بالفاتورة
         const { data: entries } = await sb.from('journal_entries').select('id').eq('source_type', 'sales_invoice').eq('source_id', state.editingSalesId);
         for (const e of (entries||[])) {
-          await sb.from('journal_entry_lines').delete().eq('entry_id', e.id);
-          await sb.from('journal_entries').delete().eq('id', e.id);
+          const { error: delLinesErr } = await sb.from('journal_entry_lines').delete().eq('entry_id', e.id);
+          if (delLinesErr) console.error('فشل حذف تفاصيل قيد', e.id, delLinesErr);
+          const { error: delEntryErr } = await sb.from('journal_entries').delete().eq('id', e.id);
+          if (delEntryErr) console.error('فشل حذف قيد', e.id, delEntryErr);
         }
         // 4) فك القفل نفسه
-        await sb.from('sales_invoices').update({ approved: false }).eq('id', state.editingSalesId);
+        { const { error: unapproveErr } = await sb.from('sales_invoices').update({ approved: false }).eq('id', state.editingSalesId); if (unapproveErr) { showToast('فشل فك اعتماد الفاتورة', 'error'); return; } }
         state.salesForm.approved = false;
         state.docJournalNumbers = [];
         logActivity('فك اعتماد فاتورة بيع', f.invoice_number);
@@ -9964,7 +9967,7 @@ function bindAppEvents() {
             await loadParties();
           }
         }
-        await sb.from('sales_returns').update({ approved: true }).eq('id', state.editingSalesReturnId);
+        { const { error: appErr } = await sb.from('sales_returns').update({ approved: true }).eq('id', state.editingSalesReturnId); if (appErr) { showToast('فشل اعتماد المردود — حاول من جديد', 'error'); return; } }
         state.salesReturnForm.approved = true;
         logActivity('اعتماد مردود بيع', f.return_number);
         // القيد المحاسبي: مدين مردودات المبيعات — دائن العملاء (آجل) أو الصندوق (نقدي)، زائد رجوع تكلفة للمخزون
@@ -10123,17 +10126,18 @@ function bindAppEvents() {
         const t = calcReturnTotals(f, 'unit_cost');
         for (const l of f.lines) {
           const item = state.items.find(it => it.id === l.item_id);
-          if (item) await sb.from('items').update({ qty: Math.max(0, Number(item.qty) - l.quantity) }).eq('id', l.item_id);
+          if (item) { const { error: qErr2 } = await sb.from('items').update({ qty: Math.max(0, Number(item.qty) - l.quantity) }).eq('id', l.item_id); if (qErr2) console.error('فشل تحديث رصيد صنف بعد مردود شراء', l.item_id, qErr2); }
           if (f.warehouse_id) await adjustWarehouseStock(l.item_id, f.warehouse_id, -l.quantity);
         }
         if (!f.payment_method) {
           const supplier = state.parties.find(p => p.id === f.supplier_id);
           if (supplier) {
-            await sb.from('parties').update({ balance: Number(supplier.balance||0) - t.grandTotal }).eq('id', supplier.id);
+            const { error: balErr3 } = await sb.from('parties').update({ balance: Number(supplier.balance||0) - t.grandTotal }).eq('id', supplier.id);
+            if (balErr3) showToast('⚠️ الفاتورة اتحفظت لكن فشل تحديث رصيد المورد — راجعه يدوياً', 'error');
             await loadParties();
           }
         }
-        await sb.from('purchase_returns').update({ approved: true }).eq('id', state.editingPurchaseReturnId);
+        { const { error: appErr2 } = await sb.from('purchase_returns').update({ approved: true }).eq('id', state.editingPurchaseReturnId); if (appErr2) { showToast('فشل اعتماد المردود — حاول من جديد', 'error'); return; } }
         state.purchaseReturnForm.approved = true;
         logActivity('اعتماد مردود شراء', f.return_number);
         // القيد المحاسبي: مدين الموردون (آجل) أو الصندوق (نقدي) — دائن المخزون مباشرة (نظام جرد مستمر، بدون المرور بحساب مردودات وسيط) + رجوع ضريبة مدخلات
@@ -10302,9 +10306,9 @@ function bindAppEvents() {
           const diff = l.counted_qty - l.system_qty;
           await adjustWarehouseStock(l.item_id, f.warehouse_id, diff);
           const item = state.items.find(it => it.id === l.item_id);
-          if (item) { netValueDiff += diff * Number(item.cost||0); await sb.from('items').update({ qty: Number(item.qty) + diff }).eq('id', l.item_id); }
+          if (item) { netValueDiff += diff * Number(item.cost||0); const { error: qErr3 } = await sb.from('items').update({ qty: Number(item.qty) + diff }).eq('id', l.item_id); if (qErr3) console.error('فشل تحديث رصيد صنف بعد جرد', l.item_id, qErr3); }
         }
-        await sb.from('stock_counts').update({ approved: true }).eq('id', state.editingStockCountId);
+        { const { error: appErr3 } = await sb.from('stock_counts').update({ approved: true }).eq('id', state.editingStockCountId); if (appErr3) { showToast('فشل اعتماد الجرد — حاول من جديد', 'error'); return; } }
         state.stockCountForm.approved = true;
         logActivity('اعتماد سند جرد', f.count_number);
         // القيد المحاسبي: فرق موجب (زيادة قيمة) يُقيَّد كإيراد، فرق سالب (نقص قيمة) يُقيَّد كمصروف
@@ -10473,7 +10477,7 @@ function bindAppEvents() {
           await adjustWarehouseStock(l.item_id, f.from_warehouse_id, -l.quantity);
           await adjustWarehouseStock(l.item_id, f.to_warehouse_id, l.quantity);
         }
-        await sb.from('warehouse_transfers').update({ approved: true }).eq('id', state.editingTransferId);
+        { const { error: appErr4 } = await sb.from('warehouse_transfers').update({ approved: true }).eq('id', state.editingTransferId); if (appErr4) { showToast('فشل اعتماد التحويل — حاول من جديد', 'error'); return; } }
         state.transferForm.approved = true;
         await loadTransfers();
         render();
@@ -10727,7 +10731,7 @@ function bindAppEvents() {
         if (!amount || amount <= 0) { alert('أدخل مبلغ صحيح'); return; }
         const payload = { customer_id:f.customer_id, amount, voucher_date:f.voucher_date, payment_method:f.payment_method, notes:f.notes||null };
         if (state.editingReceiptVoucherId) {
-          await sb.from('receipt_vouchers').update(payload).eq('id', state.editingReceiptVoucherId);
+          { const { error: svErr } = await sb.from('receipt_vouchers').update(payload).eq('id', state.editingReceiptVoucherId); if (svErr) { showToast('فشل حفظ التعديلات', 'error'); return; } }
         } else {
           const maxNum = state.receiptVouchers.reduce((max,p) => { const m=(p.voucher_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
           const voucherNumber = `RV-${String(maxNum+1).padStart(4,'0')}`;
@@ -10745,7 +10749,9 @@ function bindAppEvents() {
         const f = state.receiptVoucherForm;
         if (!confirm('اعتماد سند القبض ينقص من رصيد العميل المستحق فوراً. متابعة؟')) return;
         const customer = state.parties.find(p => p.id === f.customer_id);
-        if (customer) await sb.from('parties').update({ balance: Number(customer.balance||0) - Number(f.amount) }).eq('id', customer.id);
+        let rvBalErr = null;
+        if (customer) { const r = await sb.from('parties').update({ balance: Number(customer.balance||0) - Number(f.amount) }).eq('id', customer.id); rvBalErr = r.error; }
+        if (rvBalErr) { showToast('فشل تحديث رصيد العميل — لم يُعتمد السند', 'error'); return; }
         await sb.from('receipt_vouchers').update({ approved: true }).eq('id', state.editingReceiptVoucherId);
         state.receiptVoucherForm.approved = true;
         logActivity('اعتماد سند قبض', f.voucher_number);
@@ -10816,7 +10822,7 @@ function bindAppEvents() {
         if (!amount || amount <= 0) { alert('أدخل مبلغ صحيح'); return; }
         const payload = { supplier_id:f.supplier_id, amount, voucher_date:f.voucher_date, payment_method:f.payment_method, notes:f.notes||null };
         if (state.editingPaymentVoucherId) {
-          await sb.from('payment_vouchers').update(payload).eq('id', state.editingPaymentVoucherId);
+          { const { error: svErr2 } = await sb.from('payment_vouchers').update(payload).eq('id', state.editingPaymentVoucherId); if (svErr2) { showToast('فشل حفظ التعديلات', 'error'); return; } }
         } else {
           const maxNum = state.paymentVouchers.reduce((max,p) => { const m=(p.voucher_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
           const voucherNumber = `PV-${String(maxNum+1).padStart(4,'0')}`;
@@ -10834,7 +10840,9 @@ function bindAppEvents() {
         const f = state.paymentVoucherForm;
         if (!confirm('اعتماد سند الصرف ينقص من المستحق للمورد فوراً. متابعة؟')) return;
         const supplier = state.parties.find(p => p.id === f.supplier_id);
-        if (supplier) await sb.from('parties').update({ balance: Number(supplier.balance||0) - Number(f.amount) }).eq('id', supplier.id);
+        let pvBalErr = null;
+        if (supplier) { const r = await sb.from('parties').update({ balance: Number(supplier.balance||0) - Number(f.amount) }).eq('id', supplier.id); pvBalErr = r.error; }
+        if (pvBalErr) { showToast('فشل تحديث رصيد المورد — لم يُعتمد السند', 'error'); return; }
         await sb.from('payment_vouchers').update({ approved: true }).eq('id', state.editingPaymentVoucherId);
         state.paymentVoucherForm.approved = true;
         logActivity('اعتماد سند صرف', f.voucher_number);
@@ -10984,8 +10992,7 @@ function bindAppEvents() {
           notes: document.getElementById('crm-f-notes').value.trim(),
         };
         if (!f.name) { alert('اكتب اسم العميل'); return; }
-        if (state.crmEditingId) await sb.from('crm_clients').update(f).eq('id', state.crmEditingId);
-        else await sb.from('crm_clients').insert(f);
+        { const r = state.crmEditingId ? await sb.from('crm_clients').update(f).eq('id', state.crmEditingId) : await sb.from('crm_clients').insert(f); if (r.error) { showToast('فشل حفظ بيانات العميل', 'error'); return; } }
         await loadCrmClients();
         state.crmShowForm = false;
         render();
@@ -10993,7 +11000,7 @@ function bindAppEvents() {
       if (document.getElementById('crm-form-delete-btn')) {
         document.getElementById('crm-form-delete-btn').onclick = async () => {
           if (!confirm('حذف هذا العميل نهائياً؟')) return;
-          await sb.from('crm_clients').delete().eq('id', state.crmEditingId);
+          { const { error: delErr } = await sb.from('crm_clients').delete().eq('id', state.crmEditingId); if (delErr) { showToast('فشل الحذف', 'error'); return; } }
           await loadCrmClients();
           state.crmShowForm = false;
           render();
@@ -11006,7 +11013,7 @@ function bindAppEvents() {
       document.getElementById('crm-add-log-btn').onclick = async () => {
         const note = state.crmNewLogNote.trim();
         if (!note) return;
-        await sb.from('crm_contact_log').insert({ client_id: state.crmDetailId, note });
+        { const { error: noteErr } = await sb.from('crm_contact_log').insert({ client_id: state.crmDetailId, note }); if (noteErr) { showToast('فشل حفظ الملاحظة', 'error'); return; } }
         state.crmNewLogNote = '';
         await loadCrmLogs(state.crmDetailId);
         render();
@@ -11028,7 +11035,7 @@ function bindAppEvents() {
         let fixed = 0;
         for (const item of scope) {
           const correctQty = totals.get(item.id) || 0;
-          if (Number(item.qty) !== correctQty) { await sb.from('items').update({ qty: correctQty }).eq('id', item.id); fixed++; }
+          if (Number(item.qty) !== correctQty) { const { error: fixErr } = await sb.from('items').update({ qty: correctQty }).eq('id', item.id); if (!fixErr) fixed++; else console.error('فشل تصحيح رصيد صنف', item.id, fixErr); }
         }
         await loadItems();
         designerLogPush('ok', `تم تصحيح كمية ${fixed} صنف من أصل ${scope.length}`);
@@ -11045,8 +11052,8 @@ function bindAppEvents() {
         for (const item of scope) {
           const { data: lastLine } = await sb.from('purchase_invoice_items').select('unit_cost, purchase_invoices!inner(approved, invoice_date)').eq('item_id', item.id).eq('purchase_invoices.approved', true).order('purchase_invoices(invoice_date)', { ascending: false }).limit(1);
           if (lastLine && lastLine[0]) {
-            await sb.from('items').update({ last_cost: lastLine[0].unit_cost, cost: lastLine[0].unit_cost }).eq('id', item.id);
-            updated++;
+            const { error: costErr } = await sb.from('items').update({ last_cost: lastLine[0].unit_cost, cost: lastLine[0].unit_cost }).eq('id', item.id);
+            if (!costErr) updated++; else console.error('فشل تحديث تكلفة صنف', item.id, costErr);
           }
         }
         await loadItems();
@@ -11062,7 +11069,7 @@ function bindAppEvents() {
         for (const party of state.parties) {
           const rows = await loadPartyStatementRows(party.id, party.party_type);
           const newBalance = Number(party.opening_balance||0) + rows.reduce((s,r) => s + r.total - r.paid, 0);
-          if (Number(party.balance) !== newBalance) { await sb.from('parties').update({ balance: newBalance }).eq('id', party.id); fixed++; }
+          if (Number(party.balance) !== newBalance) { const { error: balSyncErr } = await sb.from('parties').update({ balance: newBalance }).eq('id', party.id); if (!balSyncErr) fixed++; else console.error('فشل مزامنة رصيد طرف', party.id, balSyncErr); }
         }
         await loadParties();
         designerLogPush('ok', `تم تصحيح رصيد ${fixed} عميل/مورد من أصل ${state.parties.length}`);
@@ -11087,7 +11094,7 @@ function bindAppEvents() {
             const subtotal = (lines||[]).reduce((s,l) => s+Number(l.line_total||0), 0);
             const taxTotal = (lines||[]).reduce((s,l) => s+Number(l.tax_amount||0), 0);
             const total = subtotal - Number(doc.discount||0) + taxTotal;
-            await sb.from(job.table).update({ subtotal, tax_total: taxTotal, total }).eq('id', doc.id);
+            { const { error: fixErr } = await sb.from(job.table).update({ subtotal, tax_total: taxTotal, total }).eq('id', doc.id); if (fixErr) console.error('فشل تصحيح مستند', job.table, doc.id, fixErr); }
             fixed++;
           }
         }
@@ -11121,7 +11128,8 @@ function bindAppEvents() {
         if (!confirm('هذا آخر تأكيد — راح يُحذف كل البيانات التشغيلية نهائياً ولا يمكن التراجع. متابعة؟')) return;
         state.designerBusy = true; render();
         try {
-          const deleteAll = async (table) => { await sb.from(table).delete().not('id', 'is', null); };
+          const wipeErrors = [];
+          const deleteAll = async (table) => { const { error } = await sb.from(table).delete().not('id', 'is', null); if (error) wipeErrors.push(table); };
           await deleteAll('sales_invoice_items'); await deleteAll('sales_invoices');
           await deleteAll('purchase_invoice_items'); await deleteAll('purchase_invoices');
           await deleteAll('quotation_items'); await deleteAll('quotations');
@@ -11132,13 +11140,14 @@ function bindAppEvents() {
           await deleteAll('receipt_vouchers'); await deleteAll('payment_vouchers');
           await deleteAll('backup_log'); await deleteAll('fiscal_closings');
           await deleteAll('journal_entry_lines'); await deleteAll('journal_entries');
-          await sb.from('parties').update({ balance: 0, opening_balance: 0 }).not('id', 'is', null);
-          await sb.from('item_warehouse_stock').update({ qty: 0 }).not('id', 'is', null);
-          await sb.from('items').update({ qty: 0 }).not('id', 'is', null);
+          { const { error } = await sb.from('parties').update({ balance: 0, opening_balance: 0 }).not('id', 'is', null); if (error) wipeErrors.push('parties'); }
+          { const { error } = await sb.from('item_warehouse_stock').update({ qty: 0 }).not('id', 'is', null); if (error) wipeErrors.push('item_warehouse_stock'); }
+          { const { error } = await sb.from('items').update({ qty: 0 }).not('id', 'is', null); if (error) wipeErrors.push('items'); }
           await loadItems(); await loadParties();
           designerLogPush('ok', 'تم التصفير الكامل بنجاح — النظام جاهز لشركة جديدة');
           logActivity('تصفير كامل للنظام', 'عملية حساسة جداً');
           document.getElementById('dp-confirm-phrase').value = '';
+          if (wipeErrors.length > 0) designerLogPush('error', 'فشل تصفير بعض الجداول: ' + wipeErrors.join(', ') + ' — راجعها يدوياً');
         } catch (e) {
           designerLogPush('error', 'حصل خطأ أثناء التصفير: ' + e.message);
         }
@@ -11149,13 +11158,14 @@ function bindAppEvents() {
       document.getElementById('dp-reset-company').onclick = async () => {
         if (!confirm('هذا يمسح اسم الشركة والشعار والأرقام الضريبية وكل بيانات التواصل نهائياً. متابعة؟')) return;
         state.designerBusy = true; render();
-        await sb.from('company_settings').update({
+        const { error: resetCoErr } = await sb.from('company_settings').update({
           name_ar: null, name_en: null, address: null, phone: null, logo_url: null,
           tax_number: null, commercial_register: null, iban: null, email: null, website: null,
           phone2: null, mobile: null, tagline_ar: null, tagline_en: null, footer_note: null, quote_terms: null,
         }).eq('id', 1);
         await loadCompany();
-        designerLogPush('ok', 'تم مسح بيانات الشركة بالكامل');
+        if (resetCoErr) designerLogPush('error', 'فشل مسح بيانات الشركة: ' + resetCoErr.message);
+        else designerLogPush('ok', 'تم مسح بيانات الشركة بالكامل');
         logActivity('مسح بيانات الشركة');
         state.designerBusy = false; render();
       };
@@ -11169,7 +11179,8 @@ function bindAppEvents() {
         if (!confirm(`راح يُصفّر: ${checked.join('، ')} — بدون التأثير على باقي البيانات. متابعة؟`)) return;
         state.designerBusy = true; render();
         try {
-          const deleteAll = async (table) => { await sb.from(table).delete().not('id', 'is', null); };
+          const wipeErrors2 = [];
+          const deleteAll = async (table) => { const { error } = await sb.from(table).delete().not('id', 'is', null); if (error) wipeErrors2.push(table); };
           if (checked.includes('purchase_invoices')) { await deleteAll('purchase_invoice_items'); await deleteAll('purchase_invoices'); }
           if (checked.includes('sales_invoices')) { await deleteAll('sales_invoice_items'); await deleteAll('sales_invoices'); }
           if (checked.includes('quotations')) { await deleteAll('quotation_items'); await deleteAll('quotations'); }
@@ -11177,9 +11188,10 @@ function bindAppEvents() {
           if (checked.includes('vouchers')) { await deleteAll('receipt_vouchers'); await deleteAll('payment_vouchers'); }
           if (checked.includes('stock_counts')) { await deleteAll('stock_count_items'); await deleteAll('stock_counts'); }
           if (checked.includes('transfers')) { await deleteAll('warehouse_transfer_items'); await deleteAll('warehouse_transfers'); }
-          if (checked.includes('party_balances')) { await sb.from('parties').update({ balance: 0, opening_balance: 0 }).not('id', 'is', null); }
-          if (checked.includes('item_qty')) { await sb.from('item_warehouse_stock').update({ qty: 0 }).not('id', 'is', null); await sb.from('items').update({ qty: 0 }).not('id', 'is', null); }
+          if (checked.includes('party_balances')) { const { error } = await sb.from('parties').update({ balance: 0, opening_balance: 0 }).not('id', 'is', null); if (error) wipeErrors2.push('parties'); }
+          if (checked.includes('item_qty')) { const r1 = await sb.from('item_warehouse_stock').update({ qty: 0 }).not('id', 'is', null); const r2 = await sb.from('items').update({ qty: 0 }).not('id', 'is', null); if (r1.error||r2.error) wipeErrors2.push('item_qty'); }
           if (checked.includes('journal')) { await deleteAll('journal_entry_lines'); await deleteAll('journal_entries'); }
+          if (wipeErrors2.length > 0) showToast('⚠️ فشل تصفير بعض الأجزاء: ' + wipeErrors2.join(', '), 'error');
           await loadItems(); await loadParties();
           designerLogPush('ok', `تم التصفير الجزئي لـ: ${checked.join('، ')}`);
           logActivity('تصفير جزئي', checked.join('، '));
@@ -11208,7 +11220,7 @@ function bindAppEvents() {
     };
     document.querySelectorAll('[data-toggle-pm]').forEach(chk => {
       chk.onchange = async () => {
-        await sb.from('payment_methods').update({ active: chk.checked }).eq('id', chk.dataset.togglePm);
+        { const { error: pmErr } = await sb.from('payment_methods').update({ active: chk.checked }).eq('id', chk.dataset.togglePm); if (pmErr) showToast('فشل التحديث', 'error'); }
         await loadPaymentMethods();
         render();
       };
@@ -11216,7 +11228,7 @@ function bindAppEvents() {
     document.querySelectorAll('[data-delete-pm]').forEach(btn => {
       btn.onclick = async () => {
         if (!confirm('حذف طريقة الدفع هذه؟')) return;
-        await sb.from('payment_methods').delete().eq('id', btn.dataset.deletePm);
+        { const { error: pmDelErr } = await sb.from('payment_methods').delete().eq('id', btn.dataset.deletePm); if (pmDelErr) { showToast('فشل الحذف', 'error'); return; } }
         await loadPaymentMethods();
         render();
       };
@@ -11566,7 +11578,7 @@ function bindAppEvents() {
       document.getElementById('is-template-confirm').onclick = async () => {
         const name = document.getElementById('is-template-name').value.trim();
         if (!name) { alert('اكتب اسم للقالب'); return; }
-        await sb.from('report_templates').insert({ name, report_type: 'income_statement', display_level: state.incomeStatementLevel });
+        { const { error: tplErr } = await sb.from('report_templates').insert({ name, report_type: 'income_statement', display_level: state.incomeStatementLevel }); if (tplErr) { showToast('فشل حفظ القالب', 'error'); return; } }
         await loadReportTemplates();
         state.showSaveTemplateBox = false;
         showToast('تم حفظ القالب');
@@ -11650,7 +11662,7 @@ function bindAppEvents() {
       document.getElementById('bs-template-confirm').onclick = async () => {
         const name = document.getElementById('bs-template-name').value.trim();
         if (!name) { alert('اكتب اسم للقالب'); return; }
-        await sb.from('report_templates').insert({ name, report_type: 'balance_sheet', display_level: state.balanceSheetLevel });
+        { const { error: tplErr2 } = await sb.from('report_templates').insert({ name, report_type: 'balance_sheet', display_level: state.balanceSheetLevel }); if (tplErr2) { showToast('فشل حفظ القالب', 'error'); return; } }
         await loadReportTemplates();
         state.showBsSaveTemplateBox = false;
         showToast('تم حفظ القالب');
@@ -11839,8 +11851,7 @@ function bindAppEvents() {
           useful_life_years: Number(document.getElementById('fa-f-years').value)||5,
           notes: document.getElementById('fa-f-notes').value.trim()||null,
         };
-        if (state.editingAssetId) await sb.from('fixed_assets').update(payload).eq('id', state.editingAssetId);
-        else await sb.from('fixed_assets').insert(payload);
+        { const r = state.editingAssetId ? await sb.from('fixed_assets').update(payload).eq('id', state.editingAssetId) : await sb.from('fixed_assets').insert(payload); if (r.error) { showToast('فشل حفظ بيانات الأصل', 'error'); return; } }
         await loadFixedAssets();
         state.showAssetForm = false;
         render();
@@ -11909,8 +11920,7 @@ function bindAppEvents() {
           status: document.getElementById('emp-f-status').value,
           notes: document.getElementById('emp-f-notes').value.trim()||null,
         };
-        if (state.editingEmployeeId) await sb.from('employees').update(payload).eq('id', state.editingEmployeeId);
-        else await sb.from('employees').insert(payload);
+        { const r = state.editingEmployeeId ? await sb.from('employees').update(payload).eq('id', state.editingEmployeeId) : await sb.from('employees').insert(payload); if (r.error) { showToast('فشل حفظ بيانات الموظف', 'error'); return; } }
         await loadEmployees();
         state.showEmployeeForm = false;
         render();
@@ -11967,8 +11977,7 @@ function bindAppEvents() {
           const net = calcRowNet(r);
           const payload = { employee_id: r.employee_id, period: state.payrollPeriod, basic_salary: r.basic_salary, housing_allowance: r.housing_allowance, transport_allowance: r.transport_allowance,
             other_additions: Number(r.other_additions)||0, deductions: Number(r.deductions)||0, net_salary: net, paid: true, payment_date: today, payment_method: paymentMethod };
-          if (r.id) await sb.from('payroll_records').update(payload).eq('id', r.id);
-          else await sb.from('payroll_records').insert(payload);
+          { const res = r.id ? await sb.from('payroll_records').update(payload).eq('id', r.id) : await sb.from('payroll_records').insert(payload); if (res.error) { showToast('فشل حفظ سجل الراتب', 'error'); return; } }
         }
         // قيد محاسبي واحد مجمّع لكل رواتب الشهر: مدين رواتب وأجور (بعد خصم الخصومات) — دائن الصندوق/البنك، بنفس الصافي المدفوع فعلياً (يتوازن دايماً)
         const jEntry = await postJournalEntry(today, `رواتب شهر ${state.payrollPeriod}`, 'payroll', null, [
@@ -12018,7 +12027,7 @@ function bindAppEvents() {
           start_date: startDate, end_date: endDate, days_count: daysBetween(startDate, endDate),
           notes: document.getElementById('lv-f-notes').value.trim()||null,
         };
-        await sb.from('employee_leaves').insert(payload);
+        { const { error: leaveErr } = await sb.from('employee_leaves').insert(payload); if (leaveErr) { showToast('فشل حفظ الإجازة', 'error'); return; } }
         await loadEmployeeLeaves();
         state.showLeaveForm = false;
         render();
@@ -12047,12 +12056,14 @@ function bindAppEvents() {
           if (!jEntry) { showToast('⚠️ فشل ترحيل القيد المحاسبي — راجع الحساب يدوياً', 'error'); }
           else jEntryId = jEntry.id;
         }
-        await sb.from('eosb_settlements').insert({
+        const { error: eosbErr } = await sb.from('eosb_settlements').insert({
           employee_id: emp.id, employee_name: emp.full_name, hire_date: emp.hire_date, end_date: state.eosbEndDate,
           years_of_service: calc.years, reason: state.eosbReason, basic_salary: emp.basic_salary,
           full_benefit: calc.fullBenefit, final_benefit: calc.finalBenefit, paid: calc.finalBenefit===0, payment_date: today, journal_entry_id: jEntryId,
         });
-        await sb.from('employees').update({ status: 'متوقف' }).eq('id', emp.id);
+        if (eosbErr) { showToast('فشل حفظ تسوية نهاية الخدمة', 'error'); return; }
+        const { error: empStatusErr } = await sb.from('employees').update({ status: 'متوقف' }).eq('id', emp.id);
+        if (empStatusErr) showToast('⚠️ التسوية اتحفظت لكن فشل تحديث حالة الموظف — عدّلها يدوياً', 'error');
         await loadEmployees();
         await loadEosbSettlements();
         showToast('تم اعتماد تسوية نهاية الخدمة بنجاح');
@@ -12135,7 +12146,9 @@ function bindAppEvents() {
         if (!confirm('اعتماد سند التسوية يعدّل رصيد الطرف مباشرة ويرحّل قيد محاسبي، ولا يمكن التراجع من هنا. متابعة؟')) return;
         const party = state.parties.find(p => p.id === f.party_id);
         const delta = f.direction === 'increase' ? Number(f.amount) : -Number(f.amount);
-        if (party) await sb.from('parties').update({ balance: Number(party.balance||0) + delta }).eq('id', party.id);
+        let stvBalErr = null;
+        if (party) { const r = await sb.from('parties').update({ balance: Number(party.balance||0) + delta }).eq('id', party.id); stvBalErr = r.error; }
+        if (stvBalErr) { showToast('فشل تحديث رصيد الطرف — لم يُعتمد السند', 'error'); return; }
         await sb.from('settlement_vouchers').update({ approved: true }).eq('id', state.editingSettlementVoucherId);
         f.approved = true;
         logActivity('اعتماد سند تسوية', f.voucher_number);
@@ -12205,7 +12218,7 @@ function bindAppEvents() {
     if (document.getElementById('cdv-approve')) {
       document.getElementById('cdv-approve').onclick = async () => {
         if (!confirm('اعتماد السند يرحّل قيد محاسبي فوراً، ولا يمكن التراجع من هنا. متابعة؟')) return;
-        await sb.from('cash_disbursement_vouchers').update({ approved: true }).eq('id', state.editingCashDisbursementId);
+        { const { error: appErr5 } = await sb.from('cash_disbursement_vouchers').update({ approved: true }).eq('id', state.editingCashDisbursementId); if (appErr5) { showToast('فشل اعتماد سند الصرف — حاول من جديد', 'error'); return; } }
         f.approved = true;
         logActivity('اعتماد سند صرف صندوق', f.voucher_number);
         const jEntry9 = await postJournalEntry(f.voucher_date, `سند صرف صندوق ${f.voucher_number}`, 'cash_disbursement', state.editingCashDisbursementId, [
@@ -12340,7 +12353,7 @@ function bindAppEvents() {
     if (document.getElementById('maint-backup-frequency-save')) {
       document.getElementById('maint-backup-frequency-save').onclick = async () => {
         const freq = Number(document.getElementById('maint-backup-frequency').value);
-        await sb.from('backup_settings').update({ frequency_days: freq }).eq('id', 1);
+        { const { error: freqErr } = await sb.from('backup_settings').update({ frequency_days: freq }).eq('id', 1); if (freqErr) showToast('فشل حفظ الإعداد', 'error'); }
         const { data: fresh } = await sb.from('backup_settings').select('*').eq('id', 1).maybeSingle();
         state.backupSettings = fresh;
         showToast('تم حفظ إعداد التكرار');
@@ -12519,9 +12532,7 @@ function bindAppEvents() {
               for (const row of rows) {
                 if (!row.name || !row.party_type) continue;
                 const { id, created_at, updated_at, ...rest } = row;
-                if (row.code) { await sb.from('parties').upsert(rest, { onConflict: 'code' }); }
-                else { await sb.from('parties').insert(rest); }
-                partiesCount++;
+                { const r = row.code ? await sb.from('parties').upsert(rest, { onConflict: 'code' }) : await sb.from('parties').insert(rest); if (!r.error) partiesCount++; else console.error('فشل استيراد عميل/مورد', row.name, r.error); }
               }
             }
             await loadItems();
@@ -12604,8 +12615,8 @@ function bindAppEvents() {
       for (const item of state.items) {
         const correctQty = totals.get(item.id) || 0;
         if (Number(item.qty) !== correctQty) {
-          await sb.from('items').update({ qty: correctQty }).eq('id', item.id);
-          fixed++;
+          const { error: fixErr2 } = await sb.from('items').update({ qty: correctQty }).eq('id', item.id);
+          if (!fixErr2) fixed++; else console.error('فشل تصحيح رصيد صنف', item.id, fixErr2);
         }
       }
       await loadItems();
@@ -12809,14 +12820,16 @@ function bindAppEvents() {
             const addQty = Number(l.quantity), addCost = Number(l.cost);
             const newQtyTotal = oldQty + addQty;
             const weightedAvgCost = newQtyTotal > 0 ? ((oldQty*oldCost)+(addQty*addCost))/newQtyTotal : addCost;
-            await sb.from('items').update({ qty:newQtyTotal, cost:weightedAvgCost }).eq('id', l.item_id);
+            const { error: oiItemErr } = await sb.from('items').update({ qty:newQtyTotal, cost:weightedAvgCost }).eq('id', l.item_id);
+            if (oiItemErr) console.error('فشل تحديث رصيد صنف بالمخزون الافتتاحي', l.item_id, oiItemErr);
             await adjustWarehouseStock(l.item_id, f.warehouse_id, addQty);
           }
           const jEntry = await postJournalEntry(f.doc_date, `مخزون افتتاحي - ${f.doc_number}`, 'opening_inventory', docId, [
             { account_code:'1103', debit: total, credit:0, description:'مخزون افتتاحي' },
             { account_code:'3101', debit:0, credit: total, description:'ضمن رأس المال الافتتاحي' },
           ]);
-          await sb.from('opening_inventory_docs').update({ approved:true, journal_entry_id: jEntry?.id||null }).eq('id', docId);
+          const { error: oiApproveErr } = await sb.from('opening_inventory_docs').update({ approved:true, journal_entry_id: jEntry?.id||null }).eq('id', docId);
+          if (oiApproveErr) console.error('فشل تحديث حالة اعتماد مستند المخزون الافتتاحي', oiApproveErr);
           if (!jEntry) showToast('⚠️ تم الحفظ لكن فشل ترحيل القيد المحاسبي — راجع الحساب يدوياً', 'error');
           else showToast('تم حفظ واعتماد مستند المخزون الافتتاحي بنجاح');
           await loadItems();
@@ -12949,7 +12962,7 @@ function bindAppEvents() {
         const val = inp.value.trim();
         const u = state.users.find(x => x.id === inp.dataset.nameFor);
         if (val && val !== (u.display_name || u.username)) {
-          await sb.from('profiles').update({ display_name: val }).eq('id', u.id);
+          { const { error: dnErr } = await sb.from('profiles').update({ display_name: val }).eq('id', u.id); if (dnErr) showToast('فشل تحديث الاسم', 'error'); }
           await loadUsers();
         }
       };
@@ -12957,7 +12970,7 @@ function bindAppEvents() {
     document.querySelectorAll('[data-toggle-active]').forEach(btn => {
       btn.onclick = async () => {
         const u = state.users.find(x => x.id === btn.dataset.toggleActive);
-        await sb.from('profiles').update({ active: !u.active }).eq('id', u.id);
+        { const { error: actErr } = await sb.from('profiles').update({ active: !u.active }).eq('id', u.id); if (actErr) { showToast('فشل تحديث حالة المستخدم', 'error'); return; } }
         await loadUsers();
         render();
       };
@@ -12965,7 +12978,7 @@ function bindAppEvents() {
     document.querySelectorAll('[data-del-user]').forEach(btn => {
       btn.onclick = async () => {
         if (!confirm('هذا يوقف وصول المستخدم للنظام (الحساب نفسه يبقى بـ Supabase). متابعة؟')) return;
-        await sb.from('profiles').delete().eq('id', btn.dataset.delUser);
+        { const { error: delUErr } = await sb.from('profiles').delete().eq('id', btn.dataset.delUser); if (delUErr) { showToast('فشل حذف المستخدم', 'error'); return; } }
         await loadUsers();
         render();
       };
@@ -12973,7 +12986,7 @@ function bindAppEvents() {
     document.querySelectorAll('[data-role-for]').forEach(sel => {
       sel.onchange = async () => {
         const u = state.users.find(x => x.id === sel.dataset.roleFor);
-        await sb.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.roleFor);
+        { const { error: roleErr } = await sb.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.roleFor); if (roleErr) showToast('فشل تحديث الصلاحية', 'error'); }
         logActivity('تغيير صلاحية مستخدم', `${u?.username||''} → ${sel.value}`);
         await loadUsers();
         render();
@@ -12982,7 +12995,7 @@ function bindAppEvents() {
     document.querySelectorAll('[data-perm]').forEach(chk => {
       chk.onchange = async () => {
         const u = state.users.find(x => x.id === chk.dataset.permUser);
-        await sb.from('profiles').update({ [chk.dataset.perm]: chk.checked }).eq('id', chk.dataset.permUser);
+        { const { error: permErr } = await sb.from('profiles').update({ [chk.dataset.perm]: chk.checked }).eq('id', chk.dataset.permUser); if (permErr) showToast('فشل تحديث الصلاحية', 'error'); }
         logActivity('تعديل صلاحية دقيقة', `${u?.username||''}: ${chk.dataset.perm} = ${chk.checked}`);
         await loadUsers();
         render();
@@ -13029,11 +13042,12 @@ function bindAppEvents() {
           return;
         }
         if (data.user) {
-          await sb.from('profiles').update({
+          const { error: newProfileErr } = await sb.from('profiles').update({
             role, display_name: displayName || username,
             can_approve: canApproveChk, can_manage_company: canCompanyChk, can_manage_backup: canBackupChk,
             is_support: isSupportChk,
           }).eq('id', data.user.id);
+          if (newProfileErr) { showToast('تم إنشاء الحساب لكن فشل حفظ الصلاحيات — عدّلها يدوياً من قائمة المستخدمين', 'error'); }
         }
         logActivity('إنشاء مستخدم جديد', username);
         await loadUsers();
@@ -13093,7 +13107,7 @@ function bindAppEvents() {
     if (document.getElementById('save-image-btn')) {
       document.getElementById('save-image-btn').onclick = async () => {
         readFormFromDom();
-        await sb.from('items').update({ image_url: state.form.image_url || null }).eq('id', state.editingId);
+        { const { error: imgErr } = await sb.from('items').update({ image_url: state.form.image_url || null }).eq('id', state.editingId); if (imgErr) showToast('فشل حفظ الصورة', 'error'); }
         await loadItems();
         showToast('تم حفظ الصورة');
       };
@@ -13103,14 +13117,14 @@ function bindAppEvents() {
         const compId = document.getElementById('bundle-item-select').value;
         const qty = Number(document.getElementById('bundle-qty').value) || 1;
         if (!compId) return;
-        await sb.from('item_bundle_components').insert({ parent_item_id: state.editingId, component_item_id: compId, quantity: qty });
+        { const { error: bundleErr } = await sb.from('item_bundle_components').insert({ parent_item_id: state.editingId, component_item_id: compId, quantity: qty }); if (bundleErr) { showToast('فشل إضافة المكوّن', 'error'); return; } }
         await loadBundleComponents(state.editingId);
         render();
       };
     }
     document.querySelectorAll('[data-remove-bundle]').forEach(btn => {
       btn.onclick = async () => {
-        await sb.from('item_bundle_components').delete().eq('id', btn.dataset.removeBundle);
+        { const { error: rmBundleErr } = await sb.from('item_bundle_components').delete().eq('id', btn.dataset.removeBundle); if (rmBundleErr) { showToast('فشل الحذف', 'error'); return; } }
         await loadBundleComponents(state.editingId);
         render();
       };
@@ -13119,14 +13133,14 @@ function bindAppEvents() {
       document.getElementById('relation-add-btn').onclick = async () => {
         const relId = document.getElementById('relation-item-select').value;
         if (!relId) return;
-        await sb.from('item_relations').insert({ item_id: state.editingId, related_item_id: relId });
+        { const { error: relErr } = await sb.from('item_relations').insert({ item_id: state.editingId, related_item_id: relId }); if (relErr) { showToast('فشل إضافة الصنف المرتبط', 'error'); return; } }
         await loadItemRelations(state.editingId);
         render();
       };
     }
     document.querySelectorAll('[data-remove-relation]').forEach(btn => {
       btn.onclick = async () => {
-        await sb.from('item_relations').delete().eq('id', btn.dataset.removeRelation);
+        { const { error: rmRelErr } = await sb.from('item_relations').delete().eq('id', btn.dataset.removeRelation); if (rmRelErr) { showToast('فشل الحذف', 'error'); return; } }
         await loadItemRelations(state.editingId);
         render();
       };
@@ -13186,12 +13200,14 @@ function bindAppEvents() {
               const { data: lastCounts } = await sb.from('stock_counts').select('count_number').order('created_at', { ascending: false }).limit(50);
               const maxNum = (lastCounts||[]).reduce((max,c) => { const m=(c.count_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
               const countNumber = `SC-${String(maxNum+1).padStart(4,'0')}`;
-              const { data: sc } = await sb.from('stock_counts').insert({
+              const { data: sc, error: scErr } = await sb.from('stock_counts').insert({
                 count_number: countNumber, warehouse_id: whId, count_date: new Date().toISOString().slice(0,10),
                 notes: 'رصيد افتتاحي تلقائي عند إنشاء الصنف', approved: true, created_by: state.session.user.id,
               }).select().single();
+              if (scErr) console.error('فشل إنشاء سند جرد الرصيد الافتتاحي للصنف الجديد', scErr);
               if (sc) {
-                await sb.from('stock_count_items').insert({ count_id: sc.id, item_id: data.id, system_qty: 0, counted_qty: openingQty });
+                const { error: sciErr } = await sb.from('stock_count_items').insert({ count_id: sc.id, item_id: data.id, system_qty: 0, counted_qty: openingQty });
+                if (sciErr) console.error('فشل تسجيل صنف سند الجرد الافتتاحي', sciErr);
                 const openingValue = openingQty * (Number(payload.cost)||0);
                 if (openingValue > 0) {
                   const jEntry10 = await postJournalEntry(sc.count_date, `رصيد افتتاحي - صنف ${payload.sku}`, 'stock_count', sc.id, [
@@ -13351,8 +13367,10 @@ async function ensurePartyAccount(partyId, partyType) {
   const maxNum = (existing||[]).reduce((max, a) => { const suffix = a.code.slice(parentCode.length); const n = parseInt(suffix,10); return isNaN(n)?max:Math.max(max,n); }, 0);
   const newCode = parentCode + String(maxNum+1).padStart(3,'0');
   const partyName = party ? party.name : '';
-  await sb.from('chart_of_accounts').insert({ code:newCode, parent_code:parentCode, name: partyName, account_type: partyType==='customer'?'asset':'liability', level:'3', is_posting_account:true, active:true });
-  await sb.from('parties').update({ account_code: newCode }).eq('id', partyId);
+  const { error: coaErr } = await sb.from('chart_of_accounts').insert({ code:newCode, parent_code:parentCode, name: partyName, account_type: partyType==='customer'?'asset':'liability', level:'3', is_posting_account:true, active:true });
+  if (coaErr) { console.error('فشل فتح حساب فرعي للعميل/المورد', coaErr); return null; }
+  const { error: linkErr } = await sb.from('parties').update({ account_code: newCode }).eq('id', partyId);
+  if (linkErr) console.error('فشل ربط الحساب بالعميل/المورد', linkErr);
   return newCode;
 }
 // يرجّع الحساب اللي يترحّل عليه القيد لعميل/مورد معيّن — حسابه الخاص لو موجود، وإلا الحساب المجمّع الافتراضي
