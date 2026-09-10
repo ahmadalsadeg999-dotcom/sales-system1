@@ -6735,7 +6735,7 @@ function renderTabContent() {
       <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:#5F5E5A;border-top:1px solid #DEDACB;margin-top:4px;padding-top:8px;">التكلفة</div>
       ${field('التكلفة الافتتاحية', `<input id="f-opening_cost" class="input" value="${escapeHtml(f.opening_cost)}" />`)}
       ${field('التكلفة الأجنبية', `<input id="f-foreign_cost" class="input" value="${escapeHtml(f.foreign_cost)}" />`)}
-      ${field('التكلفة الحالية', `<input id="f-cost" class="input" value="${escapeHtml(f.cost)}" />`)}
+      ${field('التكلفة الحالية', `<input id="f-cost" class="input ${e.cost?'err':''}" value="${escapeHtml(f.cost)}" />`)}
       ${field('آخر تكلفة', `<input id="f-last_cost" class="input" value="${escapeHtml(f.last_cost)}" />`)}
       ${field('التكلفة الدفترية', `<input id="f-book_cost" class="input" value="${escapeHtml(f.book_cost)}" />`)}
       <div style="grid-column:1/-1;">
@@ -13160,6 +13160,7 @@ function bindAppEvents() {
       if (!f.sku || !f.sku.trim()) errs.sku = true;
       if (!f.name || !f.name.trim()) errs.name = true;
       if (f.price === '' || isNaN(Number(f.price)) || Number(f.price) < 0) errs.price = true;
+      if (f.cost !== '' && f.cost !== undefined && f.cost !== null && (isNaN(Number(f.cost)) || Number(f.cost) < 0)) errs.cost = true;
       if (f.qty === '' || isNaN(Number(f.qty)) || Number(f.qty) < 0) errs.qty = true;
       const dup = state.items.find(it => it.sku === f.sku.trim() && it.id !== state.editingId);
       if (dup) errs.sku = true;
