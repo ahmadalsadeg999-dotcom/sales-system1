@@ -113,6 +113,7 @@ let state = {
   showInventoryStats: false, invStatsOpeningValue: 0,
   showOpeningInv: false, openingInvDocs: [], showOpeningInvForm: false, openingInvForm: null, editingOpeningInvId: null,
   reportsHubCategory: 'accounting',
+  homeCogs: null,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -930,6 +931,13 @@ function renderSummaryCards(results) {
     + card('إجمالي المبلغ', fmt(total), '#2C4A6E', '#E6F1FB')
     + card('إجمالي الضريبة', fmt(tax), '#BA7517', '#FAEEDA')
     + card('متوسط السجل', fmt(avg), '#0F6E56', '#E1F5EE');
+}
+
+// صافي ربح دقيق للشاشة الرئيسية: مبيعات − تكلفة البضاعة المباعة فعلياً (حساب 5101)، مو كل المشتريات
+async function calcHomeNetProfit() {
+  const { data } = await sb.from('journal_entry_lines').select('debit').eq('account_code', '5101');
+  const totalCogs = (data||[]).reduce((s,r) => s + Number(r.debit||0), 0);
+  return totalCogs;
 }
 
 async function loadCompany() {
@@ -2772,7 +2780,7 @@ function renderHomeSection() {
   const totalPurchases = (state.purchases||[]).filter(i => i.approved).reduce((s,i) => s + Number(i.total||0), 0);
   const salesCount = (state.salesInvoices||[]).filter(i => i.approved).length;
   const purchasesCount = (state.purchases||[]).filter(i => i.approved).length;
-  const netProfit = totalSales - totalPurchases;
+  const netProfit = state.homeCogs !== null ? (totalSales - state.homeCogs) : (totalSales - totalPurchases);
   const lowStockCount = (state.items||[]).filter(it => Number(it.qty) <= Number(it.reorder_at||0)).length;
 
   const kpiCard = (icon, label, value, sub, grad, iconColor) => `
@@ -12410,7 +12418,7 @@ function bindAppEvents() {
         addSheet('تفاصيل القيود', jel.data);
         addSheet('سجل النشاط', al.data);
         XLSX.writeFile(wb, `نسخة_احتياطية_${new Date().toISOString().slice(0,10)}.xlsx`);
-        await sb.from('backup_log').insert({ taken_by: state.session.user.id });
+        { const { error: bkErr } = await sb.from('backup_log').insert({ taken_by: state.session.user.id }); if (bkErr) console.error('فشل تسجيل عملية النسخ الاحتياطي بالسجل', bkErr); }
         const { data: backups } = await sb.from('backup_log').select('*').order('taken_at', { ascending: false }).limit(5);
         state.backupHistory = backups || [];
       } catch (e) {
@@ -12452,7 +12460,7 @@ function bindAppEvents() {
           a.href = url; a.download = `نسخة_احتياطية_تامة_${new Date().toISOString().slice(0,10)}.json`;
           a.click();
           URL.revokeObjectURL(url);
-          await sb.from('backup_log').insert({ taken_by: state.session.user.id });
+          { const { error: bkErr } = await sb.from('backup_log').insert({ taken_by: state.session.user.id }); if (bkErr) console.error('فشل تسجيل عملية النسخ الاحتياطي بالسجل', bkErr); }
           const { data: backups } = await sb.from('backup_log').select('*').order('taken_at', { ascending: false }).limit(5);
           state.backupHistory = backups || [];
           showToast('تم تحميل النسخة الاحتياطية التامة بنجاح');
@@ -13400,7 +13408,7 @@ async function init() {
   await loadCompany();
   const { data } = await sb.auth.getSession();
   state.session = data.session;
-  if (state.session) { await loadProfile(); await loadItems(); await loadParties(); await loadPurchases(); await loadSalesInvoices(); await loadWarehouses(); await loadPaymentMethods(); }
+  if (state.session) { await loadProfile(); await loadItems(); await loadParties(); await loadPurchases(); await loadSalesInvoices(); await loadWarehouses(); await loadPaymentMethods(); state.homeCogs = await calcHomeNetProfit(); }
   render();
   if (state.session) checkAndRunAutoBackup(); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
 }
