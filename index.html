@@ -2173,8 +2173,8 @@ function renderPartyTabContent() {
   if (tab === 'معلومات مالية') {
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div>${partyField('نوع التعامل', `<label style="font-size:12.5px;"><input id="p-is_deferred" type="checkbox" ${f.is_deferred?'checked':''} /> آجل</label>`)}</div>
-      ${partyField('حد الائتمان', `<input id="p-credit_limit" class="input" value="${escapeHtml(f.credit_limit)}" />`)}
-      ${partyField('مدة الائتمان (يوم)', `<input id="p-credit_period_days" class="input" value="${escapeHtml(f.credit_period_days)}" />`)}
+      ${partyField('حد الائتمان', `<input id="p-credit_limit" class="input ${state.partyFormErrors?.credit_limit?'err':''}" value="${escapeHtml(f.credit_limit)}" />`)}
+      ${partyField('مدة الائتمان (يوم)', `<input id="p-credit_period_days" class="input ${state.partyFormErrors?.credit_period_days?'err':''}" value="${escapeHtml(f.credit_period_days)}" />`)}
       ${partyField('نسبة الخصم', `<input id="p-discount_percent" class="input" value="${escapeHtml(f.discount_percent)}" />`)}
       ${partyField('العملة', `<select id="p-currency" class="input"><option ${f.currency==='ريال سعودي'?'selected':''}>ريال سعودي</option><option ${f.currency==='دولار أمريكي'?'selected':''}>دولار أمريكي</option><option ${f.currency==='درهم إماراتي'?'selected':''}>درهم إماراتي</option></select>`)}
       ${partyField('سعر البيع', `<select id="p-price_level" class="input"><option ${f.price_level==='سعر1'?'selected':''}>سعر1</option><option ${f.price_level==='سعر2'?'selected':''}>سعر2</option><option ${f.price_level==='سعر3'?'selected':''}>سعر3</option></select>`)}
@@ -7758,6 +7758,7 @@ async function loadEmployeeLeaves() {
 }
 // حساب مكافأة نهاية الخدمة حسب نظام العمل السعودي
 function calcEosb(hireDate, endDate, reason, basicSalary) {
+  if (!hireDate) return { years: 0, fullBenefit: 0, finalBenefit: 0, error: 'تاريخ التعيين غير مسجّل لهذا الموظف — لازم تعدّل بياناته أول' };
   const years = Math.max((new Date(endDate) - new Date(hireDate)) / (1000*60*60*24*365.25), 0);
   const yearsAt5 = Math.min(years, 5);
   const yearsBeyond5 = Math.max(years - 5, 0);
@@ -10569,8 +10570,10 @@ function bindAppEvents() {
       const f = state.partyForm;
       const errs = {};
       if (!f.name || !f.name.trim()) errs.name = true;
+      if (f.credit_limit !== '' && f.credit_limit !== undefined && Number(f.credit_limit) < 0) errs.credit_limit = true;
+      if (f.credit_period_days !== '' && f.credit_period_days !== undefined && Number(f.credit_period_days) < 0) errs.credit_period_days = true;
       state.partyFormErrors = errs;
-      if (Object.keys(errs).length) { state.partyActiveTab = 'معلومات عامة'; render(); return; }
+      if (Object.keys(errs).length) { state.partyActiveTab = errs.name ? 'معلومات عامة' : 'معلومات مالية'; render(); return; }
       const txt = v => (v === '' || v === undefined) ? null : v;
       const num = v => (v === '' || v === undefined || v === null) ? null : Number(v);
       const payload = {
@@ -11908,6 +11911,8 @@ function bindAppEvents() {
         const salary = Number(document.getElementById('emp-f-salary').value);
         if (!name) { alert('اكتب اسم الموظف'); return; }
         if (!salary || salary <= 0) { alert('أدخل راتب أساسي صحيح'); return; }
+        const hireDateVal = document.getElementById('emp-f-hire-date').value;
+        if (!hireDateVal) { alert('تاريخ التعيين إلزامي — بدونه حساب نهاية الخدمة يكون خاطئ تماماً'); return; }
         const payload = {
           employee_number: document.getElementById('emp-f-number').value.trim()||null,
           full_name: name,
@@ -12052,6 +12057,7 @@ function bindAppEvents() {
       document.getElementById('eo-approve-btn').onclick = async () => {
         const emp = state.employees.find(e => e.id === state.eosbEmployeeId);
         const calc = calcEosb(emp.hire_date, state.eosbEndDate, state.eosbReason, Number(emp.basic_salary)||0);
+        if (calc.error) { alert(calc.error); return; }
         if (!confirm(`راح يُسجّل ${emp.full_name} كموظف متوقف، وتُرحّل مكافأة ${fmt(calc.finalBenefit)} كقيد محاسبي. متابعة؟`)) return;
         setBtnLoading(document.getElementById('eo-approve-btn'), true, 'جاري الاعتماد');
         const today = new Date().toISOString().slice(0,10);
