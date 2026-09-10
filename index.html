@@ -757,8 +757,7 @@ function renderAuth() {
       </div>
     </div>
     <div style="flex:1;background:#F7F8FA;display:flex;align-items:center;justify-content:center;padding:24px;">
-      <div style="width:100%;max-width:340px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(15,62,150,0.12);overflow:hidden;">
-      <div style="padding:36px 28px;">
+      <div style="width:100%;max-width:340px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(15,62,150,0.12);padding:36px 28px;">
         <div style="text-align:center;margin-bottom:28px;">
           <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#2C4A6E,#3D6389);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
             <i class="ti ti-login-2" style="font-size:22px;color:#fff;"></i>
@@ -802,21 +801,20 @@ function renderAuth() {
           </div>
         </div>
       </div>
-      <div style="background:#0F172A;overflow:hidden;white-space:nowrap;padding:8px 0;">
-        <style>
-          @keyframes dev-marquee-scroll { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-          #dev-marquee-track { display:inline-block; animation: dev-marquee-scroll 22s linear infinite; }
-        </style>
-        <div id="dev-marquee-track" style="color:#F8FAFC;font-size:11.5px;">
-          ${state.licenseSettings?.marquee_working_hours ? `<span style="margin:0 28px;">🕐 أوقات العمل: ${escapeHtml(state.licenseSettings.marquee_working_hours)}</span>` : ''}
-          ${state.licenseSettings?.marquee_phone ? `<span style="margin:0 28px;" dir="ltr">📞 ${escapeHtml(state.licenseSettings.marquee_phone)}</span>` : ''}
-          ${state.licenseSettings?.marquee_whatsapp ? `<span style="margin:0 28px;" dir="ltr">💬 واتساب: ${escapeHtml(state.licenseSettings.marquee_whatsapp)}</span>` : ''}
-          ${state.licenseSettings?.marquee_address ? `<span style="margin:0 28px;">📍 ${escapeHtml(state.licenseSettings.marquee_address)}</span>` : ''}
-          ${state.licenseSettings?.marquee_email ? `<span style="margin:0 28px;" dir="ltr">✉️ ${escapeHtml(state.licenseSettings.marquee_email)}</span>` : ''}
-          ${state.licenseSettings?.marquee_website ? `<span style="margin:0 28px;" dir="ltr">🌐 ${escapeHtml(state.licenseSettings.marquee_website)}</span>` : ''}
-        </div>
-      </div>
-      </div>
+    </div>
+  </div>
+  <div style="position:fixed;bottom:0;right:0;left:0;background:#0F172A;overflow:hidden;white-space:nowrap;padding:18px 0;z-index:40;box-shadow:0 -4px 16px rgba(0,0,0,0.3);">
+    <style>
+      @keyframes dev-marquee-scroll { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+      #dev-marquee-track { display:inline-block; animation: dev-marquee-scroll 26s linear infinite; }
+    </style>
+    <div id="dev-marquee-track" style="color:#F8FAFC;font-size:16px;font-weight:500;">
+      ${state.licenseSettings?.marquee_working_hours ? `<span style="margin:0 40px;">🕐 أوقات العمل: ${escapeHtml(state.licenseSettings.marquee_working_hours)}</span>` : ''}
+      ${state.licenseSettings?.marquee_phone ? `<span style="margin:0 40px;" dir="ltr">📞 ${escapeHtml(state.licenseSettings.marquee_phone)}</span>` : ''}
+      ${state.licenseSettings?.marquee_whatsapp ? `<span style="margin:0 40px;" dir="ltr">💬 واتساب: ${escapeHtml(state.licenseSettings.marquee_whatsapp)}</span>` : ''}
+      ${state.licenseSettings?.marquee_address ? `<span style="margin:0 40px;">📍 ${escapeHtml(state.licenseSettings.marquee_address)}</span>` : ''}
+      ${state.licenseSettings?.marquee_email ? `<span style="margin:0 40px;" dir="ltr">✉️ ${escapeHtml(state.licenseSettings.marquee_email)}</span>` : ''}
+      ${state.licenseSettings?.marquee_website ? `<span style="margin:0 40px;" dir="ltr">🌐 ${escapeHtml(state.licenseSettings.marquee_website)}</span>` : ''}
     </div>
   </div>`;
 }
