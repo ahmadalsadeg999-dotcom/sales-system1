@@ -114,6 +114,10 @@ let state = {
   showOpeningInv: false, openingInvDocs: [], showOpeningInvForm: false, openingInvForm: null, editingOpeningInvId: null,
   reportsHubCategory: 'accounting',
   homeCogs: null,
+  itemVehicleCompat: [], newVehicleMake: '', newVehicleModel: '', newVehicleYearFrom: '', newVehicleYearTo: '',
+  showVehicleSearch: false, vehicleSearchMake: '', vehicleSearchModel: '', vehicleSearchYear: '', vehicleSearchResults: null,
+  showBulkPrice: false, bulkPriceSelections: {}, bulkPriceQuery: '', bulkPriceField: 'price', bulkPriceMode: 'percent_increase', bulkPriceValue: '',
+  showGlobalSearch: false, globalSearchQuery: '', globalSearchResults: null,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
   session: null,
   view: 'login', // login | signup
@@ -852,7 +856,6 @@ async function loadItemRelations(itemId) {
   const { data } = await sb.from('item_relations').select('id, related_item_id, items!item_relations_related_item_id_fkey(name)').eq('item_id', itemId);
   state.itemRelations = (data || []).map(r => ({ id: r.id, related_name: r.items ? r.items.name : '' }));
 }
-
 // ---------- PARTIES (العملاء والموردين) ----------
 async function loadParties() {
   const { data, error } = await sb.from('parties').select('*').order('created_at', { ascending: false });
@@ -1660,6 +1663,31 @@ async function adjustWarehouseStock(itemId, warehouseId, delta) {
   if (error) { console.error('فشل تحديث رصيد المستودع للصنف', itemId, error); showToast('⚠️ تعذّر تحديث رصيد المستودع — راجع المخزون يدوياً', 'error'); return false; }
   return true;
 }
+// ---------- توافق قطع الغيار مع السيارات ----------
+async function runGlobalSearch(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return { items:[], parties:[], sales:[], purchases:[] };
+  const items = state.items.filter(it => (it.name||'').toLowerCase().includes(q) || (it.sku||'').toLowerCase().includes(q)).slice(0,8);
+  const parties = state.parties.filter(p => (p.name||'').toLowerCase().includes(q) || (p.phone||'').includes(q) || (p.mobile||'').includes(q)).slice(0,8);
+  const sales = state.salesInvoices.filter(inv => (inv.invoice_number||'').toLowerCase().includes(q) || (inv.parties?.name||'').toLowerCase().includes(q)).slice(0,8);
+  const purchases = state.purchases.filter(inv => (inv.invoice_number||'').toLowerCase().includes(q) || (inv.parties?.name||'').toLowerCase().includes(q)).slice(0,8);
+  return { items, parties, sales, purchases };
+}
+
+async function loadItemVehicleCompat(itemId) {
+  const { data } = await sb.from('item_vehicle_compatibility').select('*').eq('item_id', itemId).order('vehicle_make');
+  return data || [];
+}
+async function searchItemsByVehicle(make, model, year) {
+  let q = sb.from('item_vehicle_compatibility').select('item_id, vehicle_make, vehicle_model, year_from, year_to').ilike('vehicle_make', `%${make}%`);
+  if (model) q = q.ilike('vehicle_model', `%${model}%`);
+  const { data, error } = await q;
+  if (error || !data) return [];
+  const yearNum = Number(year);
+  const filtered = data.filter(r => !year || isNaN(yearNum) || ((r.year_from==null || yearNum >= r.year_from) && (r.year_to==null || yearNum <= r.year_to)));
+  return [...new Set(filtered.map(r => r.item_id))];
+}
+
 async function loadItemWarehouseBreakdown(itemId) {
   const { data } = await sb.from('item_warehouse_stock').select('qty, warehouses(name)').eq('item_id', itemId);
   return data || [];
@@ -1913,6 +1941,8 @@ const SUBMENUS = {
     { label: 'الأصناف', target: 'الاصناف' },
     { label: 'كشف حركة صنف', target: '__item_movement__' },
     { label: 'طباعة ملصقات باركود', target: '__barcode_labels__' },
+    { label: 'بحث بالسيارة', target: '__vehicle_search__' },
+    { label: 'تحديث أسعار جماعي', target: '__bulk_price__' },
   ],
   'المستودعات': [
     { label: 'المستودعات', target: '__warehouses__' },
@@ -2024,6 +2054,9 @@ function renderApp() {
   ${state.showMaintenance ? renderMaintenanceModal() : ''}
   ${state.showCashRecon ? renderCashReconModal() : ''}
   ${state.showBarcodeLabels ? renderBarcodeLabelsModal() : ''}
+  ${state.showVehicleSearch ? renderVehicleSearchModal() : ''}
+  ${state.showBulkPrice ? renderBulkPriceModal() : ''}
+  ${state.showGlobalSearch ? renderGlobalSearchModal() : ''}
   ${state.showQuickOpen ? renderQuickOpenModal() : ''}
   ${state.showInventoryStats ? renderInventoryStatsModal() : ''}
   ${state.showOpeningInv ? renderOpeningInvModal() : ''}
@@ -2829,6 +2862,7 @@ function renderHomeSection() {
               <div style="color:#B8C8DC;font-size:12px;font-weight:500;margin-bottom:12px;">${t('quick_shortcuts')}</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 ${homeShortcut('ti-search', 'فتح مستند برقمه', '__quick_open__')}
+                ${homeShortcut('ti-search-plus', 'بحث شامل', '__global_search__')}
                 ${homeShortcut('ti-file-invoice', t('sc_new_sale'), 'المبيعات')}
                 ${homeShortcut('ti-shopping-cart', t('sc_new_purchase'), 'المشتريات')}
                 ${homeShortcut('ti-cube-plus', t('sc_new_item'), 'الاصناف')}
@@ -4102,6 +4136,147 @@ function getLabelFormat() {
 }
 function saveLabelFormat(fmt) {
   try { localStorage.setItem('barcodeLabelFormat', JSON.stringify(fmt)); } catch(e) {}
+}
+
+function calcBulkNewPrice(oldPrice, mode, value) {
+  const v = Number(value) || 0;
+  oldPrice = Number(oldPrice) || 0;
+  if (mode === 'percent_increase') return Math.max(0, oldPrice * (1 + v/100));
+  if (mode === 'percent_decrease') return Math.max(0, oldPrice * (1 - v/100));
+  if (mode === 'amount_increase') return Math.max(0, oldPrice + v);
+  if (mode === 'amount_decrease') return Math.max(0, oldPrice - v);
+  return oldPrice;
+}
+function renderGlobalSearchModal() {
+  const r = state.globalSearchResults;
+  const section = (title, icon, list, renderRow) => list.length ? `
+    <div style="margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:6px;display:flex;align-items:center;gap:6px;"><i class="ti ${icon}"></i> ${title} (${list.length})</div>
+      <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;">
+        ${list.map(renderRow).join('')}
+      </div>
+    </div>` : '';
+  return `
+  <div id="gs-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:flex-start;justify-content:center;padding:60px 16px 16px;z-index:30;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:600px;max-height:80vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-search"></i> بحث شامل</span><button id="gs-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:14px 16px;">
+        <input id="gs-input" class="input" placeholder="اكتب اسم صنف، عميل، مورد، أو رقم فاتورة..." value="${escapeHtml(state.globalSearchQuery)}" autofocus />
+      </div>
+      ${!r ? `<div style="text-align:center;padding:20px;color:#8B8A7A;font-size:12px;">ابدأ الكتابة للبحث بكل النظام</div>` :
+        (r.items.length+r.parties.length+r.sales.length+r.purchases.length === 0) ? `<div style="text-align:center;padding:20px;color:#8B8A7A;font-size:12px;">ما فيه نتائج مطابقة</div>` : `
+      <div style="padding:0 16px 16px;">
+        ${section('الأصناف', 'ti-package', r.items, it => `
+          <div data-gs-item="${it.id}" style="padding:7px 10px;font-size:12px;border-bottom:1px solid #E4E2DA;cursor:pointer;display:flex;justify-content:space-between;">
+            <span>${escapeHtml(it.name)}</span><span class="mono" style="color:#8B8A7A;">${escapeHtml(it.sku)}</span>
+          </div>`)}
+        ${section('العملاء والموردون', 'ti-users', r.parties, p => `
+          <div data-gs-party="${p.id}" style="padding:7px 10px;font-size:12px;border-bottom:1px solid #E4E2DA;cursor:pointer;display:flex;justify-content:space-between;">
+            <span>${escapeHtml(p.name)}</span><span style="color:#8B8A7A;">${escapeHtml(p.phone||p.mobile||'')}</span>
+          </div>`)}
+        ${section('فواتير البيع', 'ti-file-invoice', r.sales, inv => `
+          <div data-gs-sale="${inv.id}" style="padding:7px 10px;font-size:12px;border-bottom:1px solid #E4E2DA;cursor:pointer;display:flex;justify-content:space-between;">
+            <span class="mono">${escapeHtml(inv.invoice_number)}</span><span style="color:#8B8A7A;">${escapeHtml(inv.parties?.name||'')}</span>
+          </div>`)}
+        ${section('فواتير الشراء', 'ti-shopping-cart', r.purchases, inv => `
+          <div data-gs-purchase="${inv.id}" style="padding:7px 10px;font-size:12px;border-bottom:1px solid #E4E2DA;cursor:pointer;display:flex;justify-content:space-between;">
+            <span class="mono">${escapeHtml(inv.invoice_number)}</span><span style="color:#8B8A7A;">${escapeHtml(inv.parties?.name||'')}</span>
+          </div>`)}
+      </div>`}
+    </div>
+  </div>`;
+}
+
+function renderBulkPriceModal() {
+  const q = state.bulkPriceQuery.trim().toLowerCase();
+  const results = !q ? state.items : state.items.filter(it => (it.sku||'').toLowerCase().includes(q) || (it.name||'').toLowerCase().includes(q));
+  const selectedIds = Object.keys(state.bulkPriceSelections).filter(id => state.bulkPriceSelections[id]);
+  const fieldLabel = { price:'السعر 1', price2:'السعر 2', price3:'السعر 3', cost:'التكلفة' }[state.bulkPriceField];
+  return `
+  <div id="bp-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:750px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>تحديث أسعار جماعي</span><button id="bp-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:14px 16px;">
+        <div style="background:#F0F6FC;border-radius:8px;padding:12px;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
+          <div>
+            <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">الحقل</div>
+            <select id="bp-field" class="input" style="min-width:120px;">
+              <option value="price" ${state.bulkPriceField==='price'?'selected':''}>السعر 1</option>
+              <option value="price2" ${state.bulkPriceField==='price2'?'selected':''}>السعر 2</option>
+              <option value="price3" ${state.bulkPriceField==='price3'?'selected':''}>السعر 3</option>
+              <option value="cost" ${state.bulkPriceField==='cost'?'selected':''}>التكلفة</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">نوع التعديل</div>
+            <select id="bp-mode" class="input" style="min-width:150px;">
+              <option value="percent_increase" ${state.bulkPriceMode==='percent_increase'?'selected':''}>زيادة نسبة %</option>
+              <option value="percent_decrease" ${state.bulkPriceMode==='percent_decrease'?'selected':''}>خصم نسبة %</option>
+              <option value="amount_increase" ${state.bulkPriceMode==='amount_increase'?'selected':''}>زيادة مبلغ ثابت</option>
+              <option value="amount_decrease" ${state.bulkPriceMode==='amount_decrease'?'selected':''}>خصم مبلغ ثابت</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">القيمة</div>
+            <input id="bp-value" class="input mono" style="max-width:100px;" value="${escapeHtml(state.bulkPriceValue)}" placeholder="مثال: 10" />
+          </div>
+        </div>
+        <input id="bp-search" class="input" placeholder="ابحث بالاسم أو الرقم..." value="${escapeHtml(state.bulkPriceQuery)}" style="margin-bottom:10px;" />
+        <div style="max-height:320px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>${['','اسم الصنف','السعر الحالي','السعر الجديد'].map(h => `<th style="padding:6px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${results.map((it,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; const checked = !!state.bulkPriceSelections[it.id]; const oldP = it[state.bulkPriceField]; const newP = calcBulkNewPrice(oldP, state.bulkPriceMode, state.bulkPriceValue); return `
+              <tr>
+                <td style="padding:5px 8px;background:${bg};border-bottom:1px solid #E4E2DA;"><input type="checkbox" data-bp-check="${it.id}" ${checked?'checked':''} /></td>
+                <td style="padding:5px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.name)}</td>
+                <td class="mono" style="padding:5px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(oldP)}</td>
+                <td class="mono" style="padding:5px 8px;background:${bg};font-size:11px;font-weight:${checked?'700':'400'};color:${checked?'#0F6E56':'#8B8A7A'};border-bottom:1px solid #E4E2DA;">${fmt(newP)}</td>
+              </tr>`; }).join('') || `<tr><td colspan="4" style="padding:14px;text-align:center;font-size:11.5px;color:#8B8A7A;">ما فيه أصناف مطابقة</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+          <span style="font-size:11.5px;color:#5F5E5A;">${selectedIds.length} صنف محدّد — سيتم تعديل "${fieldLabel}"</span>
+          <button id="bp-apply-btn" class="btn primary" style="padding:8px 16px;background:#0F6E56;border-color:#0F6E56;" ${selectedIds.length===0||!state.bulkPriceValue?'disabled':''}>تطبيق التحديث</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderVehicleSearchModal() {
+  const results = state.vehicleSearchResults;
+  return `
+  <div id="vs-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:650px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-car"></i> بحث بالسيارة</span><button id="vs-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 0.7fr auto;gap:10px;margin-bottom:16px;">
+          <input id="vs-make" class="input" placeholder="الماركة (مثلاً: تويوتا)" value="${escapeHtml(state.vehicleSearchMake)}" />
+          <input id="vs-model" class="input" placeholder="الموديل (مثلاً: كامري)" value="${escapeHtml(state.vehicleSearchModel)}" />
+          <input id="vs-year" class="input mono" placeholder="السنة" value="${escapeHtml(state.vehicleSearchYear)}" />
+          <button id="vs-search-btn" class="btn primary" style="padding:8px 16px;">بحث</button>
+        </div>
+        ${results === null ? `<div style="text-align:center;padding:24px;color:#8B8A7A;font-size:12.5px;">اكتب الماركة على الأقل واضغط بحث</div>` : `
+        <div style="font-size:11.5px;color:#5F5E5A;margin-bottom:8px;">${results.length} صنف متوافق</div>
+        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>${['رقم الصنف','اسم الصنف','الرصيد','السعر'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${results.map((it,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
+              <tr>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.sku)}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.name)}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11px;color:${Number(it.qty)<=0?'#C0392B':'#1F2421'};border-bottom:1px solid #E4E2DA;">${it.qty}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(it.price)}</td>
+              </tr>`; }).join('') || `<tr><td colspan="4" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه أصناف متوافقة مسجّلة لهذي السيارة</td></tr>`}
+            </tbody>
+          </table>
+        </div>`}
+      </div>
+    </div>
+  </div>`;
 }
 
 function renderBarcodeLabelsModal() {
@@ -6658,7 +6833,7 @@ function renderFormModal() {
       </div>
       <div style="display:flex;gap:2px;padding:10px 16px 0;border-bottom:1px solid #A9A48C;flex-wrap:wrap;">
         ${tabs.map(t => `<button data-tab="${t}" style="padding:6px 16px;font-size:12.5px;cursor:pointer;background:${state.activeTab===t?'#E8E4DA':'#DDD8C4'};border:1px solid #A9A48C;border-bottom:${state.activeTab===t?'1px solid #E8E4DA':'1px solid #A9A48C'};border-radius:4px 4px 0 0;margin-bottom:-1px;font-weight:${state.activeTab===t?'500':'400'};">${t}</button>`).join('')}
-        ${['التجميع','احصائيات','العلاقات','صور'].map(t => `<button data-tab="${t}" style="padding:6px 16px;font-size:12.5px;cursor:pointer;background:${state.activeTab===t?'#E8E4DA':'#DDD8C4'};border:1px solid #A9A48C;border-bottom:${state.activeTab===t?'1px solid #E8E4DA':'1px solid #A9A48C'};border-radius:4px 4px 0 0;margin-bottom:-1px;font-weight:${state.activeTab===t?'500':'400'};" ${state.editingId ? '' : 'disabled title="احفظ الصنف أول"'}>${t}</button>`).join('')}
+        ${['التجميع','احصائيات','العلاقات','توافق السيارات','صور'].map(t => `<button data-tab="${t}" style="padding:6px 16px;font-size:12.5px;cursor:pointer;background:${state.activeTab===t?'#E8E4DA':'#DDD8C4'};border:1px solid #A9A48C;border-bottom:${state.activeTab===t?'1px solid #E8E4DA':'1px solid #A9A48C'};border-radius:4px 4px 0 0;margin-bottom:-1px;font-weight:${state.activeTab===t?'500':'400'};" ${state.editingId ? '' : 'disabled title="احفظ الصنف أول"'}>${t}</button>`).join('')}
       </div>
       <div style="padding:18px;min-height:180px;max-height:52vh;overflow-y:auto;">
         ${renderTabContent()}
@@ -6833,6 +7008,25 @@ function renderTabContent() {
             <span>${escapeHtml(r.related_name)}</span>
             <button data-remove-relation="${r.id}" style="border:none;background:none;color:#C0392B;cursor:pointer;">✕</button>
           </div>`).join('') || `<div style="padding:12px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد أصناف مرتبطة بعد</div>`}
+      </div>
+    </div>`;
+  }
+  if (state.activeTab === 'توافق السيارات') {
+    return `<div>
+      <div style="font-size:12px;color:#5F5E5A;margin-bottom:10px;">سجّل كل سيارة (ماركة وموديل، ونطاق سنوات لو تعرفه) تناسبها هذي القطعة.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 0.7fr 0.7fr auto;gap:8px;margin-bottom:12px;">
+        <input id="veh-make-input" class="input" placeholder="الماركة (مثلاً: تويوتا)" />
+        <input id="veh-model-input" class="input" placeholder="الموديل (مثلاً: كامري)" />
+        <input id="veh-year-from-input" class="input mono" placeholder="من سنة" />
+        <input id="veh-year-to-input" class="input mono" placeholder="إلى سنة" />
+        <button id="veh-add-btn" class="btn primary" style="padding:6px 14px;">إضافة</button>
+      </div>
+      <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        ${(state.itemVehicleCompat||[]).map(v => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;">
+            <span>${escapeHtml(v.vehicle_make)} ${escapeHtml(v.vehicle_model)} ${v.year_from||v.year_to ? `(${v.year_from||'—'} - ${v.year_to||'—'})` : ''}</span>
+            <button data-remove-vehicle="${v.id}" style="border:none;background:none;color:#C0392B;cursor:pointer;">✕</button>
+          </div>`).join('') || `<div style="padding:12px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه سيارات مسجّلة بعد لهذي القطعة</div>`}
       </div>
     </div>`;
   }
@@ -8523,6 +8717,13 @@ function bindAppEvents() {
         render();
         return;
       }
+      if (target === '__global_search__') {
+        await loadParties();
+        state.globalSearchQuery = ''; state.globalSearchResults = null;
+        state.showGlobalSearch = true;
+        render();
+        return;
+      }
       if (target === '__receipt_vouchers__') {
         await loadParties();
         await loadReceiptVouchers();
@@ -8796,6 +8997,18 @@ function bindAppEvents() {
         state.labelSelections = {};
         state.labelSearchQuery = '';
         state.showBarcodeLabels = true;
+        render();
+        return;
+      }
+      if (target === '__vehicle_search__') {
+        state.vehicleSearchMake = ''; state.vehicleSearchModel = ''; state.vehicleSearchYear = ''; state.vehicleSearchResults = null;
+        state.showVehicleSearch = true;
+        render();
+        return;
+      }
+      if (target === '__bulk_price__') {
+        state.bulkPriceSelections = {}; state.bulkPriceQuery = ''; state.bulkPriceField = 'price'; state.bulkPriceMode = 'percent_increase'; state.bulkPriceValue = '';
+        state.showBulkPrice = true;
         render();
         return;
       }
@@ -12744,6 +12957,80 @@ function bindAppEvents() {
     }
   }
 
+  if (state.showVehicleSearch) {
+    document.getElementById('vs-close').onclick = () => { state.showVehicleSearch = false; render(); };
+    const runVehicleSearch = async () => {
+      const make = document.getElementById('vs-make').value.trim();
+      const model = document.getElementById('vs-model').value.trim();
+      const year = document.getElementById('vs-year').value.trim();
+      state.vehicleSearchMake = make; state.vehicleSearchModel = model; state.vehicleSearchYear = year;
+      if (!make) { showToast('اكتب الماركة على الأقل'); return; }
+      const itemIds = await searchItemsByVehicle(make, model, year);
+      state.vehicleSearchResults = state.items.filter(it => itemIds.includes(it.id));
+      render();
+    };
+    document.getElementById('vs-search-btn').onclick = runVehicleSearch;
+    document.getElementById('vs-year').onkeydown = (ev) => { if (ev.key === 'Enter') runVehicleSearch(); };
+  }
+
+  if (state.showBulkPrice) {
+    document.getElementById('bp-close').onclick = () => { state.showBulkPrice = false; render(); };
+    document.getElementById('bp-search').oninput = (ev) => { state.bulkPriceQuery = ev.target.value; render(); };
+    document.getElementById('bp-field').onchange = (ev) => { state.bulkPriceField = ev.target.value; render(); };
+    document.getElementById('bp-mode').onchange = (ev) => { state.bulkPriceMode = ev.target.value; render(); };
+    document.getElementById('bp-value').oninput = (ev) => { state.bulkPriceValue = ev.target.value; render(); };
+    document.querySelectorAll('[data-bp-check]').forEach(cb => {
+      cb.onchange = (ev) => {
+        const id = cb.dataset.bpCheck;
+        if (ev.target.checked) state.bulkPriceSelections[id] = true; else delete state.bulkPriceSelections[id];
+        render();
+      };
+    });
+    if (document.getElementById('bp-apply-btn')) {
+      document.getElementById('bp-apply-btn').onclick = async () => {
+        const selectedIds = Object.keys(state.bulkPriceSelections).filter(id => state.bulkPriceSelections[id]);
+        if (selectedIds.length === 0) return;
+        const fieldLabel = { price:'السعر 1', price2:'السعر 2', price3:'السعر 3', cost:'التكلفة' }[state.bulkPriceField];
+        if (!confirm(`تحديث "${fieldLabel}" لـ${selectedIds.length} صنف — لا يمكن التراجع تلقائياً بعدها. متابعة؟`)) return;
+        setBtnLoading(document.getElementById('bp-apply-btn'), true, 'جاري التحديث');
+        let updated = 0, failed = 0;
+        for (const id of selectedIds) {
+          const item = state.items.find(it => it.id === id);
+          const newPrice = calcBulkNewPrice(item[state.bulkPriceField], state.bulkPriceMode, state.bulkPriceValue);
+          const { error } = await sb.from('items').update({ [state.bulkPriceField]: newPrice }).eq('id', id);
+          if (error) failed++; else updated++;
+        }
+        await loadItems();
+        state.bulkPriceSelections = {};
+        showToast(failed > 0 ? `تم تحديث ${updated} صنف، وفشل ${failed}` : `تم تحديث ${updated} صنف بنجاح`, failed > 0 ? 'error' : undefined);
+        setBtnLoading(document.getElementById('bp-apply-btn'), false);
+        render();
+      };
+    }
+  }
+
+  if (state.showGlobalSearch) {
+    document.getElementById('gs-close').onclick = () => { state.showGlobalSearch = false; render(); };
+    let gsDebounce;
+    document.getElementById('gs-input').oninput = (ev) => {
+      state.globalSearchQuery = ev.target.value;
+      clearTimeout(gsDebounce);
+      gsDebounce = setTimeout(async () => { state.globalSearchResults = await runGlobalSearch(state.globalSearchQuery); render(); }, 250);
+    };
+    document.querySelectorAll('[data-gs-item]').forEach(el => {
+      el.onclick = async () => { state.showGlobalSearch = false; state.activeSection = 'الاصناف'; await openItemById(el.dataset.gsItem); };
+    });
+    document.querySelectorAll('[data-gs-party]').forEach(el => {
+      el.onclick = async () => { state.showGlobalSearch = false; state.activeSection = 'العملاء والموردين'; await openPartyById(el.dataset.gsParty); };
+    });
+    document.querySelectorAll('[data-gs-sale]').forEach(el => {
+      el.onclick = async () => { state.showGlobalSearch = false; state.activeSection = 'المبيعات'; await openSalesById(el.dataset.gsSale); };
+    });
+    document.querySelectorAll('[data-gs-purchase]').forEach(el => {
+      el.onclick = async () => { state.showGlobalSearch = false; state.activeSection = 'المشتريات'; await openPurchaseById(el.dataset.gsPurchase); };
+    });
+  }
+
   if (state.showQuickOpen) {
     document.getElementById('qo-close').onclick = () => { state.showQuickOpen = false; render(); };
     document.getElementById('qo-type').onchange = (ev) => { state.quickOpenType = ev.target.value; };
@@ -13100,6 +13387,7 @@ function bindAppEvents() {
         state.activeTab = btn.dataset.tab;
         if (state.activeTab === 'التجميع' && state.editingId) await loadBundleComponents(state.editingId);
         if (state.activeTab === 'العلاقات' && state.editingId) await loadItemRelations(state.editingId);
+        if (state.activeTab === 'توافق السيارات' && state.editingId) { state.itemVehicleCompat = await loadItemVehicleCompat(state.editingId); render(); }
         if (state.activeTab === 'الارصدة' && state.editingId) { state.itemWarehouseBreakdown = await loadItemWarehouseBreakdown(state.editingId); render(); }
         render();
       };
@@ -13156,6 +13444,30 @@ function bindAppEvents() {
       btn.onclick = async () => {
         { const { error: rmRelErr } = await sb.from('item_relations').delete().eq('id', btn.dataset.removeRelation); if (rmRelErr) { showToast('فشل الحذف', 'error'); return; } }
         await loadItemRelations(state.editingId);
+        render();
+      };
+    });
+    if (document.getElementById('veh-add-btn')) {
+      document.getElementById('veh-add-btn').onclick = async () => {
+        const make = document.getElementById('veh-make-input').value.trim();
+        const model = document.getElementById('veh-model-input').value.trim();
+        const yearFrom = document.getElementById('veh-year-from-input').value.trim();
+        const yearTo = document.getElementById('veh-year-to-input').value.trim();
+        if (!make || !model) { showToast('اكتب الماركة والموديل على الأقل', 'error'); return; }
+        const { error: vehErr } = await sb.from('item_vehicle_compatibility').insert({
+          item_id: state.editingId, vehicle_make: make, vehicle_model: model,
+          year_from: yearFrom ? Number(yearFrom) : null, year_to: yearTo ? Number(yearTo) : null,
+        });
+        if (vehErr) { showToast('فشل إضافة السيارة', 'error'); return; }
+        state.itemVehicleCompat = await loadItemVehicleCompat(state.editingId);
+        render();
+      };
+    }
+    document.querySelectorAll('[data-remove-vehicle]').forEach(btn => {
+      btn.onclick = async () => {
+        const { error: rmVehErr } = await sb.from('item_vehicle_compatibility').delete().eq('id', btn.dataset.removeVehicle);
+        if (rmVehErr) { showToast('فشل الحذف', 'error'); return; }
+        state.itemVehicleCompat = await loadItemVehicleCompat(state.editingId);
         render();
       };
     });
