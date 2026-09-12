@@ -2838,6 +2838,7 @@ function renderPurchaseFormModal() {
         ${f.approved ? '' : iconBtn('purchase-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('purchase-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && state.editingPurchaseId && canApprove()) ? iconBtn('purchase-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
+        ${(f.approved && state.editingPurchaseId && isAdmin()) ? iconBtn('purchase-unlock', 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
       </div>
     </div>
   </div>`;
@@ -4313,6 +4314,7 @@ function renderReopenDocModal() {
           <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">نوع المستند</div>
           <select id="rd-type" class="input">
             <option value="فاتورة بيع" ${state.reopenDocType==='فاتورة بيع'?'selected':''}>فاتورة بيع (آجل أو نقدي)</option>
+            <option value="فاتورة شراء" ${state.reopenDocType==='فاتورة شراء'?'selected':''}>فاتورة شراء (آجل أو نقدي)</option>
             <option value="سند قبض" ${state.reopenDocType==='سند قبض'?'selected':''}>سند قبض</option>
             <option value="سند صرف" ${state.reopenDocType==='سند صرف'?'selected':''}>سند صرف</option>
             <option value="سند تسوية" ${state.reopenDocType==='سند تسوية'?'selected':''}>سند تسوية</option>
@@ -10035,6 +10037,46 @@ function bindAppEvents() {
           render();
         };
       }
+    }
+    if (document.getElementById('purchase-unlock')) {
+      document.getElementById('purchase-unlock').onclick = async () => {
+        if (!confirm('فك الاعتماد يرجّع الكمية المشتراة من المخزون، ويرجّع رصيد المورد، ويحذف القيد المحاسبي.\n\n⚠️ تنبيه مهم: لو صار شراء ثاني لنفس الأصناف بعد هذي الفاتورة، التكلفة المرجّحة الحالية قد ما ترجع لقيمتها الأصلية بالضبط — راجع تكلفة الأصناف يدوياً بعد فك الاعتماد لو احتجت. متابعة؟')) return;
+        const f = state.purchaseForm;
+        const t = calcPurchaseTotals(f);
+        const warnings = [];
+        for (const l of f.lines) {
+          const item = state.items.find(it => it.id === l.item_id);
+          if (item) {
+            const newQty = Math.max(0, Number(item.qty) - l.quantity);
+            const { error } = await sb.from('items').update({ qty: newQty }).eq('id', l.item_id);
+            if (error) warnings.push(`فشل تحديث رصيد ${item.sku||l.item_id}`);
+          }
+          if (f.warehouse_id) await adjustWarehouseStock(l.item_id, f.warehouse_id, -l.quantity);
+        }
+        if (f.supplier_id && (f.invoice_type === 'آجل' || t.due !== 0)) {
+          const supplier = state.parties.find(p => p.id === f.supplier_id);
+          if (supplier) {
+            const { error } = await sb.from('parties').update({ balance: Number(supplier.balance||0) - t.dueSAR }).eq('id', supplier.id);
+            if (error) warnings.push('فشل إرجاع رصيد المورد');
+          }
+        }
+        await loadParties();
+        const { data: entries } = await sb.from('journal_entries').select('id').eq('source_type', 'purchase_invoice').eq('source_id', state.editingPurchaseId);
+        for (const e of (entries||[])) {
+          await sb.from('journal_entry_lines').delete().eq('entry_id', e.id);
+          await sb.from('journal_entries').delete().eq('id', e.id);
+        }
+        const { error: unErr } = await sb.from('purchase_invoices').update({ approved: false }).eq('id', state.editingPurchaseId);
+        if (unErr) { showToast('فشل فك اعتماد الفاتورة', 'error'); return; }
+        f.approved = false;
+        state.docJournalNumbers = [];
+        logActivity('فك اعتماد فاتورة شراء', f.invoice_number);
+        if (warnings.length > 0) alert('⚠️ فك الاعتماد تم، لكن بعض التحديثات فشلت — راجعها يدوياً:\n\n' + warnings.join('\n'));
+        await loadItems();
+        await loadPurchases();
+        showToast('تم فك الاعتماد — عدّل الفاتورة واعتمدها من جديد');
+        render();
+      };
     }
   }
   if (document.getElementById('quote-search')) {
