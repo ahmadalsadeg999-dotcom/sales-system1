@@ -123,6 +123,7 @@ let state = {
   showAltNumbers: false, altNumbersSelectedItemId: '', altNumbersQuery: '', altNumbersNewValue: '',
   showEditSku: false, editSkuSelectedItemId: '', editSkuQuery: '',
   showItemsStatement: false, itemsStatementFilter: 'all',
+  showInventoryValuation: false, inventoryValuationQuery: '',
   activeBarItemId: null,
   showGlobalSearch: false, globalSearchQuery: '', globalSearchResults: null,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
@@ -1990,6 +1991,7 @@ const SUBMENUS = {
     { divider: true },
     { label: 'تقرير الكميات بالمستودعات', target: '__warehouse_stock_report__' },
     { label: 'إحصائية عامة للمخزون', target: '__inventory_stats__' },
+    { label: 'كشف تقييم المخزون التفصيلي', target: '__inventory_valuation__' },
     { label: 'المخزون الافتتاحي', target: '__opening_inventory__' },
   ],
   'العملاء والموردين': PARTIES_SUBMENU,
@@ -2098,6 +2100,7 @@ function renderApp() {
   ${state.showAltNumbers ? renderAltNumbersModal() : ''}
   ${state.showEditSku ? renderEditSkuModal() : ''}
   ${state.showItemsStatement ? renderItemsStatementModal() : ''}
+  ${state.showInventoryValuation ? renderInventoryValuationModal() : ''}
   ${state.showQuickNewItem ? renderQuickNewItemModal() : ''}
   ${state.showGlobalSearch ? renderGlobalSearchModal() : ''}
   ${renderActiveItemBar()}
@@ -4288,6 +4291,70 @@ function renderQuickNewItemModal() {
           </div>
         </div>
         <button id="qni-save-add" class="btn primary" style="padding:9px 18px;width:100%;background:#0F6E56;border-color:#0F6E56;">إنشاء الصنف وإضافته للفاتورة</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderInventoryValuationModal() {
+  const q = state.inventoryValuationQuery.trim().toLowerCase();
+  const rows = state.warehouseStockPivot.filter(r => !q || r.name.toLowerCase().includes(q) || (r.sku||'').toLowerCase().includes(q));
+  const itemsMap = {};
+  state.items.forEach(it => { itemsMap[it.id] = it; });
+  const warehouses = state.warehouses || [];
+  const enriched = rows.map(r => {
+    const item = itemsMap[r.item_id] || {};
+    const cost = Number(item.cost) || 0;
+    return { ...r, cost, value: r.total * cost };
+  }).filter(r => r.total !== 0);
+  const grandTotalQty = enriched.reduce((s,r) => s + r.total, 0);
+  const grandTotalValue = enriched.reduce((s,r) => s + r.value, 0);
+  return `
+  <div id="iv-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:900px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-report-analytics"></i> كشف تقييم المخزون التفصيلي</span><button id="iv-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:14px 16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;">
+          <input id="iv-search" class="input" placeholder="ابحث بالاسم أو رقم الصنف..." value="${escapeHtml(state.inventoryValuationQuery)}" style="flex:1;" />
+          <button id="iv-excel" class="btn" style="padding:7px 14px;font-size:11.5px;white-space:nowrap;">تصدير اكسل</button>
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:160px;background:#F0F6FC;border-radius:8px;padding:10px 14px;">
+            <div style="font-size:10.5px;color:#5F5E5A;">إجمالي الكمية</div>
+            <div class="mono" style="font-size:16px;font-weight:700;color:#1B3352;">${grandTotalQty}</div>
+          </div>
+          <div style="flex:1;min-width:160px;background:#E1F5EE;border-radius:8px;padding:10px 14px;">
+            <div style="font-size:10.5px;color:#5F5E5A;">إجمالي قيمة المخزون</div>
+            <div class="mono" style="font-size:16px;font-weight:700;color:#0F6E56;">${fmt(grandTotalValue)}</div>
+          </div>
+          <div style="flex:1;min-width:160px;background:#FAEEDA;border-radius:8px;padding:10px 14px;">
+            <div style="font-size:10.5px;color:#5F5E5A;">عدد الأصناف المخزّنة</div>
+            <div class="mono" style="font-size:16px;font-weight:700;color:#BA7517;">${enriched.length}</div>
+          </div>
+        </div>
+        <div style="max-height:420px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>
+              <th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">رقم الصنف</th>
+              <th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">اسم الصنف</th>
+              ${warehouses.map(w => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:center;">${escapeHtml(w.name)}</th>`).join('')}
+              <th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:center;">إجمالي الكمية</th>
+              <th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:left;">تكلفة الوحدة</th>
+              <th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:left;">إجمالي القيمة</th>
+            </tr></thead>
+            <tbody>
+              ${enriched.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
+              <tr>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.sku)}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
+                ${warehouses.map(w => `<td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;text-align:center;border-bottom:1px solid #E4E2DA;">${r.perWarehouse[w.id]||0}</td>`).join('')}
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;font-weight:600;text-align:center;border-bottom:1px solid #E4E2DA;">${r.total}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(r.cost)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;font-weight:700;color:#0F6E56;border-bottom:1px solid #E4E2DA;">${fmt(r.value)}</td>
+              </tr>`; }).join('') || `<tr><td colspan="${4+warehouses.length}" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه أصناف برصيد حالياً</td></tr>`}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>`;
@@ -9469,6 +9536,15 @@ function bindAppEvents() {
         render();
         return;
       }
+      if (target === '__inventory_valuation__') {
+        await loadWarehouses();
+        await loadItems();
+        await loadWarehouseStockReport();
+        state.inventoryValuationQuery = '';
+        state.showInventoryValuation = true;
+        render();
+        return;
+      }
       if (target === '__inventory_stats__') {
         await loadItems();
         state.invStatsOpeningValue = await calcOpeningInventoryValue();
@@ -13563,6 +13639,25 @@ function bindAppEvents() {
         const headers = ['رقم الصنف','اسم الصنف','الرصيد','حد الطلب','التكلفة','السعر','الحالة'];
         const rows = results.map(it => [it.sku, it.name, qty(it), it.reorder_at??'', it.cost, it.price, it.active===false?'موقوف':'فعّال']);
         exportFormattedAccountingSheet('كشف بالأصناف.xlsx', 'الأصناف', headers, rows);
+      };
+    }
+  }
+
+  if (state.showInventoryValuation) {
+    document.getElementById('iv-close').onclick = () => { state.showInventoryValuation = false; render(); };
+    if (document.getElementById('iv-search')) {
+      document.getElementById('iv-search').oninput = (ev) => { state.inventoryValuationQuery = ev.target.value; render(); };
+    }
+    if (document.getElementById('iv-excel')) {
+      document.getElementById('iv-excel').onclick = () => {
+        const q = state.inventoryValuationQuery.trim().toLowerCase();
+        const rows0 = state.warehouseStockPivot.filter(r => !q || r.name.toLowerCase().includes(q) || (r.sku||'').toLowerCase().includes(q));
+        const itemsMap = {}; state.items.forEach(it => { itemsMap[it.id] = it; });
+        const warehouses = state.warehouses || [];
+        const enriched = rows0.map(r => { const item = itemsMap[r.item_id] || {}; const cost = Number(item.cost) || 0; return { ...r, cost, value: r.total * cost }; }).filter(r => r.total !== 0);
+        const headers = ['رقم الصنف', 'اسم الصنف', ...warehouses.map(w => w.name), 'إجمالي الكمية', 'تكلفة الوحدة', 'إجمالي القيمة'];
+        const rows = enriched.map(r => [r.sku, r.name, ...warehouses.map(w => r.perWarehouse[w.id]||0), r.total, r.cost, r.value]);
+        exportFormattedAccountingSheet('كشف تقييم المخزون التفصيلي.xlsx', 'تقييم المخزون', headers, rows);
       };
     }
   }
