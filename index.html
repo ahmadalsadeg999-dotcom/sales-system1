@@ -302,6 +302,8 @@ let state = {
   purchaseQuery: '',
   receiptVoucherQuery: '', paymentVoucherQuery: '', settlementVoucherQuery: '',
   voucherNumberNavOpen: null, voucherNumberNavQuery: '',
+  showRvReport: false, rvReportFrom: '', rvReportTo: '', rvReportPartyId: '',
+  showPvReport: false, pvReportFrom: '', pvReportTo: '', pvReportPartyId: '',
   showPurchaseForm: false,
   purchaseForm: null,
   editingPurchaseId: null,
@@ -1927,6 +1929,8 @@ const PARTIES_SUBMENU = [
   { label: 'سند صرف صندوق', target: '__cash_disbursement__' },
   { divider: true },
   { label: 'كشف العملاء والموردين', target: '__parties_report__' },
+  { label: 'كشف سندات قبض', target: '__receipt_vouchers_report__' },
+  { label: 'كشف سندات صرف', target: '__payment_vouchers_report__' },
   { label: 'كشف حساب عميل/مورد', target: '__statement__' },
   { label: 'كشف اعمار الذمم', target: '__aging_report__' },
   { label: 'كشف حساب الصندوق', target: '__cashbox_statement__' },
@@ -2103,6 +2107,8 @@ function renderApp() {
   ${state.showAltNumbers ? renderAltNumbersModal() : ''}
   ${state.showEditSku ? renderEditSkuModal() : ''}
   ${state.showItemsStatement ? renderItemsStatementModal() : ''}
+  ${state.showRvReport ? renderVoucherReportModal('receipt') : ''}
+  ${state.showPvReport ? renderVoucherReportModal('payment') : ''}
   ${state.showInventoryValuation ? renderInventoryValuationModal() : ''}
   ${state.showQuickNewItem ? renderQuickNewItemModal() : ''}
   ${state.showGlobalSearch ? renderGlobalSearchModal() : ''}
@@ -6996,6 +7002,56 @@ function renderSlowMovingModal() {
   </div>`;
 }
 
+function renderVoucherReportModal(kind) {
+  const isReceipt = kind === 'receipt';
+  const prefix = isReceipt ? 'rvrep' : 'pvrep';
+  const list = isReceipt ? state.receiptVouchers : state.paymentVouchers;
+  const from = isReceipt ? state.rvReportFrom : state.pvReportFrom;
+  const to = isReceipt ? state.rvReportTo : state.pvReportTo;
+  const partyId = isReceipt ? state.rvReportPartyId : state.pvReportPartyId;
+  const parties = state.parties.filter(p => p.party_type === (isReceipt ? 'customer' : 'supplier'));
+  const rows = list.filter(v => v.approved
+    && (!from || v.voucher_date >= from) && (!to || v.voucher_date <= to)
+    && (!partyId || (isReceipt ? v.customer_id : v.supplier_id) === partyId)
+  ).sort((a,b) => (a.voucher_date||'').localeCompare(b.voucher_date||''));
+  const total = rows.reduce((s,r) => s + Number(r.amount||0), 0);
+  return `
+  <div id="${prefix}-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:800px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ${isReceipt?'ti-arrow-down-left':'ti-arrow-up-right'}"></i> كشف سندات ${isReceipt?'قبض':'صرف'}</span><button id="${prefix}-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:14px 16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:end;">
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">من تاريخ</div><input id="${prefix}-from" type="date" class="input" value="${escapeHtml(from)}" /></div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">إلى تاريخ</div><input id="${prefix}-to" type="date" class="input" value="${escapeHtml(to)}" /></div>
+          <div style="flex:1;min-width:160px;"><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">${isReceipt?'العميل':'المورد'}</div>
+            <select id="${prefix}-party" class="input"><option value="">الكل</option>${parties.map(p => `<option value="${p.id}" ${partyId===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}</select>
+          </div>
+          <button id="${prefix}-excel" class="btn" style="padding:8px 14px;font-size:11.5px;">تصدير اكسل</button>
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:12px;">
+          <div style="flex:1;background:#F0F6FC;border-radius:8px;padding:10px 14px;"><div style="font-size:10.5px;color:#5F5E5A;">عدد السندات</div><div class="mono" style="font-size:16px;font-weight:700;color:#1B3352;">${rows.length}</div></div>
+          <div style="flex:1;background:${isReceipt?'#E1F5EE':'#FAEEDA'};border-radius:8px;padding:10px 14px;"><div style="font-size:10.5px;color:#5F5E5A;">إجمالي المبلغ</div><div class="mono" style="font-size:16px;font-weight:700;color:${isReceipt?'#0F6E56':'#BA7517'};">${fmt(total)}</div></div>
+        </div>
+        <div style="max-height:400px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr>${['رقم السند','التاريخ',isReceipt?'العميل':'المورد','طريقة الدفع','المبلغ'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
+              <tr>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.voucher_number)}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.voucher_date)}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.parties?.name||'—')}</td>
+                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.payment_method||'—')}</td>
+                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;font-weight:600;border-bottom:1px solid #E4E2DA;">${fmt(r.amount)}</td>
+              </tr>`; }).join('') || `<tr><td colspan="5" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه سندات مطابقة</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderAgingReportModal() {
   const rows = state.agingReportRows;
   const totals = rows.reduce((s,r) => ({
@@ -9336,6 +9392,22 @@ function bindAppEvents() {
         state.cashboxFrom = ''; state.cashboxTo = ''; state.cashboxOpening = '0'; state.cashboxRows = [];
         await loadCompany();
         state.showCashboxStatement = true;
+        render();
+        return;
+      }
+      if (target === '__receipt_vouchers_report__') {
+        await loadParties();
+        await loadReceiptVouchers();
+        state.rvReportFrom = ''; state.rvReportTo = ''; state.rvReportPartyId = '';
+        state.showRvReport = true;
+        render();
+        return;
+      }
+      if (target === '__payment_vouchers_report__') {
+        await loadParties();
+        await loadPaymentVouchers();
+        state.pvReportFrom = ''; state.pvReportTo = ''; state.pvReportPartyId = '';
+        state.showPvReport = true;
         render();
         return;
       }
@@ -13949,6 +14021,30 @@ function bindAppEvents() {
       };
     }
   }
+
+  function bindVoucherReport(kind) {
+    const isReceipt = kind === 'receipt';
+    const prefix = isReceipt ? 'rvrep' : 'pvrep';
+    document.getElementById(`${prefix}-close`).onclick = () => { state[isReceipt?'showRvReport':'showPvReport'] = false; render(); };
+    document.getElementById(`${prefix}-from`).onchange = (ev) => { state[isReceipt?'rvReportFrom':'pvReportFrom'] = ev.target.value; render(); };
+    document.getElementById(`${prefix}-to`).onchange = (ev) => { state[isReceipt?'rvReportTo':'pvReportTo'] = ev.target.value; render(); };
+    document.getElementById(`${prefix}-party`).onchange = (ev) => { state[isReceipt?'rvReportPartyId':'pvReportPartyId'] = ev.target.value; render(); };
+    document.getElementById(`${prefix}-excel`).onclick = () => {
+      const list = isReceipt ? state.receiptVouchers : state.paymentVouchers;
+      const from = isReceipt ? state.rvReportFrom : state.pvReportFrom;
+      const to = isReceipt ? state.rvReportTo : state.pvReportTo;
+      const partyId = isReceipt ? state.rvReportPartyId : state.pvReportPartyId;
+      const rows0 = list.filter(v => v.approved
+        && (!from || v.voucher_date >= from) && (!to || v.voucher_date <= to)
+        && (!partyId || (isReceipt ? v.customer_id : v.supplier_id) === partyId)
+      ).sort((a,b) => (a.voucher_date||'').localeCompare(b.voucher_date||''));
+      const headers = ['رقم السند','التاريخ', isReceipt?'العميل':'المورد', 'طريقة الدفع', 'المبلغ'];
+      const rows = rows0.map(r => [r.voucher_number, r.voucher_date, r.parties?.name||'', r.payment_method||'', r.amount]);
+      exportFormattedAccountingSheet(`كشف سندات ${isReceipt?'قبض':'صرف'}.xlsx`, 'السندات', headers, rows);
+    };
+  }
+  if (state.showRvReport) bindVoucherReport('receipt');
+  if (state.showPvReport) bindVoucherReport('payment');
 
   if (state.showInventoryValuation) {
     document.getElementById('iv-close').onclick = () => { state.showInventoryValuation = false; render(); };
