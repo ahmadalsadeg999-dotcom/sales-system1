@@ -300,6 +300,8 @@ let state = {
   partyFormErrors: {},
   purchases: [],
   purchaseQuery: '',
+  receiptVoucherQuery: '', paymentVoucherQuery: '', settlementVoucherQuery: '',
+  voucherNumberNavOpen: null, voucherNumberNavQuery: '',
   showPurchaseForm: false,
   purchaseForm: null,
   editingPurchaseId: null,
@@ -2060,7 +2062,7 @@ function renderApp() {
           </div>
         ` : `<button data-section="${m}" style="padding:8px 12px;font-size:12.5px;cursor:pointer;background:${state.activeSection===m?'#E8E4DA':'transparent'};border:none;border-bottom:${state.activeSection===m?'2px solid #2C4A6E':'2px solid transparent'};font-weight:${state.activeSection===m?'500':'400'};color:${m==='خروج'?'#C0392B':'#3A3826'};display:flex;align-items:center;gap:5px;">${m==='خروج'?'<i class="ti ti-door-exit" style="font-size:15px;"></i>':''}${menuLabel(m)}</button>`).join('')}
       </div>
-      ${state.activeSection === 'الرئيسية' ? renderHomeSection() : state.activeSection === 'الاصناف' ? renderItemsSection(items, lowStock) : state.activeSection === 'العملاء والموردين' ? renderPartiesSection() : state.activeSection === 'المشتريات' ? renderPurchasesSection() : state.activeSection === 'المبيعات' ? renderSalesSection() : state.activeSection === '__quotations__' ? renderQuotationsSection() : state.activeSection === '__sales_returns__' ? renderSalesReturnsSection() : state.activeSection === '__purchase_returns__' ? renderPurchaseReturnsSection() : state.activeSection === '__stock_counts__' ? renderStockCountsSection() : state.activeSection === '__warehouses__' ? renderWarehousesSection() : state.activeSection === '__transfers__' ? renderTransfersSection() : state.activeSection === '__receipt_vouchers__' ? renderReceiptVouchersSection() : state.activeSection === '__payment_vouchers__' ? renderPaymentVouchersSection() : state.activeSection === '__sales_reps__' ? renderRepsSection() : state.activeSection === 'تقارير عامة' ? renderDashboardSection() : renderPlaceholderSection()}
+      ${state.activeSection === 'الرئيسية' ? renderHomeSection() : state.activeSection === 'الاصناف' ? renderItemsSection(items, lowStock) : state.activeSection === 'العملاء والموردين' ? renderPartiesSection() : state.activeSection === 'المشتريات' ? renderPurchasesSection() : state.activeSection === 'المبيعات' ? renderSalesSection() : state.activeSection === '__quotations__' ? renderQuotationsSection() : state.activeSection === '__sales_returns__' ? renderSalesReturnsSection() : state.activeSection === '__purchase_returns__' ? renderPurchaseReturnsSection() : state.activeSection === '__stock_counts__' ? renderStockCountsSection() : state.activeSection === '__warehouses__' ? renderWarehousesSection() : state.activeSection === '__transfers__' ? renderTransfersSection() : state.activeSection === '__receipt_vouchers__' ? renderReceiptVouchersSection() : state.activeSection === '__payment_vouchers__' ? renderPaymentVouchersSection() : state.activeSection === '__settlement_voucher__' ? renderSettlementVouchersSection() : state.activeSection === '__sales_reps__' ? renderRepsSection() : state.activeSection === 'تقارير عامة' ? renderDashboardSection() : renderPlaceholderSection()}
     </div>
   </div>
   ${state.showForm ? renderFormModal() : ''}
@@ -2068,7 +2070,6 @@ function renderApp() {
   ${state.showActivityLog ? renderActivityLogModal() : ''}
   ${state.showPartiesReport ? renderPartiesReportModal() : ''}
   ${state.showAgingReport ? renderAgingReportModal() : ''}
-  ${state.showSettlementVoucher ? renderSettlementVoucherModal() : ''}
   ${state.showCashDisbursement ? renderCashDisbursementModal() : ''}
   ${state.showNetPurchasesReport ? renderNetPurchasesReportModal() : ''}
   ${state.showTopSelling ? renderTopSellingModal() : ''}
@@ -2663,9 +2664,9 @@ function renderPurchaseFormModal() {
       </div>
 
       <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;position:relative;">
           <label style="font-size:12.5px;color:#3A3826;">رقم الفاتورة</label>
-          <input class="input mono" value="${escapeHtml(f.invoice_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+          ${renderNumberNavHtml('pi', f.invoice_number, state.editingPurchaseId, state.purchases, 'invoice_number', v => v.parties?.name)}
         </div>
       </div>
 
@@ -3503,9 +3504,9 @@ function renderSalesReturnFormModal() {
         </div>
       </div>
 
-      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
+      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;position:relative;">
         <label style="font-size:12.5px;color:#3A3826;">رقم السند</label>
-        <input class="input mono" value="${escapeHtml(f.return_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+        ${renderNumberNavHtml('sr', f.return_number, state.editingSalesReturnId, state.salesReturns, 'return_number', v => v.parties?.name)}
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         ${partyField(t('inv_customer'), partyPickerButton('sr-customer','customer',f.customer_id,f.approved))}
@@ -3648,9 +3649,9 @@ function renderPurchaseReturnFormModal() {
         </div>
       </div>
 
-      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
+      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;position:relative;">
         <label style="font-size:12.5px;color:#3A3826;">رقم السند</label>
-        <input class="input mono" value="${escapeHtml(f.return_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+        ${renderNumberNavHtml('pr', f.return_number, state.editingPurchaseReturnId, state.purchaseReturns, 'return_number', v => v.parties?.name)}
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         ${partyField(t('inv_supplier'), partyPickerButton('pr-supplier','supplier',f.supplier_id,f.approved))}
@@ -4890,13 +4891,15 @@ function renderItemMovementModal() {
 }
 
 function renderReceiptVouchersSection() {
-  const list = state.receiptVouchers;
+  const q = (state.receiptVoucherQuery||'').trim().toLowerCase();
+  const list = !q ? state.receiptVouchers : state.receiptVouchers.filter(p => (p.voucher_number||'').toLowerCase().includes(q) || (p.parties?.name||'').toLowerCase().includes(q));
   return `
       <div class="panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <div style="font-size:12px;color:#5F5E5A;">${list.length} سند قبض</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <div style="flex:1;min-width:220px;"><input id="rv-search" class="input" placeholder="بحث برقم السند أو اسم العميل..." value="${escapeHtml(state.receiptVoucherQuery||'')}" /></div>
           <button id="new-rv-btn" class="btn primary" style="padding:8px 14px;">+ سند قبض جديد</button>
         </div>
+        <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند قبض</div>
         <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم السند','العميل','التاريخ','المبلغ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
@@ -4915,14 +4918,44 @@ function renderReceiptVouchersSection() {
       ${state.showReceiptVoucherForm ? renderVoucherFormModal('receipt') : ''}`;
 }
 
-function renderPaymentVouchersSection() {
-  const list = state.paymentVouchers;
+function renderSettlementVouchersSection() {
+  const q = (state.settlementVoucherQuery||'').trim().toLowerCase();
+  const list = !q ? state.settlementVouchers : state.settlementVouchers.filter(p => (p.voucher_number||'').toLowerCase().includes(q) || (p.parties?.name||'').toLowerCase().includes(q));
   return `
       <div class="panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <div style="font-size:12px;color:#5F5E5A;">${list.length} سند صرف</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <div style="flex:1;min-width:220px;"><input id="stv-search" class="input" placeholder="بحث برقم السند أو اسم الطرف..." value="${escapeHtml(state.settlementVoucherQuery||'')}" /></div>
+          <button id="new-stv-btn" class="btn primary" style="padding:8px 14px;">+ سند تسوية جديد</button>
+        </div>
+        <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند تسوية</div>
+        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+          <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
+            ${['رقم السند','الطرف','التاريخ','المبلغ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
+          </div>
+          ${list.map((p,i) => `
+            <div data-open-stv="${p.id}" style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
+              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_number)}</div>
+              <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
+              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_date)}</div>
+              <div style="padding:7px 8px;">${fmt(p.amount)}</div>
+              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?'معتمد':'مسودة'}</span></div>
+            </div>`).join('')}
+          ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
+        </div>
+      </div>
+      ${state.showSettlementVoucher ? renderSettlementVoucherModal() : ''}`;
+}
+
+function renderPaymentVouchersSection() {
+  const q = (state.paymentVoucherQuery||'').trim().toLowerCase();
+  const list = !q ? state.paymentVouchers : state.paymentVouchers.filter(p => (p.voucher_number||'').toLowerCase().includes(q) || (p.parties?.name||'').toLowerCase().includes(q));
+  return `
+      <div class="panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <div style="flex:1;min-width:220px;"><input id="pv-search" class="input" placeholder="بحث برقم السند أو اسم المورد..." value="${escapeHtml(state.paymentVoucherQuery||'')}" /></div>
           <button id="new-pv-btn" class="btn primary" style="padding:8px 14px;">+ سند صرف جديد</button>
         </div>
+        <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند صرف</div>
         <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم السند','المورد','التاريخ','المبلغ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
@@ -5005,9 +5038,20 @@ function renderVoucherFormModal(kind) {
         <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           <i class="ti ${icon}" style="color:#fff;font-size:19px;"></i>
         </div>
-        <div style="flex:1;">
+        <div style="flex:1;position:relative;">
           <div style="color:#fff;font-weight:700;font-size:14.5px;">${title}</div>
-          <div style="color:rgba(255,255,255,0.8);font-size:11px;" class="mono">${escapeHtml(f.voucher_number || 'رقم تلقائي عند الحفظ')}</div>
+          <div id="${prefix}-number-nav-toggle" class="no-print mono" style="color:rgba(255,255,255,0.9);font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+            ${escapeHtml(f.voucher_number || 'رقم تلقائي عند الحفظ')} <i class="ti ti-chevron-down" style="font-size:11px;"></i>
+          </div>
+          <div class="print-only mono" style="color:rgba(255,255,255,0.8);font-size:11px;">${escapeHtml(f.voucher_number || 'رقم تلقائي عند الحفظ')}</div>
+          ${state.voucherNumberNavOpen === prefix ? `
+          <div class="no-print" style="position:absolute;margin-top:4px;background:#fff;border:1px solid #1B3352;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.25);width:220px;z-index:15;overflow:hidden;" onclick="event.stopPropagation()">
+            <input id="${prefix}-number-nav-search" class="input" style="border:none;border-radius:0;border-bottom:1px solid #DEDACB;" placeholder="بحث برقم السند..." value="${escapeHtml(state.voucherNumberNavQuery||'')}" />
+            <div style="max-height:200px;overflow-y:auto;">
+              ${(isReceipt?state.receiptVouchers:state.paymentVouchers).filter(v => !state.voucherNumberNavQuery || (v.voucher_number||'').toLowerCase().includes(state.voucherNumberNavQuery.toLowerCase())).slice(0,30).map(v => `
+                <div data-voucher-nav-pick="${v.id}" style="padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid #F0EEE5;color:${v.id===(isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId)?'#1B3352':'#3A3826'};font-weight:${v.id===(isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId)?'700':'400'};">${escapeHtml(v.voucher_number)} <span style="color:#8B8A7A;font-size:10.5px;">— ${escapeHtml(v.parties?.name||'')}</span></div>`).join('') || `<div style="padding:10px;font-size:11px;color:#8B8A7A;text-align:center;">ما فيه نتائج</div>`}
+            </div>
+          </div>` : ''}
         </div>
       </div>
       <div class="no-print" style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
@@ -6769,9 +6813,9 @@ function renderSettlementVoucherModal() {
     <div style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:520px;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${t('stv_title')}</span><button id="stv-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;position:relative;">
           <label style="font-size:12.5px;color:#3A3826;">${t('voucher_number_label')}</label>
-          <input class="input mono" value="${escapeHtml(f.voucher_number)}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:130px;" />
+          ${renderNumberNavHtml('stv', f.voucher_number, state.editingSettlementVoucherId, sortedVouchers, 'voucher_number', v => v.parties?.name)}
         </div>
         ${f.approved ? `<div>${journalNumbersBadge()}</div>` : ''}
         ${partyField(t('stv_party_type'), `<select id="stv-party-type" class="input" ${f.approved?'disabled':''}><option value="customer" ${f.party_type==='customer'?'selected':''}>${t('stv_party_customer')}</option><option value="supplier" ${f.party_type==='supplier'?'selected':''}>${t('stv_party_supplier')}</option></select>`)}
@@ -6804,9 +6848,10 @@ function renderCashDisbursementModal() {
     <div style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:520px;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${t('cdv_title')}</span><button id="cdv-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;position:relative;">
           <label style="font-size:12.5px;color:#3A3826;">${t('voucher_number_label')}</label>
-          <input class="input mono" value="${escapeHtml(f.voucher_number)}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:130px;" />
+          ${renderNumberNavHtml('cdv', f.voucher_number, state.editingCashDisbursementId, sortedVouchers, 'voucher_number', v => v.expense_account_code||'')}
+        </div>
         </div>
         ${f.approved ? `<div>${journalNumbersBadge()}</div>` : ''}
         <div style="font-size:11px;color:#5F5E5A;background:#F4F1EA;padding:8px 10px;border-radius:6px;">${t('cdv_hint')}</div>
@@ -8891,6 +8936,81 @@ function openPartyById(id) {
   render();
 }
 
+// نسخة عامة قابلة لإعادة الاستخدام: بار رقم مستند قابل للضغط يفتح قائمة بحث للتنقل بين كل مستندات نفس النوع
+function renderNumberNavHtml(prefix, currentNumber, currentId, list, numberField, nameGetter) {
+  return `
+  <span id="${prefix}-number-nav-toggle" class="no-print" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+    <span class="mono">${escapeHtml(currentNumber || 'رقم تلقائي عند الحفظ')}</span> <i class="ti ti-chevron-down" style="font-size:11px;"></i>
+  </span>
+  ${state.voucherNumberNavOpen === prefix ? `
+  <div class="no-print" style="position:absolute;margin-top:4px;background:#fff;border:1px solid #1B3352;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.25);width:230px;z-index:15;overflow:hidden;" onclick="event.stopPropagation()">
+    <input id="${prefix}-number-nav-search" class="input" style="border:none;border-radius:0;border-bottom:1px solid #DEDACB;" placeholder="بحث برقم المستند..." value="${escapeHtml(state.voucherNumberNavQuery||'')}" />
+    <div style="max-height:220px;overflow-y:auto;">
+      ${list.filter(v => !state.voucherNumberNavQuery || (v[numberField]||'').toLowerCase().includes(state.voucherNumberNavQuery.toLowerCase())).slice(0,30).map(v => `
+        <div data-number-nav-pick="${v.id}" style="padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid #F0EEE5;color:${v.id===currentId?'#1B3352':'#3A3826'};font-weight:${v.id===currentId?'700':'400'};">${escapeHtml(v[numberField])} <span style="color:#8B8A7A;font-size:10.5px;">— ${escapeHtml(nameGetter(v)||'')}</span></div>`).join('') || `<div style="padding:10px;font-size:11px;color:#8B8A7A;text-align:center;">ما فيه نتائج</div>`}
+    </div>
+  </div>` : ''}`;
+}
+function bindNumberNav(prefix, list, openFn) {
+  const toggle = document.getElementById(`${prefix}-number-nav-toggle`);
+  if (toggle) {
+    toggle.onclick = (ev) => {
+      ev.stopPropagation();
+      state.voucherNumberNavOpen = state.voucherNumberNavOpen === prefix ? null : prefix;
+      state.voucherNumberNavQuery = '';
+      render();
+    };
+  }
+  const searchEl = document.getElementById(`${prefix}-number-nav-search`);
+  if (searchEl) {
+    searchEl.focus();
+    searchEl.oninput = (ev) => {
+      state.voucherNumberNavQuery = ev.target.value;
+      render();
+      const el = document.getElementById(`${prefix}-number-nav-search`);
+      if (el) { el.focus(); el.setSelectionRange(state.voucherNumberNavQuery.length, state.voucherNumberNavQuery.length); }
+    };
+  }
+  document.querySelectorAll('[data-number-nav-pick]').forEach(row => {
+    row.onclick = async () => { state.voucherNumberNavOpen = null; await openFn(row.dataset.numberNavPick); };
+  });
+  if (state.voucherNumberNavOpen === prefix) {
+    document.addEventListener('click', function closeNav() { state.voucherNumberNavOpen = null; render(); document.removeEventListener('click', closeNav); }, { once: true });
+  }
+}
+
+function bindVoucherNumberNav(prefix, isReceipt) {
+  const toggle = document.getElementById(`${prefix}-number-nav-toggle`);
+  if (toggle) {
+    toggle.onclick = (ev) => {
+      ev.stopPropagation();
+      state.voucherNumberNavOpen = state.voucherNumberNavOpen === prefix ? null : prefix;
+      state.voucherNumberNavQuery = '';
+      render();
+    };
+  }
+  const searchEl = document.getElementById(`${prefix}-number-nav-search`);
+  if (searchEl) {
+    searchEl.focus();
+    searchEl.oninput = (ev) => {
+      state.voucherNumberNavQuery = ev.target.value;
+      render();
+      const el = document.getElementById(`${prefix}-number-nav-search`);
+      if (el) { el.focus(); el.setSelectionRange(state.voucherNumberNavQuery.length, state.voucherNumberNavQuery.length); }
+    };
+  }
+  document.querySelectorAll('[data-voucher-nav-pick]').forEach(row => {
+    row.onclick = async () => {
+      state.voucherNumberNavOpen = null;
+      if (isReceipt) await openReceiptVoucherById(row.dataset.voucherNavPick);
+      else await openPaymentVoucherById(row.dataset.voucherNavPick);
+    };
+  });
+  if (state.voucherNumberNavOpen === prefix) {
+    document.addEventListener('click', function closeNav() { state.voucherNumberNavOpen = null; render(); document.removeEventListener('click', closeNav); }, { once: true });
+  }
+}
+
 function bindAppEvents() {
   document.querySelectorAll('[data-open-item-picker]').forEach(btn => {
     btn.onclick = () => { openItemPicker(JSON.parse(btn.dataset.openItemPicker)); };
@@ -9238,10 +9358,7 @@ function bindAppEvents() {
       if (target === '__settlement_voucher__') {
         await loadParties();
         await loadSettlementVouchers();
-        state.settlementVoucherForm = newSettlementVoucherForm();
-        state.editingSettlementVoucherId = null;
-        state.docJournalNumbers = [];
-        state.showSettlementVoucher = true;
+        state.activeSection = '__settlement_voucher__';
         render();
         return;
       }
@@ -9745,6 +9862,7 @@ function bindAppEvents() {
   if (state.showPurchaseForm) {
     const closeForm = () => { state.showPurchaseForm = false; render(); };
     document.getElementById('purchase-close').onclick = closeForm;
+    bindNumberNav('pi', state.purchases, openPurchaseById);
     document.getElementById('purchase-exit').onclick = closeForm;
     if (document.getElementById('purchase-cancel')) document.getElementById('purchase-cancel').onclick = closeForm;
     document.getElementById('purchase-print').onclick = () => { window.print(); };
@@ -10677,6 +10795,7 @@ function bindAppEvents() {
   if (state.showSalesReturnForm) {
     const closeSR = () => { state.showSalesReturnForm = false; render(); };
     document.getElementById('sr-close').onclick = closeSR;
+    bindNumberNav('sr', state.salesReturns, openSalesReturnById);
     document.getElementById('sr-exit').onclick = closeSR;
     if (document.getElementById('sr-cancel')) document.getElementById('sr-cancel').onclick = closeSR;
     document.getElementById('sr-print').onclick = () => { window.print(); };
@@ -10849,6 +10968,7 @@ function bindAppEvents() {
   if (state.showPurchaseReturnForm) {
     const closePR = () => { state.showPurchaseReturnForm = false; render(); };
     document.getElementById('pr-close').onclick = closePR;
+    bindNumberNav('pr', state.purchaseReturns, openPurchaseReturnById);
     document.getElementById('pr-exit').onclick = closePR;
     if (document.getElementById('pr-cancel')) document.getElementById('pr-cancel').onclick = closePR;
     document.getElementById('pr-print').onclick = () => { window.print(); };
@@ -11516,6 +11636,14 @@ function bindAppEvents() {
     };
   }
 
+  if (document.getElementById('rv-search')) {
+    document.getElementById('rv-search').oninput = (ev) => {
+      state.receiptVoucherQuery = ev.target.value;
+      render();
+      document.getElementById('rv-search').focus();
+      document.getElementById('rv-search').setSelectionRange(state.receiptVoucherQuery.length, state.receiptVoucherQuery.length);
+    };
+  }
   if (document.getElementById('new-rv-btn')) {
     document.getElementById('new-rv-btn').onclick = () => {
       state.receiptVoucherForm = newReceiptVoucherForm();
@@ -11533,6 +11661,7 @@ function bindAppEvents() {
     const closeRv = () => { state.showReceiptVoucherForm = false; render(); };
     document.getElementById('rv-close').onclick = closeRv;
     document.getElementById('rv-cancel').onclick = closeRv;
+    bindVoucherNumberNav('rv', true);
     document.getElementById('rv-next').onclick = () => {
       if (state.receiptVouchers.length === 0) return;
       const idx = state.editingReceiptVoucherId ? state.receiptVouchers.findIndex(p => p.id === state.editingReceiptVoucherId) : -1;
@@ -11621,6 +11750,14 @@ function bindAppEvents() {
     }
   }
 
+  if (document.getElementById('pv-search')) {
+    document.getElementById('pv-search').oninput = (ev) => {
+      state.paymentVoucherQuery = ev.target.value;
+      render();
+      document.getElementById('pv-search').focus();
+      document.getElementById('pv-search').setSelectionRange(state.paymentVoucherQuery.length, state.paymentVoucherQuery.length);
+    };
+  }
   if (document.getElementById('new-pv-btn')) {
     document.getElementById('new-pv-btn').onclick = () => {
       state.paymentVoucherForm = newPaymentVoucherForm();
@@ -11638,6 +11775,7 @@ function bindAppEvents() {
     const closePv = () => { state.showPaymentVoucherForm = false; render(); };
     document.getElementById('pv-close').onclick = closePv;
     document.getElementById('pv-cancel').onclick = closePv;
+    bindVoucherNumberNav('pv', false);
     document.getElementById('pv-next').onclick = () => {
       if (state.paymentVouchers.length === 0) return;
       const idx = state.editingPaymentVoucherId ? state.paymentVouchers.findIndex(p => p.id === state.editingPaymentVoucherId) : -1;
@@ -12993,12 +13131,33 @@ function bindAppEvents() {
     };
   }
 
+  if (document.getElementById('stv-search')) {
+    document.getElementById('stv-search').oninput = (ev) => {
+      state.settlementVoucherQuery = ev.target.value;
+      render();
+      document.getElementById('stv-search').focus();
+      document.getElementById('stv-search').setSelectionRange(state.settlementVoucherQuery.length, state.settlementVoucherQuery.length);
+    };
+  }
+  if (document.getElementById('new-stv-btn')) {
+    document.getElementById('new-stv-btn').onclick = () => {
+      state.settlementVoucherForm = newSettlementVoucherForm();
+      state.editingSettlementVoucherId = null;
+      state.docJournalNumbers = [];
+      state.showSettlementVoucher = true;
+      render();
+    };
+  }
+  document.querySelectorAll('[data-open-stv]').forEach(row => {
+    row.onclick = () => openSettlementVoucherById(row.dataset.openStv);
+  });
   if (state.showSettlementVoucher) {
     const f = state.settlementVoucherForm;
     const readOnly = !!state.editingSettlementVoucherId && f.approved;
     const closeStv = () => { state.showSettlementVoucher = false; render(); };
     document.getElementById('stv-close').onclick = closeStv;
     document.getElementById('stv-exit').onclick = closeStv;
+    bindNumberNav('stv', state.settlementVouchers, openSettlementVoucherById);
     if (!readOnly) {
       document.getElementById('stv-party-type').onchange = (ev) => { f.party_type = ev.target.value; f.party_id = ''; render(); };
       document.getElementById('stv-party').onchange = (ev) => { f.party_id = ev.target.value; };
@@ -13089,6 +13248,7 @@ function bindAppEvents() {
     const closeCdv = () => { state.showCashDisbursement = false; render(); };
     document.getElementById('cdv-close').onclick = closeCdv;
     document.getElementById('cdv-exit').onclick = closeCdv;
+    bindNumberNav('cdv', state.cashDisbursementVouchers, openCashDisbursementById);
     if (!readOnly) {
       document.getElementById('cdv-account').onchange = (ev) => { f.expense_account_code = ev.target.value; };
       document.getElementById('cdv-amount').oninput = (ev) => { f.amount = ev.target.value; };
@@ -13889,7 +14049,7 @@ function bindAppEvents() {
       if (!number) { errEl.textContent = 'اكتب رقم الفاتورة'; return; }
       const cfg = quickOpenConfig().find(c => c.label === state.reopenDocType);
       await cfg.loadFn();
-      const found = state[cfg.listKey].find(x => (x[cfg.numberField]||'').trim() === number);
+      const found = state[cfg.listKey].find(x => (x[cfg.numberField]||'').trim().toLowerCase() === number.toLowerCase());
       if (!found) { errEl.textContent = `ما لقيت ${state.reopenDocType} برقم "${number}"`; return; }
       if (!found.approved) { errEl.textContent = 'هذي الفاتورة غير معتمدة أصلاً — تقدر تعدّلها مباشرة بدون فك اعتماد'; return; }
       state.activeSection = cfg.activeSection;
@@ -14499,7 +14659,7 @@ async function runQuickOpen(typeLabel, number) {
   const cfg = quickOpenConfig().find(c => c.label === typeLabel);
   if (!cfg) return { success:false, message:'نوع مستند غير معروف' };
   await cfg.loadFn();
-  const found = state[cfg.listKey].find(x => (x[cfg.numberField]||'').trim() === number.trim());
+  const found = state[cfg.listKey].find(x => (x[cfg.numberField]||'').trim().toLowerCase() === number.trim().toLowerCase());
   if (!found) return { success:false, message:`ما لقيت ${typeLabel} برقم "${number}"` };
   state.activeSection = cfg.activeSection;
   state.showQuickOpen = false;
