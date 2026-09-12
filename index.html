@@ -118,6 +118,9 @@ let state = {
   showVehicleSearch: false, vehicleSearchMake: '', vehicleSearchModel: '', vehicleSearchYear: '', vehicleSearchResults: null,
   showBulkPrice: false, bulkPriceSelections: {}, bulkPriceQuery: '', bulkPriceField: 'price', bulkPriceMode: 'percent_increase', bulkPriceValue: '',
   showQuickNewItem: false, quickNewItemForm: null,
+  itemAltNumbers: [],
+  itemAltNumbersMap: {},
+  showAltNumbers: false, altNumbersSelectedItemId: '', altNumbersQuery: '', altNumbersNewValue: '',
   activeBarItemId: null,
   showGlobalSearch: false, globalSearchQuery: '', globalSearchResults: null,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
@@ -1692,6 +1695,19 @@ async function runGlobalSearch(query) {
   return { items, parties, sales, purchases };
 }
 
+// ---------- أرقام بديلة للصنف (أرقام تصنيع أخرى تدل على نفس القطعة) ----------
+async function loadItemAltNumbers(itemId) {
+  const { data } = await sb.from('item_alternative_numbers').select('*').eq('item_id', itemId).order('alt_number');
+  return data || [];
+}
+// خريطة شاملة (item_id -> [أرقام بديلة]) تُحمّل مرة واحدة، تُستخدم بالبحث بقائمة اختيار الأصناف
+async function loadAllAltNumbersMap() {
+  const { data } = await sb.from('item_alternative_numbers').select('item_id, alt_number');
+  const map = {};
+  (data || []).forEach(r => { if (!map[r.item_id]) map[r.item_id] = []; map[r.item_id].push(r.alt_number); });
+  state.itemAltNumbersMap = map;
+}
+
 async function loadItemVehicleCompat(itemId) {
   const { data } = await sb.from('item_vehicle_compatibility').select('*').eq('item_id', itemId).order('vehicle_make');
   return data || [];
@@ -1961,6 +1977,7 @@ const SUBMENUS = {
     { label: 'طباعة ملصقات باركود', target: '__barcode_labels__' },
     { label: 'بحث بالسيارة', target: '__vehicle_search__' },
     { label: 'تحديث أسعار جماعي', target: '__bulk_price__' },
+    { label: 'أرقام بديلة', target: '__alt_numbers__' },
   ],
   'المستودعات': [
     { label: 'المستودعات', target: '__warehouses__' },
@@ -2074,6 +2091,7 @@ function renderApp() {
   ${state.showBarcodeLabels ? renderBarcodeLabelsModal() : ''}
   ${state.showVehicleSearch ? renderVehicleSearchModal() : ''}
   ${state.showBulkPrice ? renderBulkPriceModal() : ''}
+  ${state.showAltNumbers ? renderAltNumbersModal() : ''}
   ${state.showQuickNewItem ? renderQuickNewItemModal() : ''}
   ${state.showGlobalSearch ? renderGlobalSearchModal() : ''}
   ${renderActiveItemBar()}
@@ -4264,6 +4282,46 @@ function renderQuickNewItemModal() {
           </div>
         </div>
         <button id="qni-save-add" class="btn primary" style="padding:9px 18px;width:100%;background:#0F6E56;border-color:#0F6E56;">إنشاء الصنف وإضافته للفاتورة</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderAltNumbersModal() {
+  const q = state.altNumbersQuery.trim().toLowerCase();
+  const results = !q ? [] : state.items.filter(it => (it.sku||'').toLowerCase().includes(q) || (it.name||'').toLowerCase().includes(q)).slice(0,8);
+  const selectedItem = state.items.find(it => it.id === state.altNumbersSelectedItemId);
+  return `
+  <div id="an-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:560px;max-height:85vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-list-numbers"></i> أرقام بديلة للأصناف</span><button id="an-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:16px;">
+        <div style="font-size:11px;color:#5F5E5A;margin-bottom:12px;background:#F0F6FC;border-radius:6px;padding:8px;">دوّر عن الصنف أول، وبعدين سجّل له أي عدد من أرقام التصنيع البديلة (رقم شركة ثانية، رقم OEM...).</div>
+        <input id="an-search" class="input" placeholder="ابحث بالاسم أو رقم الصنف..." value="${escapeHtml(state.altNumbersQuery)}" style="margin-bottom:10px;" />
+        ${!selectedItem ? `
+        <div style="border:1px solid #A9A48C;border-radius:6px;max-height:220px;overflow-y:auto;">
+          ${results.map(it => `
+            <div data-an-pick="${it.id}" style="padding:8px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;cursor:pointer;display:flex;justify-content:space-between;">
+              <span>${escapeHtml(it.name)}</span><span class="mono" style="color:#8B8A7A;">${escapeHtml(it.sku)}</span>
+            </div>`).join('') || `<div style="padding:14px;text-align:center;font-size:11.5px;color:#8B8A7A;">${q ? 'ما فيه أصناف مطابقة' : 'ابدأ الكتابة للبحث'}</div>`}
+        </div>` : `
+        <div style="border:1px solid #2C4A6E;border-radius:8px;padding:12px;background:#F0F6FC;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div style="font-size:13px;font-weight:600;color:#1B3352;">${escapeHtml(selectedItem.name)} <span class="mono" style="font-weight:400;color:#5F5E5A;">(${escapeHtml(selectedItem.sku)})</span></div>
+            <button id="an-change-item" style="border:none;background:none;color:#2C4A6E;font-size:11px;cursor:pointer;text-decoration:underline;">تغيير الصنف</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <input id="an-new-number" class="input mono" dir="ltr" placeholder="الرقم البديل الجديد" value="${escapeHtml(state.altNumbersNewValue)}" />
+            <button id="an-add-btn" class="btn primary" style="padding:7px 16px;">إضافة</button>
+          </div>
+          <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;background:#fff;">
+            ${(state.itemAltNumbers||[]).map(a => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;">
+                <span class="mono" dir="ltr">${escapeHtml(a.alt_number)}</span>
+                <button data-an-remove="${a.id}" style="border:none;background:none;color:#C0392B;cursor:pointer;">✕</button>
+              </div>`).join('') || `<div style="padding:12px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه أرقام بديلة مسجّلة بعد</div>`}
+          </div>
+        </div>`}
       </div>
     </div>
   </div>`;
@@ -8379,7 +8437,8 @@ function renderItemPickerModal() {
     (it.sku||'').toLowerCase().includes(q) || (it.name||'').toLowerCase().includes(q) ||
     (it.name_en||'').toLowerCase().includes(q) ||
     (it.brand||'').toLowerCase().includes(q) || (it.model||'').toLowerCase().includes(q) ||
-    (it.registry_number||'').toLowerCase().includes(q) || (it.company||'').toLowerCase().includes(q)
+    (it.registry_number||'').toLowerCase().includes(q) || (it.company||'').toLowerCase().includes(q) ||
+    (state.itemAltNumbersMap[it.id]||[]).some(alt => alt.toLowerCase().includes(q))
   );
   const selectedItem = state.items.find(it => it.id === state.itemPickerSelectedId);
   const multiCount = Object.keys(state.itemPickerMultiSelected || {}).length;
@@ -9178,6 +9237,12 @@ function bindAppEvents() {
         render();
         return;
       }
+      if (target === '__alt_numbers__') {
+        state.altNumbersSelectedItemId = ''; state.altNumbersQuery = ''; state.altNumbersNewValue = ''; state.itemAltNumbers = [];
+        state.showAltNumbers = true;
+        render();
+        return;
+      }
       if (target === '__purchases_report__') {
         await loadParties();
         await loadPurchases();
@@ -9526,7 +9591,7 @@ function bindAppEvents() {
         if (ev.key !== 'Enter') return;
         const code = ev.target.value.trim();
         if (!code) return;
-        const item = state.items.find(it => (it.sku||'').toLowerCase() === code.toLowerCase());
+        const item = state.items.find(it => (it.sku||'').toLowerCase() === code.toLowerCase() || (state.itemAltNumbersMap[it.id]||[]).some(alt => alt.toLowerCase() === code.toLowerCase()));
         if (!item) {
           showToast(`ما لقيت صنف برقم "${code}" — تقدر تضيفه جديد`, 'error');
           state.quickNewItemForm = { sku: code, name:'', unit:'حبة', cost:'', price:'', qty:'1' };
@@ -9977,7 +10042,7 @@ function bindAppEvents() {
         if (ev.key !== 'Enter') return;
         const code = ev.target.value.trim();
         if (!code) return;
-        const item = state.items.find(it => (it.sku||'').toLowerCase() === code.toLowerCase());
+        const item = state.items.find(it => (it.sku||'').toLowerCase() === code.toLowerCase() || (state.itemAltNumbersMap[it.id]||[]).some(alt => alt.toLowerCase() === code.toLowerCase()));
         if (!item) { showToast(`ما لقيت صنف برقم "${code}"`, 'error'); return; }
         const sel = document.getElementById('si-item-select');
         sel.value = item.id;
@@ -13269,6 +13334,47 @@ function bindAppEvents() {
     }
   }
 
+  if (state.showAltNumbers) {
+    document.getElementById('an-close').onclick = () => { state.showAltNumbers = false; render(); };
+    if (document.getElementById('an-search')) {
+      document.getElementById('an-search').oninput = (ev) => { state.altNumbersQuery = ev.target.value; render(); };
+    }
+    document.querySelectorAll('[data-an-pick]').forEach(el => {
+      el.onclick = async () => {
+        state.altNumbersSelectedItemId = el.dataset.anPick;
+        state.itemAltNumbers = await loadItemAltNumbers(state.altNumbersSelectedItemId);
+        render();
+      };
+    });
+    if (document.getElementById('an-change-item')) {
+      document.getElementById('an-change-item').onclick = () => {
+        state.altNumbersSelectedItemId = ''; state.altNumbersQuery = ''; state.itemAltNumbers = [];
+        render();
+      };
+    }
+    if (document.getElementById('an-add-btn')) {
+      document.getElementById('an-add-btn').onclick = async () => {
+        const num = document.getElementById('an-new-number').value.trim();
+        if (!num) { showToast('اكتب الرقم البديل', 'error'); return; }
+        const { error } = await sb.from('item_alternative_numbers').insert({ item_id: state.altNumbersSelectedItemId, alt_number: num });
+        if (error) { showToast('فشل إضافة الرقم البديل', 'error'); return; }
+        state.altNumbersNewValue = '';
+        state.itemAltNumbers = await loadItemAltNumbers(state.altNumbersSelectedItemId);
+        await loadAllAltNumbersMap();
+        render();
+      };
+    }
+    document.querySelectorAll('[data-an-remove]').forEach(btn => {
+      btn.onclick = async () => {
+        const { error } = await sb.from('item_alternative_numbers').delete().eq('id', btn.dataset.anRemove);
+        if (error) { showToast('فشل الحذف', 'error'); return; }
+        state.itemAltNumbers = await loadItemAltNumbers(state.altNumbersSelectedItemId);
+        await loadAllAltNumbersMap();
+        render();
+      };
+    });
+  }
+
   if (state.showQuickNewItem) {
     document.getElementById('qni-close').onclick = () => { state.showQuickNewItem = false; render(); };
     document.getElementById('qni-save-add').onclick = async () => {
@@ -14014,7 +14120,7 @@ async function init() {
   await loadCompany();
   const { data } = await sb.auth.getSession();
   state.session = data.session;
-  if (state.session) { await loadProfile(); await loadItems(); await loadParties(); await loadPurchases(); await loadSalesInvoices(); await loadWarehouses(); await loadPaymentMethods(); state.homeCogs = await calcHomeNetProfit(); }
+  if (state.session) { await loadProfile(); await loadItems(); await loadParties(); await loadPurchases(); await loadSalesInvoices(); await loadWarehouses(); await loadPaymentMethods(); state.homeCogs = await calcHomeNetProfit(); await loadAllAltNumbersMap(); }
   render();
   if (state.session) checkAndRunAutoBackup(); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
 }
