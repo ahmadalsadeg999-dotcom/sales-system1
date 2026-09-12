@@ -109,6 +109,7 @@ let state = {
   showCashRecon: false, cashReconciliations: [], cashReconExpected: 0, cashReconActual: '',
   showBarcodeLabels: false, labelSelections: {}, labelSearchQuery: '', showLabelFormatPanel: false,
   showQuickOpen: false, quickOpenType: 'فاتورة بيع', quickOpenNumber: '', quickOpenError: '',
+  showReopenDoc: false, reopenDocType: 'فاتورة بيع', reopenDocNumber: '', reopenDocError: '',
   showPartyPicker: false, partyPickerContext: null, partyPickerQuery: '',
   showInventoryStats: false, invStatsOpeningValue: 0,
   showOpeningInv: false, openingInvDocs: [], showOpeningInvForm: false, openingInvForm: null, editingOpeningInvId: null,
@@ -2005,6 +2006,7 @@ const SUBMENUS = {
     { divider: true },
     { label: 'نسخة احتياطية وصيانة النظام', target: '__maintenance__' },
     { label: 'تطابق الصندوق آخر اليوم', target: '__cash_recon__' },
+    { label: 'إعادة فتح مستند معتمد', target: '__reopen_doc__' },
     { label: 'إعدادات متقدمة', target: '__designer_panel__' },
   ],
 };
@@ -2105,6 +2107,7 @@ function renderApp() {
   ${state.showGlobalSearch ? renderGlobalSearchModal() : ''}
   ${renderActiveItemBar()}
   ${state.showQuickOpen ? renderQuickOpenModal() : ''}
+  ${state.showReopenDoc ? renderReopenDocModal() : ''}
   ${state.showInventoryStats ? renderInventoryStatsModal() : ''}
   ${state.showOpeningInv ? renderOpeningInvModal() : ''}
   ${state.showPartyPicker ? renderPartyPickerModal() : ''}
@@ -4298,6 +4301,34 @@ function renderQuickNewItemModal() {
   </div>`;
 }
 
+function renderReopenDocModal() {
+  return `
+  <div id="rd-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-lock-open"></i> إعادة فتح مستند معتمد</span><button id="rd-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:16px;">
+        <div style="font-size:11px;color:#5F5E5A;margin-bottom:14px;background:#FDF6E8;border-radius:6px;padding:8px;border:1px solid #BA7517;">فك الاعتماد يرجّع المخزون والرصيد والقيد المحاسبي لوضعهم قبل الاعتماد — إجراء حسّاس، للمدير فقط.</div>
+        <div id="rd-error" style="color:#C0392B;font-size:11.5px;margin-bottom:8px;"></div>
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">نوع المستند</div>
+          <select id="rd-type" class="input">
+            <option value="فاتورة بيع" ${state.reopenDocType==='فاتورة بيع'?'selected':''}>فاتورة بيع (آجل أو نقدي)</option>
+            <option value="سند قبض" ${state.reopenDocType==='سند قبض'?'selected':''}>سند قبض</option>
+            <option value="سند صرف" ${state.reopenDocType==='سند صرف'?'selected':''}>سند صرف</option>
+            <option value="سند تسوية" ${state.reopenDocType==='سند تسوية'?'selected':''}>سند تسوية</option>
+          </select>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">رقم الفاتورة</div>
+          <input id="rd-number" class="input mono" dir="ltr" value="${escapeHtml(state.reopenDocNumber)}" placeholder="مثال: S-0042" />
+        </div>
+        <button id="rd-search-open" class="btn primary" style="padding:9px 18px;width:100%;">بحث وفتح المستند</button>
+        <div style="font-size:10px;color:#8B8A7A;margin-top:8px;">بعد الفتح، لو الفاتورة معتمدة راح يظهر زر "فك الاعتماد" أعلى الفاتورة مباشرة.</div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderInventoryValuationModal() {
   const q = state.inventoryValuationQuery.trim().toLowerCase();
   const rows = state.warehouseStockPivot.filter(r => !q || r.name.toLowerCase().includes(q) || (r.sku||'').toLowerCase().includes(q));
@@ -5007,6 +5038,7 @@ function renderVoucherFormModal(kind) {
         ${iconBtn(`${prefix}-pdf`, 'ti-file-type-pdf', '#D9534F', 'حفظ PDF', !f.voucher_number)}
         ${f.approved ? '' : iconBtn(`${prefix}-save`, 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && canApprove()) ? iconBtn(`${prefix}-approve`, 'ti-lock', '#0F6E56', 'ترحيل') : ''}
+        ${(f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && isAdmin()) ? iconBtn(`${prefix}-unlock`, 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
       </div>
     </div>
   </div>`;
@@ -6755,6 +6787,7 @@ function renderSettlementVoucherModal() {
         ${iconBtn('stv-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), sortedVouchers.length===0)}
         ${!state.editingSettlementVoucherId ? iconBtn('stv-save', 'ti-device-floppy', '#1E5AC0', t('btn_save')) : ''}
         ${(state.editingSettlementVoucherId && !f.approved && canApprove()) ? iconBtn('stv-approve', 'ti-lock', '#0F6E56', t('btn_approve')) : ''}
+        ${(state.editingSettlementVoucherId && f.approved && isAdmin()) ? iconBtn('stv-unlock', 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
       </div>
     </div>
   </div>`;
@@ -8451,6 +8484,26 @@ function journalNumbersBadge() {
   if (!state.docJournalNumbers || state.docJournalNumbers.length === 0) return '';
   return `<span style="font-size:11px;color:#2C4A6E;margin-right:10px;">رقم القيد: <span class="mono" style="font-weight:600;">${state.docJournalNumbers.join(' ، ')}</span></span>`;
 }
+// فك اعتماد عام لسندات القبض/الصرف/التسوية: يرجّع رصيد الطرف، يحذف القيد المحاسبي، ويلغي الاعتماد
+async function unapproveSimpleVoucher(table, sourceType, sourceId, partyId, balanceDelta) {
+  if (partyId) {
+    const party = state.parties.find(p => p.id === partyId);
+    if (party) {
+      const { error } = await sb.from('parties').update({ balance: Number(party.balance||0) + balanceDelta }).eq('id', partyId);
+      if (error) { showToast('فشل إرجاع رصيد الطرف — لم يُفك الاعتماد', 'error'); return false; }
+    }
+  }
+  const { data: entries } = await sb.from('journal_entries').select('id').eq('source_type', sourceType).eq('source_id', sourceId);
+  for (const e of (entries||[])) {
+    await sb.from('journal_entry_lines').delete().eq('entry_id', e.id);
+    await sb.from('journal_entries').delete().eq('id', e.id);
+  }
+  const { error: unErr } = await sb.from(table).update({ approved: false }).eq('id', sourceId);
+  if (unErr) { showToast('فشل فك الاعتماد', 'error'); return false; }
+  await loadParties();
+  return true;
+}
+
 async function postJournalEntry(entryDate, description, sourceType, sourceId, lines, voucherNumber) {
   lines = lines.filter(l => Math.abs(l.debit||0) > 0.001 || Math.abs(l.credit||0) > 0.001); // إسقاط أي سطر بقيمة صفر
   if (lines.length === 0) return null;
@@ -9350,6 +9403,13 @@ function bindAppEvents() {
       if ((target === '__company__' || target === '__payment_methods__') && !canManageCompany()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
       if (target === '__maintenance__' && !canManageBackup()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
       if (target === '__designer_panel__' && !isAdmin()) { showToast('هذا القسم للمدير فقط'); return; }
+      if (target === '__reopen_doc__' && !isAdmin()) { showToast('هذا القسم للمدير فقط'); return; }
+      if (target === '__reopen_doc__') {
+        state.reopenDocType = 'فاتورة بيع'; state.reopenDocNumber = ''; state.reopenDocError = '';
+        state.showReopenDoc = true;
+        render();
+        return;
+      }
       if (target === '__users__') {
         await loadUsers();
         state.showUsers = true;
@@ -11503,6 +11563,20 @@ function bindAppEvents() {
         render();
       };
     }
+    if (document.getElementById('rv-unlock')) {
+      document.getElementById('rv-unlock').onclick = async () => {
+        if (!confirm('فك الاعتماد يرجّع رصيد العميل ويحذف القيد المحاسبي، عشان تقدر تعدّل السند وتعتمده من جديد. متابعة؟')) return;
+        const f = state.receiptVoucherForm;
+        const ok = await unapproveSimpleVoucher('receipt_vouchers', 'receipt_voucher', state.editingReceiptVoucherId, f.customer_id, Number(f.amount));
+        if (!ok) return;
+        f.approved = false;
+        state.docJournalNumbers = [];
+        logActivity('فك اعتماد سند قبض', f.voucher_number);
+        await loadReceiptVouchers();
+        showToast('تم فك الاعتماد — عدّل السند واعتمده من جديد');
+        render();
+      };
+    }
   }
 
   if (document.getElementById('new-pv-btn')) {
@@ -11591,6 +11665,20 @@ function bindAppEvents() {
         await loadParties();
         await loadPaymentVouchers();
         showToast('تم اعتماد السند بنجاح');
+        render();
+      };
+    }
+    if (document.getElementById('pv-unlock')) {
+      document.getElementById('pv-unlock').onclick = async () => {
+        if (!confirm('فك الاعتماد يرجّع رصيد المورد ويحذف القيد المحاسبي، عشان تقدر تعدّل السند وتعتمده من جديد. متابعة؟')) return;
+        const f = state.paymentVoucherForm;
+        const ok = await unapproveSimpleVoucher('payment_vouchers', 'payment_voucher', state.editingPaymentVoucherId, f.supplier_id, Number(f.amount));
+        if (!ok) return;
+        f.approved = false;
+        state.docJournalNumbers = [];
+        logActivity('فك اعتماد سند صرف', f.voucher_number);
+        await loadPaymentVouchers();
+        showToast('تم فك الاعتماد — عدّل السند واعتمده من جديد');
         render();
       };
     }
@@ -12924,6 +13012,20 @@ function bindAppEvents() {
         render();
       };
     }
+    if (document.getElementById('stv-unlock')) {
+      document.getElementById('stv-unlock').onclick = async () => {
+        if (!confirm('فك الاعتماد يرجّع رصيد الطرف ويحذف القيد المحاسبي، عشان تقدر تعدّل السند وتعتمده من جديد. متابعة؟')) return;
+        const reverseDelta = f.direction === 'increase' ? -Number(f.amount) : Number(f.amount);
+        const ok = await unapproveSimpleVoucher('settlement_vouchers', 'settlement_voucher', state.editingSettlementVoucherId, f.party_id, reverseDelta);
+        if (!ok) return;
+        f.approved = false;
+        state.docJournalNumbers = [];
+        logActivity('فك اعتماد سند تسوية', f.voucher_number);
+        await loadSettlementVouchers();
+        showToast('تم فك الاعتماد — عدّل السند واعتمده من جديد');
+        render();
+      };
+    }
     const sortedStv = [...state.settlementVouchers].sort((a,b) => a.voucher_number.localeCompare(b.voucher_number));
     document.getElementById('stv-next').onclick = () => {
       if (sortedStv.length === 0) return;
@@ -13735,6 +13837,29 @@ function bindAppEvents() {
     document.getElementById('qo-number').onkeydown = (ev) => { if (ev.key === 'Enter') submitQuickOpen(); };
   }
 
+  if (state.showReopenDoc) {
+    document.getElementById('rd-close').onclick = () => { state.showReopenDoc = false; render(); };
+    document.getElementById('rd-type').onchange = (ev) => { state.reopenDocType = ev.target.value; };
+    const submitReopen = async () => {
+      const errEl = document.getElementById('rd-error');
+      errEl.textContent = '';
+      const number = document.getElementById('rd-number').value.trim();
+      if (!number) { errEl.textContent = 'اكتب رقم الفاتورة'; return; }
+      const cfg = quickOpenConfig().find(c => c.label === state.reopenDocType);
+      await cfg.loadFn();
+      const found = state[cfg.listKey].find(x => (x[cfg.numberField]||'').trim() === number);
+      if (!found) { errEl.textContent = `ما لقيت ${state.reopenDocType} برقم "${number}"`; return; }
+      if (!found.approved) { errEl.textContent = 'هذي الفاتورة غير معتمدة أصلاً — تقدر تعدّلها مباشرة بدون فك اعتماد'; return; }
+      state.activeSection = cfg.activeSection;
+      state.showReopenDoc = false;
+      await cfg.openFn(found.id);
+      showToast('فُتحت الفاتورة — اضغط "فك الاعتماد" أعلى الفاتورة للمتابعة');
+      render();
+    };
+    document.getElementById('rd-search-open').onclick = submitReopen;
+    document.getElementById('rd-number').onkeydown = (ev) => { if (ev.key === 'Enter') submitReopen(); };
+  }
+
   if (state.showInventoryStats) {
     document.getElementById('ist-close').onclick = () => { state.showInventoryStats = false; render(); };
     if (document.getElementById('ist-print-btn')) document.getElementById('ist-print-btn').onclick = () => { window.print(); };
@@ -14325,6 +14450,7 @@ function quickOpenConfig() {
     { label:'سند تحويل', activeSection:'__transfers__', listKey:'transfers', numberField:'transfer_number', loadFn:loadTransfers, openFn:openTransferById },
     { label:'سند قبض', activeSection:'__receipt_vouchers__', listKey:'receiptVouchers', numberField:'voucher_number', loadFn:loadReceiptVouchers, openFn:openReceiptVoucherById },
     { label:'سند صرف', activeSection:'__payment_vouchers__', listKey:'paymentVouchers', numberField:'voucher_number', loadFn:loadPaymentVouchers, openFn:openPaymentVoucherById },
+    { label:'سند تسوية', activeSection:'__settlement_voucher__', listKey:'settlementVouchers', numberField:'voucher_number', loadFn:loadSettlementVouchers, openFn:openSettlementVoucherById },
   ];
 }
 async function runQuickOpen(typeLabel, number) {
