@@ -117,6 +117,7 @@ let state = {
   itemVehicleCompat: [], newVehicleMake: '', newVehicleModel: '', newVehicleYearFrom: '', newVehicleYearTo: '',
   showVehicleSearch: false, vehicleSearchMake: '', vehicleSearchModel: '', vehicleSearchYear: '', vehicleSearchResults: null,
   showBulkPrice: false, bulkPriceSelections: {}, bulkPriceQuery: '', bulkPriceField: 'price', bulkPriceMode: 'percent_increase', bulkPriceValue: '',
+  showQuickNewItem: false, quickNewItemForm: null,
   activeBarItemId: null,
   showGlobalSearch: false, globalSearchQuery: '', globalSearchResults: null,
   itemPickerPriceHistory: [], itemPickerPriceHistoryItemId: null,
@@ -803,18 +804,18 @@ function renderAuth() {
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:0;right:0;left:0;background:linear-gradient(135deg,#1B3352,#2C4A6E,#3D6389);overflow:hidden;white-space:nowrap;padding:18px 0;z-index:40;box-shadow:0 -4px 16px rgba(0,0,0,0.3);">
+  <div style="position:fixed;bottom:0;right:0;left:0;background:linear-gradient(135deg,#1B3352,#2C4A6E,#3D6389);overflow:hidden;white-space:nowrap;padding:10px 0;z-index:40;box-shadow:0 -4px 16px rgba(0,0,0,0.3);">
     <style>
       @keyframes dev-marquee-scroll { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
       #dev-marquee-track { display:inline-block; animation: dev-marquee-scroll 26s linear infinite; }
     </style>
-    <div id="dev-marquee-track" style="color:#F8FAFC;font-size:16px;font-weight:500;">
-      ${state.licenseSettings?.marquee_working_hours ? `<span style="margin:0 40px;">🕐 أوقات العمل: ${escapeHtml(state.licenseSettings.marquee_working_hours)}</span>` : ''}
-      ${state.licenseSettings?.marquee_phone ? `<span style="margin:0 40px;" dir="ltr">📞 ${escapeHtml(state.licenseSettings.marquee_phone)}</span>` : ''}
-      ${state.licenseSettings?.marquee_whatsapp ? `<span style="margin:0 40px;" dir="ltr">💬 واتساب: ${escapeHtml(state.licenseSettings.marquee_whatsapp)}</span>` : ''}
-      ${state.licenseSettings?.marquee_address ? `<span style="margin:0 40px;">📍 ${escapeHtml(state.licenseSettings.marquee_address)}</span>` : ''}
-      ${state.licenseSettings?.marquee_email ? `<span style="margin:0 40px;" dir="ltr">✉️ ${escapeHtml(state.licenseSettings.marquee_email)}</span>` : ''}
-      ${state.licenseSettings?.marquee_website ? `<span style="margin:0 40px;" dir="ltr">🌐 ${escapeHtml(state.licenseSettings.marquee_website)}</span>` : ''}
+    <div id="dev-marquee-track" style="color:#F8FAFC;font-size:12.5px;font-weight:500;">
+      ${state.licenseSettings?.marquee_working_hours ? `<span style="margin:0 24px;">🕐 أوقات العمل: ${escapeHtml(state.licenseSettings.marquee_working_hours)}</span>` : ''}
+      ${state.licenseSettings?.marquee_phone ? `<span style="margin:0 24px;" dir="ltr">📞 ${escapeHtml(state.licenseSettings.marquee_phone)}</span>` : ''}
+      ${state.licenseSettings?.marquee_whatsapp ? `<span style="margin:0 24px;" dir="ltr">💬 واتساب: ${escapeHtml(state.licenseSettings.marquee_whatsapp)}</span>` : ''}
+      ${state.licenseSettings?.marquee_address ? `<span style="margin:0 24px;">📍 ${escapeHtml(state.licenseSettings.marquee_address)}</span>` : ''}
+      ${state.licenseSettings?.marquee_email ? `<span style="margin:0 24px;" dir="ltr">✉️ ${escapeHtml(state.licenseSettings.marquee_email)}</span>` : ''}
+      ${state.licenseSettings?.marquee_website ? `<span style="margin:0 24px;" dir="ltr">🌐 ${escapeHtml(state.licenseSettings.marquee_website)}</span>` : ''}
     </div>
   </div>`;
 }
@@ -2073,6 +2074,7 @@ function renderApp() {
   ${state.showBarcodeLabels ? renderBarcodeLabelsModal() : ''}
   ${state.showVehicleSearch ? renderVehicleSearchModal() : ''}
   ${state.showBulkPrice ? renderBulkPriceModal() : ''}
+  ${state.showQuickNewItem ? renderQuickNewItemModal() : ''}
   ${state.showGlobalSearch ? renderGlobalSearchModal() : ''}
   ${renderActiveItemBar()}
   ${state.showQuickOpen ? renderQuickOpenModal() : ''}
@@ -2683,6 +2685,7 @@ function renderPurchaseFormModal() {
         <div class="no-print" id="pi-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
         <div class="no-print" style="display:flex;gap:8px;margin-bottom:10px;">
           <input id="pi-quick-sku" class="input mono" style="max-width:140px;" placeholder="رقم الصنف (Enter)" dir="ltr" />
+          <button id="pi-new-item-btn" type="button" class="no-print" style="padding:0 12px;border:1px dashed #2C4A6E;background:#F0F6FC;color:#1B3352;border-radius:4px;cursor:pointer;font-size:11.5px;white-space:nowrap;"><i class="ti ti-plus" style="font-size:12px;"></i> صنف جديد غير موجود</button>
           <select id="pi-item-select" class="input" style="display:none;">
             <option value="">اختر صنف...</option>
             ${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}
@@ -4219,6 +4222,49 @@ function renderGlobalSearchModal() {
             <span class="mono">${escapeHtml(inv.invoice_number)}</span><span style="color:#8B8A7A;">${escapeHtml(inv.parties?.name||'')}</span>
           </div>`)}
       </div>`}
+    </div>
+  </div>`;
+}
+
+function renderQuickNewItemModal() {
+  const f = state.quickNewItemForm;
+  return `
+  <div id="qni-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:35;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-package"></i> صنف جديد سريع (غير موجود بالنظام)</span><button id="qni-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:16px;">
+        <div style="font-size:11px;color:#5F5E5A;margin-bottom:14px;background:#F0F6FC;border-radius:6px;padding:8px;">هذا يضيف الصنف بأساسياته فقط (بسرعة)، وينضاف مباشرة لهذي الفاتورة. تقدر تكمّل بياناته لاحقاً من شاشة "الأصناف".</div>
+        <div id="qni-error" style="color:#C0392B;font-size:11.5px;margin-bottom:8px;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div>
+            <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">رقم الصنف *</div>
+            <input id="qni-sku" class="input mono" dir="ltr" value="${escapeHtml(f.sku)}" />
+          </div>
+          <div>
+            <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">الوحدة</div>
+            <input id="qni-unit" class="input" value="${escapeHtml(f.unit)}" placeholder="حبة" />
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">اسم الصنف *</div>
+          <input id="qni-name" class="input" value="${escapeHtml(f.name)}" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+          <div>
+            <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">التكلفة</div>
+            <input id="qni-cost" class="input mono" value="${escapeHtml(f.cost)}" />
+          </div>
+          <div>
+            <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">سعر البيع</div>
+            <input id="qni-price" class="input mono" value="${escapeHtml(f.price)}" />
+          </div>
+          <div>
+            <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">الكمية</div>
+            <input id="qni-qty" class="input mono" value="${escapeHtml(f.qty)}" />
+          </div>
+        </div>
+        <button id="qni-save-add" class="btn primary" style="padding:9px 18px;width:100%;background:#0F6E56;border-color:#0F6E56;">إنشاء الصنف وإضافته للفاتورة</button>
+      </div>
     </div>
   </div>`;
 }
@@ -9481,11 +9527,25 @@ function bindAppEvents() {
         const code = ev.target.value.trim();
         if (!code) return;
         const item = state.items.find(it => (it.sku||'').toLowerCase() === code.toLowerCase());
-        if (!item) { showToast(`ما لقيت صنف برقم "${code}"`, 'error'); return; }
+        if (!item) {
+          showToast(`ما لقيت صنف برقم "${code}" — تقدر تضيفه جديد`, 'error');
+          state.quickNewItemForm = { sku: code, name:'', unit:'حبة', cost:'', price:'', qty:'1' };
+          state.showQuickNewItem = true;
+          render();
+          return;
+        }
         const sel = document.getElementById('pi-item-select');
         sel.value = item.id;
         sel.dispatchEvent(new Event('change'));
         ev.target.value = '';
+      };
+    }
+    if (document.getElementById('pi-new-item-btn')) {
+      document.getElementById('pi-new-item-btn').onclick = () => {
+        const typedSku = document.getElementById('pi-quick-sku')?.value.trim() || '';
+        state.quickNewItemForm = { sku: typedSku, name:'', unit:'حبة', cost:'', price:'', qty:'1' };
+        state.showQuickNewItem = true;
+        render();
       };
     }
     if (document.getElementById('pi-add-line')) {
@@ -13207,6 +13267,31 @@ function bindAppEvents() {
         render();
       };
     }
+  }
+
+  if (state.showQuickNewItem) {
+    document.getElementById('qni-close').onclick = () => { state.showQuickNewItem = false; render(); };
+    document.getElementById('qni-save-add').onclick = async () => {
+      const errEl = document.getElementById('qni-error');
+      errEl.textContent = '';
+      const sku = document.getElementById('qni-sku').value.trim();
+      const name = document.getElementById('qni-name').value.trim();
+      const unit = document.getElementById('qni-unit').value.trim() || 'حبة';
+      const cost = Number(document.getElementById('qni-cost').value) || 0;
+      const price = Number(document.getElementById('qni-price').value) || 0;
+      const qty = Number(document.getElementById('qni-qty').value) || 1;
+      if (!sku) { errEl.textContent = 'رقم الصنف إلزامي'; return; }
+      if (!name) { errEl.textContent = 'اسم الصنف إلزامي'; return; }
+      if (cost < 0 || price < 0) { errEl.textContent = 'التكلفة والسعر ما يصيرون سالبين'; return; }
+      if (state.items.some(it => it.sku === sku)) { errEl.textContent = 'رقم الصنف هذا مستخدم أصلاً لصنف ثاني'; return; }
+      const { data, error } = await sb.from('items').insert({ sku, name, unit, cost, price, qty: 0, active: true }).select().single();
+      if (error) { errEl.textContent = 'فشل إنشاء الصنف: ' + error.message; return; }
+      state.items.push(data);
+      state.purchaseForm.lines.push({ item_id: data.id, sku: data.sku, item_name: data.name, unit: data.unit, quantity: qty, unit_cost: cost, tax_percent: 15 });
+      state.showQuickNewItem = false;
+      showToast(`تم إنشاء "${name}" وإضافته للفاتورة`);
+      render();
+    };
   }
 
   if (state.showGlobalSearch) {
