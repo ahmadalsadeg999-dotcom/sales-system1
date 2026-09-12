@@ -2373,15 +2373,17 @@ function renderQuoteFormModal() {
         <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${[t('col_no'),t('col_item_sku'),t('col_item_name'),t('col_unit'),t('col_qty'),'<span class="no-print">'+t('col_cost')+'</span>',t('col_price'),t('col_total'),t('col_tax_pct'),t('col_tax'),t('col_total_tax'),''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${['#','<span class="no-print">صورة</span>',t('col_item_sku'),t('col_item_name'),t('col_unit'),t('col_qty'),'<span class="no-print">'+t('col_cost')+'</span>',t('col_price'),t('col_total'),t('col_tax_pct'),t('col_tax'),t('col_total_tax'),''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${f.lines.map((l,idx) => {
                 const lineSub = l.quantity*l.unit_price, lineTax = lineSub*(Number(l.tax_percent||15)/100);
-                const itemCost = (state.items.find(it => it.id === l.item_id) || {}).cost || 0;
+                const itemFull = state.items.find(it => it.id === l.item_id) || {};
+                const itemCost = itemFull.cost || 0;
                 const bg = idx%2?'#F4F1EA':'#FFFDF6';
                 return `<tr>
               <td style="padding:7px 6px;background:${bg};color:#8B8A7A;font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${idx+1}</td>
+              <td class="no-print" style="padding:4px 6px;background:${bg};border-bottom:1px solid #E4E2DA;">${itemFull.image_url ? `<img src="${escapeHtml(itemFull.image_url)}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;border:1px solid #DEDACB;" />` : `<div style="width:28px;height:28px;background:#EDEAE0;border-radius:4px;"></div>`}</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.sku||'')}</td>
               <td style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.item_name)}</td>
               <td style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.unit||'')}</td>
@@ -4411,10 +4413,11 @@ function renderItemsStatementModal() {
         </div>
         <div style="max-height:400px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
           <table style="width:100%;border-collapse:collapse;">
-            <thead><tr>${['رقم الصنف','اسم الصنف','الرصيد','حد الطلب','التكلفة','السعر','الحالة'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <thead><tr>${['صورة','رقم الصنف','اسم الصنف','الرصيد','حد الطلب','التكلفة','السعر','الحالة'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
             <tbody>
               ${results.map((it,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; const qty = Number(it.qty)||0; return `
               <tr>
+                <td style="padding:4px 8px;background:${bg};border-bottom:1px solid #E4E2DA;">${it.image_url ? `<img src="${escapeHtml(it.image_url)}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #DEDACB;" />` : `<div style="width:32px;height:32px;background:#EDEAE0;border-radius:4px;display:flex;align-items:center;justify-content:center;"><i class="ti ti-photo" style="font-size:14px;color:#A9A48C;"></i></div>`}</td>
                 <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.sku)}</td>
                 <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.name)}</td>
                 <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;color:${qty<0?'#C0392B':qty===0?'#BA7517':'#1F2421'};font-weight:600;border-bottom:1px solid #E4E2DA;">${qty}</td>
@@ -4422,7 +4425,7 @@ function renderItemsStatementModal() {
                 <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(it.cost)}</td>
                 <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(it.price)}</td>
                 <td style="padding:6px 8px;background:${bg};font-size:10.5px;border-bottom:1px solid #E4E2DA;"><span style="padding:2px 8px;border-radius:10px;background:${it.active===false?'#FCEBEB':'#E1F5EE'};color:${it.active===false?'#C0392B':'#0F6E56'};">${it.active===false?'موقوف':'فعّال'}</span></td>
-              </tr>`; }).join('') || `<tr><td colspan="7" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه أصناف مطابقة</td></tr>`}
+              </tr>`; }).join('') || `<tr><td colspan="8" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه أصناف مطابقة</td></tr>`}
             </tbody>
           </table>
         </div>
