@@ -14,23 +14,25 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&family=Cairo:wght@400;500;700&family=Almarai:wght@400;700&family=Noto+Kufi+Arabic:wght@400;700&display=swap');
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: 'IBM Plex Sans Arabic','Tahoma',sans-serif; background: #7A8CA8; min-height: 100vh; padding: 0; box-sizing: border-box; }
+  body { margin: 0; font-family: 'IBM Plex Sans Arabic','Segoe UI','Tahoma','Arial',sans-serif; background: #7A8CA8; min-height: 100vh; padding: 0; box-sizing: border-box; }
   .mono { font-family: 'IBM Plex Mono', monospace; direction: ltr; display: inline-block; }
   td.mono, th.mono { display: table-cell !important; }
   input:focus, select:focus, textarea:focus { outline: 2px solid #0F6E56; outline-offset: 1px; }
   button:focus-visible { outline: 2px solid #0F6E56; outline-offset: 2px; }
   button { font-family: inherit; }
-  .win-title { background: linear-gradient(180deg,#3D6389 0%,#2C4A6E 50%,#1B3352 100%); padding: 7px 12px; display:flex; align-items:center; justify-content:space-between; flex-direction:row-reverse; border-radius: 10px 10px 0 0; }
+  .win-title { background: linear-gradient(180deg,#3D6389 0%,#2C4A6E 50%,#1B3352 100%); padding: 10px 16px; display:flex; align-items:center; justify-content:space-between; flex-direction:row-reverse; border-radius: 10px 10px 0 0; }
   .win-title span { color:#fff; font-size:13px; font-weight:500; }
   [data-open-item], [data-open-pr], [data-open-purchase], [data-open-pv], [data-open-quote], [data-open-rep], [data-open-rv], [data-open-sales], [data-open-sc], [data-open-sr], [data-open-tr], [data-open-wh], [data-pick-item] { transition: background-color 0.15s ease; }
   [data-open-item]:hover, [data-open-pr]:hover, [data-open-purchase]:hover, [data-open-pv]:hover, [data-open-quote]:hover, [data-open-rep]:hover, [data-open-rv]:hover, [data-open-sales]:hover, [data-open-sc]:hover, [data-open-sr]:hover, [data-open-tr]:hover, [data-open-wh]:hover, [data-pick-item]:hover { background-color: #DCEBFB !important; }
-  .panel { background:#E8E4DA; padding:16px; flex:1; display:flex; flex-direction:column; }
+  .panel { background:#F4F5F7; padding:22px; flex:1; display:flex; flex-direction:column; }
   .input { border:1px solid #C7C4B4; background:#fff; border-radius:6px; padding:8px 10px; font-size:14px; width:100%; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
   .input:focus { border-color:#2C4A6E; box-shadow: 0 0 0 3px rgba(44,74,110,0.12); }
   .input.err { border-color:#C0392B; }
-  .btn { display:flex; flex-direction:column; align-items:center; gap:2px; background:linear-gradient(180deg,#F9F7F1,#E4E0D2); border:1px solid #B8B3A0; border-radius:7px; padding:6px 14px; cursor:pointer; min-width:58px; font-size:11px; color:#3A3826; transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
-  .btn:hover { filter:brightness(1.03); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-  .btn:active { transform:scale(0.96); }
+  .btn { display:flex; flex-direction:column; align-items:center; gap:2px; background:linear-gradient(180deg,#F9F7F1,#E4E0D2); border:1px solid #B8B3A0; border-radius:10px; padding:7px 15px; cursor:pointer; min-width:58px; font-size:11px; color:#3A3826; transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+  .btn:hover { filter:brightness(1.03); box-shadow: 0 4px 10px rgba(0,0,0,0.12); transform:translateY(-1px); }
+  .btn:active { transform:scale(0.96) translateY(0); }
+  .modern-icon-btn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 4px 10px rgba(27,51,82,0.15); border-color:#DEDACB; }
+  .modern-icon-btn:active:not(:disabled) { transform:translateY(0); }
   .btn:disabled { opacity:0.5; cursor:default; filter:none; transform:none; box-shadow:none; }
   .btn.primary { background:linear-gradient(180deg,#5A96EA,#2C4A6E); color:#fff; border-color:#1B3352; }
   @keyframes windowIn { from { opacity:0; transform:scale(0.97) translateY(6px); } to { opacity:1; transform:scale(1) translateY(0); } }
@@ -48,7 +50,7 @@
     .print-only { display: block !important; }
     @page { size: A4; margin: 10mm; }
     body * { visibility: hidden; }
-    .print-area, .print-area * { visibility: visible; }
+    .print-area, .print-area * { visibility: visible; font-family: 'Segoe UI', 'Tahoma', 'Arial', sans-serif !important; }
     .print-area {
       position: absolute; top: 0; left: 0;
       width: 100% !important; max-width: 100% !important; max-height: none !important;
@@ -1229,7 +1231,7 @@ function renderStatementContent(p) {
       <div style="border:1px solid #A9A48C;border-radius:4px;padding:10px;background:#F4F1EA;"><div style="font-size:11px;color:#5F5E5A;">عدد الحركات</div><div class="mono" style="font-size:15px;">${rows.length}</div></div>
       <div style="border:1px solid #A9A48C;border-radius:4px;padding:10px;background:${Number(p.balance)>0?'#FCEBEB':'#E1F5EE'};"><div style="font-size:11px;color:#5F5E5A;">الرصيد الحالي</div><div class="mono" style="font-size:15px;color:${Number(p.balance)>0?'#C0392B':'#0F6E56'};">${Number(p.balance||0).toFixed(2)}</div></div>
     </div>
-    <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+    <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
       <div style="display:grid;grid-template-columns:0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 1fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;">
         ${['التاريخ','رقم المستند','نوع العملية','الإجمالي','المدفوع','الرصيد'].map(h => `<div style="padding:6px 8px;">${h}</div>`).join('')}
       </div>
@@ -1405,6 +1407,11 @@ function saveAreaAsPDF(areaSelector, filename, btnId) {
   if (overlay) { overlay.style.position = 'static'; overlay.style.display = 'block'; overlay.style.padding = '0'; overlay.style.background = 'none'; }
   noPrintEls.forEach(n => { n.style.display = 'none'; });
   printOnlyEls.forEach(n => { n.style.display = 'block'; });
+  // نفرض خط عربي آمن مضمون التشكيل الصحيح (مدمج بالنظام، ما يحتاج إنترنت) وقت الالتقاط تحديداً — يمنع ظهور الحروف مشوّهة لو تأخّر تحميل الخط المخصّص من الإنترنت
+  // نستخدم style موقّت بـ !important عشان يتغلّب حتى على أي font-family مضبوط inline بعناصر داخلية (زي قسم الطباعة نفسه)
+  const safeFontStyle = document.createElement('style');
+  safeFontStyle.textContent = `${areaSelector} , ${areaSelector} * { font-family: 'Segoe UI','Tahoma','Arial',sans-serif !important; }`;
+  document.head.appendChild(safeFontStyle);
   // نقيس الأبعاد الحقيقية النهائية بعد التوسعة الكاملة — هذا يضمن التقاط العرض الصحيح كامل، مو العرض الضيق القديم
   const fullHeight = el.scrollHeight;
   const fullWidth = el.scrollWidth;
@@ -1415,16 +1422,16 @@ function saveAreaAsPDF(areaSelector, filename, btnId) {
     if (overlay) { overlay.style.position = prev.overlayPosition; overlay.style.display = prev.overlayDisplay; overlay.style.padding = prev.overlayPadding; overlay.style.background = prev.overlayBackground; }
     noPrintEls.forEach((n,i) => { n.style.display = prevNoPrintDisplay[i]; });
     printOnlyEls.forEach((n,i) => { n.style.display = prevPrintOnlyDisplay[i]; });
+    safeFontStyle.remove();
   };
+  // تأخير بسيط يضمن اكتمال إعادة رسم المتصفح للأنماط الجديدة (التوسعة الكاملة) قبل التقاط الصورة — يمنع مشكلة الالتقاط المصغّر
+  requestAnimationFrame(() => { requestAnimationFrame(() => {
   html2pdf().set({
     margin: 8,
     html2canvas: {
       scale: 2,
       useCORS: true,
-      height: fullHeight,
-      windowHeight: fullHeight,
-      width: fullWidth,
-      windowWidth: fullWidth,
+      letterRendering: true,
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['css', 'legacy'] },
@@ -1444,6 +1451,7 @@ function saveAreaAsPDF(areaSelector, filename, btnId) {
     if (btn) setBtnLoading(btn, false);
     alert('حدث خطأ أثناء إنشاء ملف PDF');
   });
+  }); });
 }
 
 // تصدير محاسبي منسّق (خط عريض + تلوين رأس الجدول) — لمشاركته مع محاسب خارجي بشكل احترافي
@@ -2149,7 +2157,7 @@ function renderPartiesSection() {
           <button id="new-party-btn" class="btn primary" style="padding:8px 14px;">+ ${typeLabel(state.partyTypeFilter)} ${t('party_new')}</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} ${typeLabel(state.partyTypeFilter)}</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <div style="display:grid;grid-template-columns:1.4fr 0.9fr 1fr 1fr 0.8fr 0.7fr 0.6fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;min-width:750px;">
             ${[t('col_name'),t('col_number'),t('col_phone'),t('col_address'),t('col_balance'),'النوع',''].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -2299,7 +2307,7 @@ function renderQuotationsSection() {
           <button id="new-quote-btn" class="btn primary" style="padding:8px 14px;">+ عرض سعر جديد</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} عرض</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم العرض','العميل','التاريخ','الإجمالي','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -2380,7 +2388,7 @@ function renderQuoteFormModal() {
           <button id="qt-add-line" class="btn primary" style="padding:6px 14px;">إضافة</button>
         </div>
         <div class="no-print err-text" id="qt-price-error" style="margin-bottom:8px;"></div>` : ''}
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${['#','<span class="no-print">صورة</span>',t('col_item_sku'),t('col_item_name'),t('col_unit'),t('col_qty'),'<span class="no-print">'+t('col_cost')+'</span>',t('col_price'),t('col_total'),t('col_tax_pct'),t('col_tax'),t('col_total_tax'),''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -2480,7 +2488,7 @@ function renderPurchasesSection() {
           <button id="new-purchase-btn" class="btn primary" style="padding:8px 14px;">+ فاتورة شراء جديدة</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} فاتورة</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم الفاتورة','المورد','التاريخ','الإجمالي','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -2503,7 +2511,7 @@ function printStyleVars() {
   const font = c.print_font || 'IBM Plex Sans Arabic';
   const size = c.print_font_size || 11;
   const accent = c.print_accent_color || 'var(--print-accent)';
-  return `font-family:'${font}',sans-serif;font-size:${size}px;--print-accent:${accent};`;
+  return `font-family:'${font}','Segoe UI','Tahoma','Arial',sans-serif;font-size:${size}px;--print-accent:${accent};`;
 }
 
 function fmt(n) {
@@ -2738,7 +2746,7 @@ function renderPurchaseFormModal() {
           <label class="btn" style="padding:6px 14px;cursor:pointer;">استيراد من Excel<input id="pi-import-file" type="file" accept=".xlsx,.xls" style="display:none;" /></label>
           <span id="pi-import-status" style="font-size:11px;color:#5F5E5A;"></span>
         </div>`}
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;margin-bottom:14px;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);margin-bottom:14px;overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${[t('col_no'),t('col_item_sku'),t('col_item_name'),t('col_unit'),t('col_qty'),t('col_cost'),t('col_total'),t('col_tax_pct'),t('col_tax'),t('col_total_tax'),''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;border-left:1px solid rgba(255,255,255,0.2);">${h}</th>`).join('')}
@@ -3066,7 +3074,7 @@ function renderDashboardSectionOld() {
           <div style="font-size:13px;font-weight:500;">${title}</div>
           <button data-dash-viewall="${viewAllTarget}" style="border:none;background:none;color:#2C4A6E;font-size:11.5px;cursor:pointer;text-decoration:underline;">عرض الكل ←</button>
         </div>
-        <div style="border:1px solid #A9A48C;border-radius:8px;overflow:hidden;margin-bottom:20px;">
+        <div style="border:1px solid #E4E2DA;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);margin-bottom:20px;">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${cols.map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -3124,7 +3132,7 @@ function renderDashboardSectionOld() {
           <div style="font-size:13px;font-weight:500;color:#C0392B;">أصناف تحتاج إعادة طلب</div>
           ${lowStock.length > 8 ? `<button data-dash-viewall="الاصناف" style="border:none;background:none;color:#2C4A6E;font-size:11.5px;cursor:pointer;text-decoration:underline;">عرض الكل (${lowStock.length}) ←</button>` : ''}
         </div>
-        <div style="border:1px solid #A9A48C;border-radius:8px;overflow:hidden;margin-bottom:20px;">
+        <div style="border:1px solid #E4E2DA;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);margin-bottom:20px;">
           <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['اسم الصنف','الكمية الحالية','حد الطلب'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -3150,7 +3158,7 @@ function renderSalesSection() {
           <button id="new-sales-btn" class="btn primary" style="padding:8px 14px;">+ فاتورة بيع جديدة</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} فاتورة</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم الفاتورة','العميل','التاريخ','الإجمالي','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -3358,7 +3366,7 @@ function renderSalesFormModal() {
         </div>
         <div id="si-price-error" class="err-text" style="margin-bottom:8px;"></div>
         </div>` : ''}
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;margin-bottom:14px;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);margin-bottom:14px;overflow-x:auto;">
           <table id="si-lines-table" style="width:100%;border-collapse:collapse;">
             <thead>
               <tr>
@@ -3443,6 +3451,7 @@ function renderSalesFormModal() {
         ${iconBtn('sales-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.salesInvoices.length===0)}
         ${iconBtn('sales-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.salesInvoices.length===0)}
         ${iconBtn('sales-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingSalesId)}
+        ${iconBtn('sales-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingSalesId)}
         ${f.approved ? '' : iconBtn('sales-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('sales-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && state.editingSalesId && canApprove()) ? iconBtn('sales-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
@@ -3461,7 +3470,7 @@ function renderSalesReturnsSection() {
           <button id="new-sr-btn" class="btn primary" style="padding:8px 14px;">+ سند مردود بيع جديد</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم السند','العميل','التاريخ','الإجمالي','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -3542,7 +3551,7 @@ function renderSalesReturnFormModal() {
           <input id="sr-item-tax" class="input" style="max-width:70px;" placeholder="ض%" value="15" />
           <button id="sr-add-line" class="btn primary" style="padding:6px 14px;">إضافة</button>
         </div>`) : ''}
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${[t('col_no'),t('col_item_sku'),t('col_item_name'),t('col_unit'),t('col_qty'),t('col_price'),t('col_total'),t('col_tax_pct'),t('col_tax'),t('col_total_tax'),''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -3606,7 +3615,7 @@ function renderPurchaseReturnsSection() {
           <button id="new-pr-btn" class="btn primary" style="padding:8px 14px;">+ سند مردود شراء جديد</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم السند','المورد','التاريخ','الإجمالي','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -3687,7 +3696,7 @@ function renderPurchaseReturnFormModal() {
           <input id="pr-item-tax" class="input" style="max-width:70px;" placeholder="ض%" value="15" />
           <button id="pr-add-line" class="btn primary" style="padding:6px 14px;">إضافة</button>
         </div>`) : ''}
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${[t('col_no'),t('col_item_sku'),t('col_item_name'),t('col_unit'),t('col_qty'),t('col_cost'),t('col_total'),t('col_tax_pct'),t('col_tax'),t('col_total_tax'),''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -3751,7 +3760,7 @@ function renderStockCountsSection() {
           <button id="new-sc-btn" class="btn primary" style="padding:8px 14px;">+ سند جرد جديد</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.1fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم السند','المستودع','التاريخ','ملاحظات','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -3810,7 +3819,7 @@ function renderStockCountFormModal() {
           <label class="btn" style="padding:6px 14px;cursor:pointer;">استيراد من Excel<input id="sc-import-file" type="file" accept=".xlsx,.xls" style="display:none;" /></label>
           <span id="sc-import-status" style="font-size:11px;color:#5F5E5A;"></span>
         </div>` : ''}
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${[t('col_no'),t('col_item_sku'),t('col_item_name'),t('col_unit'),t('sc_col_system'),t('sc_col_counted'),t('sc_col_diff'),''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -3860,7 +3869,7 @@ function renderWarehousesSection() {
           <button id="new-wh-btn" class="btn primary" style="padding:8px 14px;">${t('wh_new')}</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} ${t('menu_warehouses')}</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1.3fr 0.8fr 1.5fr 0.6fr 0.6fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${[t('col_wh_name'),t('col_wh_code'),t('col_address'),t('col_default'),t('col_status')].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -3907,7 +3916,7 @@ function renderTransfersSection() {
           <button id="new-tr-btn" class="btn primary" style="padding:8px 14px;">+ سند تحويل جديد</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.2fr 1.2fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم السند','من مستودع','إلى مستودع','التاريخ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -3950,7 +3959,7 @@ function renderTransferFormModal() {
           <input id="tr-item-qty" class="input" style="max-width:80px;" placeholder="الكمية" />
           <button id="tr-add-line" class="btn primary" style="padding:6px 14px;">إضافة</button>
         </div>` : ''}
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${[t('col_no'),t('col_item_sku'),t('col_item_name'),t('col_unit'),t('col_qty_transfer'),''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -4047,17 +4056,17 @@ function renderOpeningInvModal() {
       <div class="win-title"><span>المخزون الافتتاحي</span><button id="oi-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       <div style="padding:14px 16px;">
         <button id="oi-add-btn" class="btn primary" style="padding:8px 16px;margin-bottom:12px;">+ مستند مخزون افتتاحي جديد</button>
-        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
-            <thead><tr>${['رقم المستند','التاريخ','المستودع','الحالة',''].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <thead><tr>${['رقم المستند','التاريخ','المستودع','الحالة',''].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
             <tbody>
               ${state.openingInvDocs.map((d,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; const wh = state.warehouses.find(w=>w.id===d.warehouse_id); return `
               <tr data-open-oi="${d.id}" style="cursor:pointer;">
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(d.doc_number)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(d.doc_date)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(wh?.name||'—')}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${d.approved ? `<span style="background:#E1F5EE;color:#0F6E56;padding:2px 8px;border-radius:10px;">معتمد</span>` : `<span style="background:#FAEEDA;color:#BA7517;padding:2px 8px;border-radius:10px;">مسودة</span>`}</td>
-                <td style="padding:6px 8px;background:${bg};border-bottom:1px solid #E4E2DA;"><i class="ti ti-chevron-left"></i></td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(d.doc_number)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(d.doc_date)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(wh?.name||'—')}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${d.approved ? `<span style="background:#E1F5EE;color:#0F6E56;padding:2px 8px;border-radius:10px;">معتمد</span>` : `<span style="background:#FAEEDA;color:#BA7517;padding:2px 8px;border-radius:10px;">مسودة</span>`}</td>
+                <td style="padding:9px 10px;background:${bg};border-bottom:1px solid #E4E2DA;"><i class="ti ti-chevron-left"></i></td>
               </tr>`; }).join('') || `<tr><td colspan="5" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد مستندات مسجّلة بعد</td></tr>`}
             </tbody>
           </table>
@@ -4092,7 +4101,7 @@ function renderOpeningInvFormModal() {
           ${itemPickerButton('oif-item-select',null,null,null,'oif-add-line')}
           <button id="oif-add-line" class="btn primary" style="padding:6px 14px;">إضافة صنف</button>
         </div>` : ''}
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>${['#','رقم الصنف','اسم الصنف','الوحدة','الكمية','التكلفة','الإجمالي',''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
             <tbody>
@@ -4231,7 +4240,7 @@ function renderGlobalSearchModal() {
   const section = (title, icon, list, renderRow) => list.length ? `
     <div style="margin-bottom:14px;">
       <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:6px;display:flex;align-items:center;gap:6px;"><i class="ti ${icon}"></i> ${title} (${list.length})</div>
-      <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;">
+      <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
         ${list.map(renderRow).join('')}
       </div>
     </div>` : '';
@@ -4377,22 +4386,22 @@ function renderInventoryValuationModal() {
         <div style="max-height:420px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              <th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">رقم الصنف</th>
-              <th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">اسم الصنف</th>
-              ${warehouses.map(w => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:center;">${escapeHtml(w.name)}</th>`).join('')}
-              <th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:center;">إجمالي الكمية</th>
-              <th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:left;">تكلفة الوحدة</th>
-              <th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:left;">إجمالي القيمة</th>
+              <th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">رقم الصنف</th>
+              <th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">اسم الصنف</th>
+              ${warehouses.map(w => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:center;">${escapeHtml(w.name)}</th>`).join('')}
+              <th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:center;">إجمالي الكمية</th>
+              <th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:left;">تكلفة الوحدة</th>
+              <th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:left;">إجمالي القيمة</th>
             </tr></thead>
             <tbody>
               ${enriched.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.sku)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
-                ${warehouses.map(w => `<td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;text-align:center;border-bottom:1px solid #E4E2DA;">${r.perWarehouse[w.id]||0}</td>`).join('')}
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;font-weight:600;text-align:center;border-bottom:1px solid #E4E2DA;">${r.total}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(r.cost)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;font-weight:700;color:#0F6E56;border-bottom:1px solid #E4E2DA;">${fmt(r.value)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.sku)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
+                ${warehouses.map(w => `<td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;text-align:center;border-bottom:1px solid #E4E2DA;">${r.perWarehouse[w.id]||0}</td>`).join('')}
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;font-weight:600;text-align:center;border-bottom:1px solid #E4E2DA;">${r.total}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(r.cost)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;font-weight:700;color:#0F6E56;border-bottom:1px solid #E4E2DA;">${fmt(r.value)}</td>
               </tr>`; }).join('') || `<tr><td colspan="${4+warehouses.length}" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه أصناف برصيد حالياً</td></tr>`}
             </tbody>
           </table>
@@ -4453,18 +4462,18 @@ function renderItemsStatementModal() {
         </div>
         <div style="max-height:400px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
           <table style="width:100%;border-collapse:collapse;">
-            <thead><tr>${['صورة','رقم الصنف','اسم الصنف','الرصيد','حد الطلب','التكلفة','السعر','الحالة'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <thead><tr>${['صورة','رقم الصنف','اسم الصنف','الرصيد','حد الطلب','التكلفة','السعر','الحالة'].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
             <tbody>
               ${results.map((it,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; const qty = Number(it.qty)||0; return `
               <tr>
                 <td style="padding:4px 8px;background:${bg};border-bottom:1px solid #E4E2DA;">${it.image_url ? `<img src="${escapeHtml(it.image_url)}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #DEDACB;" />` : `<div style="width:32px;height:32px;background:#EDEAE0;border-radius:4px;display:flex;align-items:center;justify-content:center;"><i class="ti ti-photo" style="font-size:14px;color:#A9A48C;"></i></div>`}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.sku)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.name)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;color:${qty<0?'#C0392B':qty===0?'#BA7517':'#1F2421'};font-weight:600;border-bottom:1px solid #E4E2DA;">${qty}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${it.reorder_at??'—'}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(it.cost)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(it.price)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:10.5px;border-bottom:1px solid #E4E2DA;"><span style="padding:2px 8px;border-radius:10px;background:${it.active===false?'#FCEBEB':'#E1F5EE'};color:${it.active===false?'#C0392B':'#0F6E56'};">${it.active===false?'موقوف':'فعّال'}</span></td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.sku)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.name)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;color:${qty<0?'#C0392B':qty===0?'#BA7517':'#1F2421'};font-weight:600;border-bottom:1px solid #E4E2DA;">${qty}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${it.reorder_at??'—'}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(it.cost)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(it.price)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:10.5px;border-bottom:1px solid #E4E2DA;"><span style="padding:2px 8px;border-radius:10px;background:${it.active===false?'#FCEBEB':'#E1F5EE'};color:${it.active===false?'#C0392B':'#0F6E56'};">${it.active===false?'موقوف':'فعّال'}</span></td>
               </tr>`; }).join('') || `<tr><td colspan="8" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه أصناف مطابقة</td></tr>`}
             </tbody>
           </table>
@@ -4535,7 +4544,7 @@ function renderAltNumbersModal() {
             <input id="an-new-number" class="input mono" dir="ltr" placeholder="الرقم البديل الجديد" value="${escapeHtml(state.altNumbersNewValue)}" />
             <button id="an-add-btn" class="btn primary" style="padding:7px 16px;">إضافة</button>
           </div>
-          <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;background:#fff;">
+          <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);background:#fff;">
             ${(state.itemAltNumbers||[]).map(a => `
               <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;">
                 <span class="mono" dir="ltr">${escapeHtml(a.alt_number)}</span>
@@ -4621,16 +4630,16 @@ function renderVehicleSearchModal() {
         </div>
         ${results === null ? `<div style="text-align:center;padding:24px;color:#8B8A7A;font-size:12.5px;">اكتب الماركة على الأقل واضغط بحث</div>` : `
         <div style="font-size:11.5px;color:#5F5E5A;margin-bottom:8px;">${results.length} صنف متوافق</div>
-        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <table style="width:100%;border-collapse:collapse;">
-            <thead><tr>${['رقم الصنف','اسم الصنف','الرصيد','السعر'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <thead><tr>${['رقم الصنف','اسم الصنف','الرصيد','السعر'].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
             <tbody>
               ${results.map((it,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.sku)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.name)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11px;color:${Number(it.qty)<=0?'#C0392B':'#1F2421'};border-bottom:1px solid #E4E2DA;">${it.qty}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(it.price)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.sku)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(it.name)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11px;color:${Number(it.qty)<=0?'#C0392B':'#1F2421'};border-bottom:1px solid #E4E2DA;">${it.qty}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${fmt(it.price)}</td>
               </tr>`; }).join('') || `<tr><td colspan="4" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه أصناف متوافقة مسجّلة لهذي السيارة</td></tr>`}
             </tbody>
           </table>
@@ -4723,7 +4732,7 @@ function renderCashReconModal() {
         <button id="cr-save-btn" class="btn primary" style="padding:8px 16px;margin-top:8px;">حفظ تطابق اليوم</button>
 
         <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin:18px 0 8px;">آخر 15 يوم</div>
-        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>${['التاريخ','المتوقع','الفعلي','الفرق'].map(h => `<th style="padding:6px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
             <tbody>
@@ -4870,7 +4879,7 @@ function renderItemMovementModal() {
           </div>
         </div>
         <div style="font-size:12.5px;font-weight:500;margin-bottom:8px;" class="no-print">${escapeHtml(item.name)} — <span class="mono">${escapeHtml(item.sku)}</span> — الرصيد الحالي: <span class="mono">${item.qty}</span></div>
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${['التاريخ','نوع الحركة','رقم المستند','الكمية','الرصيد بعدها'].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -4906,7 +4915,7 @@ function renderReceiptVouchersSection() {
           <button id="new-rv-btn" class="btn primary" style="padding:8px 14px;">+ سند قبض جديد</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند قبض</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم السند','العميل','التاريخ','المبلغ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -4934,7 +4943,7 @@ function renderSettlementVouchersSection() {
           <button id="new-stv-btn" class="btn primary" style="padding:8px 14px;">+ سند تسوية جديد</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند تسوية</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم السند','الطرف','التاريخ','المبلغ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -4962,7 +4971,7 @@ function renderPaymentVouchersSection() {
           <button id="new-pv-btn" class="btn primary" style="padding:8px 14px;">+ سند صرف جديد</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند صرف</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['رقم السند','المورد','التاريخ','المبلغ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -5064,7 +5073,7 @@ function renderVoucherFormModal(kind) {
         ${parties.length === 0 ? `<div class="err-text">ما فيه ${isReceipt?'عملاء':'موردين'} آجل مسجّلين — فعّل خيار "آجل" بكرت الطرف أول</div>` : ''}
         <div style="background:#FAF9F4;border:1px solid #DEDACB;border-radius:10px;padding:12px 14px;">
           <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:8px;display:flex;align-items:center;gap:5px;"><i class="ti ti-user" style="font-size:13px;"></i> ${partyLabel}</div>
-          ${partyField('', partyPickerButton(`${prefix}-party`, isReceipt?'customer':'supplier', f[partyField_], f.approved))}
+          ${partyField('', partyPickerButton(`${prefix}-party`, isReceipt?'customer':'supplier', f[partyField_], f.approved, true))}
           ${selectedParty ? `<div style="margin-top:8px;padding:8px 10px;background:#fff;border-radius:6px;border:1px solid #EDEAE0;font-size:11.5px;display:flex;justify-content:space-between;"><span style="color:#5F5E5A;">الرصيد الحالي</span><span class="mono" style="font-weight:600;color:${Number(selectedParty.balance)>0?'#C0392B':'#0F6E56'};">${fmt(selectedParty.balance)}</span></div>` : ''}
         </div>
 
@@ -5087,7 +5096,7 @@ function renderVoucherFormModal(kind) {
         ${iconBtn(`${prefix}-next`, 'ti-player-track-next', '#27AE60', 'التالي', (isReceipt?state.receiptVouchers:state.paymentVouchers).length===0)}
         ${iconBtn(`${prefix}-prev`, 'ti-player-track-prev', '#2E86C1', 'السابق', (isReceipt?state.receiptVouchers:state.paymentVouchers).length===0)}
         ${iconBtn(`${prefix}-print`, 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number)}
-        ${iconBtn(`${prefix}-pdf`, 'ti-file-type-pdf', '#D9534F', 'حفظ PDF', !f.voucher_number)}
+        ${iconBtn(`${prefix}-pdf`, 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number)}
         ${f.approved ? '' : iconBtn(`${prefix}-save`, 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && canApprove()) ? iconBtn(`${prefix}-approve`, 'ti-lock', '#0F6E56', 'ترحيل') : ''}
         ${(f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && isAdmin()) ? iconBtn(`${prefix}-unlock`, 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
@@ -5106,7 +5115,7 @@ function renderPaymentMethodsModal() {
           <input id="pm-new-name" class="input" placeholder="${t('pm_new_ph')}" />
           <button id="pm-add-btn" class="btn primary" style="padding:7px 14px;">${t('pm_add')}</button>
         </div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           ${state.paymentMethods.map((m,i) => `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:${i%2?'#F4F1EA':'#FFFDF6'};border-bottom:1px solid #E4E2DA;">
               <span style="font-size:13px;${!m.active?'color:#A9A48C;text-decoration:line-through;':''}">${escapeHtml(m.name)}</span>
@@ -5203,7 +5212,7 @@ function renderProfitReportModal() {
         <div style="font-size:11px;color:#BA7517;background:#FDF6E8;border:1px solid #BA7517;border-radius:4px;padding:8px;margin-bottom:10px;" class="no-print">
           ${t('pf_warning')}
         </div>
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${[t('pf_col_invoice'),t('pf_col_customer'),t('pf_col_date'),t('pf_col_revenue'),t('pf_col_cogs'),t('pf_col_profit'),t('pf_col_margin')].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -5247,7 +5256,7 @@ function renderRepsSection() {
           <div style="flex:1;min-width:220px;"><input id="rep-search" class="input" placeholder="بحث باسم المندوب..." value="${escapeHtml(state.repQuery)}" /></div>
           <button id="new-rep-btn" class="btn primary" style="padding:8px 14px;">+ مندوب جديد</button>
         </div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1.3fr 1fr 0.8fr 0.6fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['الاسم','الجوال','نسبة العمولة %','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -5297,7 +5306,7 @@ function renderRepSalesReportModal() {
         <button id="rs-apply" class="btn primary" style="padding:8px 16px;">عرض</button>
       </div>
       <div style="padding:0 16px 16px;">
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${['رقم الفاتورة','المندوب','التاريخ','الإجمالي'].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -5333,7 +5342,7 @@ function renderRepCommissionReportModal() {
         <button id="rc-apply" class="btn primary" style="padding:8px 16px;">عرض</button>
       </div>
       <div style="padding:0 16px 16px;">
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${['المندوب','عدد الفواتير','نسبة العمولة','إجمالي المبيعات','العمولة المستحقة'].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -5372,7 +5381,7 @@ function renderLostSalesReportModal() {
         <button id="ls-apply" class="btn primary" style="padding:8px 16px;">عرض</button>
       </div>
       <div style="padding:0 16px 16px;">
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${['الصنف','السياق','الكمية المطلوبة','المتوفر وقتها','التاريخ'].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -5408,7 +5417,7 @@ function renderGeneralStockMovementModal() {
         <button id="gsm-excel" class="btn" style="padding:8px 16px;">${t('je_excel')}</button>
       </div>
       <div style="padding:0 16px 16px;">
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${[t('je_col_date'),t('gsm_col_type'),t('gsm_col_doc'),t('gsm_col_item'),t('gsm_col_qty')].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -5460,7 +5469,7 @@ function renderCashboxStatementModal() {
           <div style="border:1px solid #A9A48C;border-radius:4px;padding:10px;background:#FCEBEB;"><div style="font-size:11px;color:#5F5E5A;">إجمالي الصادر</div><div class="mono" style="font-size:15px;color:#C0392B;">${fmt(totalOut)}</div></div>
           <div style="border:1px solid #A9A48C;border-radius:4px;padding:10px;background:#F4F1EA;"><div style="font-size:11px;color:#5F5E5A;">الرصيد الختامي</div><div class="mono" style="font-size:15px;font-weight:700;">${fmt(closing)}</div></div>
         </div>
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${['التاريخ','نوع الحركة','رقم المستند','وارد (+)','صادر (-)','الرصيد'].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -5505,7 +5514,7 @@ function renderItemsSection(items, lowStock) {
           <button id="new-item-btn" class="btn primary" style="padding:8px 14px;">${t('items_new_btn')}</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${state.items.length} ${t('items_count')}${lowStock > 0 ? ` · ${lowStock} ${t('items_needs_reorder')}` : ''}</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 0.9fr 0.9fr 0.9fr 1fr 0.6fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${[t('col_item_name'),t('col_item_sku'),t('col_category'),t('col_unit'),t('col_company'),t('col_qty'),t('col_sale_price'),''].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -5575,7 +5584,7 @@ function renderChartOfAccountsModal() {
       <div class="win-title"><span>${t('coa_title')}</span><button id="coa-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       <div style="padding:16px;">
         <button id="new-account-btn" class="btn primary" style="padding:8px 16px;margin-bottom:12px;">${t('coa_new')}</button>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <div style="display:grid;grid-template-columns:0.6fr 1.3fr 1.6fr 1fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;min-width:640px;">
             ${[t('coa_level'),t('coa_code'),t('coa_name'),t('coa_type')].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -5712,7 +5721,7 @@ function renderJournalEntriesModal() {
         <button id="je-excel" class="btn" style="padding:8px 16px;">${t('je_excel')}</button>
       </div>
       <div style="padding:0 16px 16px;">
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${[t('je_col_date'),t('je_col_entry_no'),t('je_col_source'),t('je_col_desc'),t('je_col_account'),t('je_col_account_name'),t('je_col_line_desc'),t('je_col_debit'),t('je_col_credit')].map(h => `<th style="padding:7px 5px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -5979,19 +5988,19 @@ function renderTrialBalanceModal() {
         <button id="tb-print" class="btn" style="padding:8px 16px;">${t('tb_print')}</button>
       </div>
       <div style="padding:0 16px 16px;">
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${[t('je_col_account'),t('je_col_account_name'),t('je_col_debit'),t('je_col_credit'),t('tb_col_balance')].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${[t('je_col_account'),t('je_col_account_name'),t('je_col_debit'),t('je_col_credit'),t('tb_col_balance')].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(r.code)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${r.debit?fmt(r.debit):''}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${r.credit?fmt(r.credit):''}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;color:${r.balance<0?'#C0392B':'#0F6E56'};">${fmt(r.balance)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(r.code)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${r.debit?fmt(r.debit):''}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${r.credit?fmt(r.credit):''}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;color:${r.balance<0?'#C0392B':'#0F6E56'};">${fmt(r.balance)}</td>
               </tr>`; }).join('') || `<tr><td colspan="5" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">${t('tb_no_entries')}</td></tr>`}
               ${rows.length ? `<tr>
                 <td colspan="2" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;">${t('je_total')}</td>
@@ -6024,7 +6033,7 @@ function renderGeneralLedgerModal() {
       <div style="padding:0 16px 16px;">
         ${state.generalLedgerData.length === 0 ? `<div style="padding:24px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد حركات بالفترة المحددة</div>` : ''}
         ${state.generalLedgerData.map(acc => `
-        <div style="margin-bottom:18px;border:1px solid #A9A48C;border-radius:6px;overflow:hidden;">
+        <div style="margin-bottom:18px;border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="background:#1B3352;color:#fff;padding:8px 12px;font-size:12.5px;font-weight:600;display:flex;justify-content:space-between;">
             <span><span class="mono">${escapeHtml(acc.code)}</span> — ${escapeHtml(acc.name)}</span>
             <span class="mono" style="color:${acc.finalBalance<0?'#F5B7B1':'#A9DFCB'};">الرصيد: ${fmt(acc.finalBalance)}</span>
@@ -6039,12 +6048,12 @@ function renderGeneralLedgerModal() {
               <tbody>
                 ${acc.lines.map((l,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
                 <tr>
-                  <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(l.date)}</td>
-                  <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(l.entryNumber||'')}</td>
-                  <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.desc||'')}</td>
-                  <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${l.debit?fmt(l.debit):''}</td>
-                  <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${l.credit?fmt(l.credit):''}</td>
-                  <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;color:${l.balance<0?'#C0392B':'#0F6E56'};">${fmt(l.balance)}</td>
+                  <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(l.date)}</td>
+                  <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(l.entryNumber||'')}</td>
+                  <td style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.desc||'')}</td>
+                  <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${l.debit?fmt(l.debit):''}</td>
+                  <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${l.credit?fmt(l.credit):''}</td>
+                  <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;color:${l.balance<0?'#C0392B':'#0F6E56'};">${fmt(l.balance)}</td>
                 </tr>`; }).join('')}
                 <tr>
                   <td colspan="3" style="padding:6px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:10.5px;">الإجمالي</td>
@@ -6142,22 +6151,22 @@ function renderAccountStatementModal() {
           </div>`).join('') || `<div style="padding:24px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد حركات بالفترة المحددة</div>`}
         </div>
 
-        <div class="print-only print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-only print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead>
               <tr>
-                ${['التاريخ','رقم القيد','البيان','مدين','دائن','الرصيد'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+                ${['التاريخ','رقم القيد','البيان','مدين','دائن','الرصيد'].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
               ${rows.map((l,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(l.date)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(l.entryNumber||'')}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.desc||'')}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${l.debit?fmt(l.debit):''}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${l.credit?fmt(l.credit):''}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;color:${l.balance<0?'#C0392B':'#0F6E56'};">${fmt(l.balance)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(l.date)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(l.entryNumber||'')}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.desc||'')}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${l.debit?fmt(l.debit):''}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${l.credit?fmt(l.credit):''}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;color:${l.balance<0?'#C0392B':'#0F6E56'};">${fmt(l.balance)}</td>
               </tr>`; }).join('') || `<tr><td colspan="6" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد حركات بالفترة المحددة</td></tr>`}
               ${rows.length ? `<tr>
                 <td colspan="3" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;">الإجمالي</td>
@@ -6209,19 +6218,19 @@ function renderEosbModal() {
 
       <div style="padding:0 16px 16px;">
         <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:8px;">سجل التسويات السابقة</div>
-        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${['الموظف','تاريخ الانتهاء','السبب','سنوات الخدمة','المكافأة المستحقة'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${['الموظف','تاريخ الانتهاء','السبب','سنوات الخدمة','المكافأة المستحقة'].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${state.eosbSettlements.map((s,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(s.employee_name)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(s.end_date)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(s.reason)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${Number(s.years_of_service).toFixed(2)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:12px;font-weight:700;color:#1B3352;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(s.final_benefit)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(s.employee_name)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(s.end_date)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(s.reason)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${Number(s.years_of_service).toFixed(2)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:12px;font-weight:700;color:#1B3352;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(s.final_benefit)}</td>
               </tr>`; }).join('') || `<tr><td colspan="5" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد تسويات مسجّلة بعد</td></tr>`}
             </tbody>
           </table>
@@ -6260,20 +6269,20 @@ function renderLeavesModal() {
         </div>
 
         <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:8px;">سجل الإجازات</div>
-        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${['الموظف','النوع','من','إلى','عدد الأيام','ملاحظات'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${['الموظف','النوع','من','إلى','عدد الأيام','ملاحظات'].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${state.employeeLeaves.map((l,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.employees?.full_name||'—')}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.leave_type)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.start_date)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.end_date)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${l.days_count}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.notes||'—')}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.employees?.full_name||'—')}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.leave_type)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.start_date)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.end_date)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${l.days_count}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.notes||'—')}</td>
               </tr>`; }).join('') || `<tr><td colspan="6" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد إجازات مسجّلة بعد</td></tr>`}
             </tbody>
           </table>
@@ -6347,21 +6356,21 @@ function renderPayrollReportModal() {
       </div>
 
       <div style="padding:0 16px 16px;">
-        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${['الشهر','الموظف','الأساسي','بدلات','إضافات','خصومات','الصافي'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${['الشهر','الموظف','الأساسي','بدلات','إضافات','خصومات','الصافي'].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${periodLabel(r.period)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.employees?.full_name||'—')}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.basic_salary)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(Number(r.housing_allowance)+Number(r.transport_allowance))}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;color:#0F6E56;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.other_additions>0?fmt(r.other_additions):'—'}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;color:#C0392B;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.deductions>0?fmt(r.deductions):'—'}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:12px;font-weight:700;color:#1B3352;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.net_salary)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${periodLabel(r.period)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.employees?.full_name||'—')}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.basic_salary)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(Number(r.housing_allowance)+Number(r.transport_allowance))}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;color:#0F6E56;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.other_additions>0?fmt(r.other_additions):'—'}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;color:#C0392B;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.deductions>0?fmt(r.deductions):'—'}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:12px;font-weight:700;color:#1B3352;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.net_salary)}</td>
               </tr>`; }).join('') || `<tr><td colspan="7" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد سجلات رواتب بهذي الفترة</td></tr>`}
             </tbody>
           </table>
@@ -6424,21 +6433,21 @@ function renderPayrollModal() {
       </div>
 
       <div style="padding:0 16px 16px;">
-        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${['الموظف','الأساسي','سكن','مواصلات','إضافات أخرى','الخصومات','الصافي',''].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${['الموظف','الأساسي','سكن','مواصلات','إضافات أخرى','الخصومات','الصافي',''].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; const net = calcRowNet(r); return `
               <tr>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:500;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.employee.full_name)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.basic_salary)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.housing_allowance)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.transport_allowance)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:500;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.employee.full_name)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.basic_salary)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.housing_allowance)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.transport_allowance)}</td>
                 <td style="padding:5px 8px;background:${bg};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.paid ? `<span class="mono">${fmt(r.other_additions)}</span>` : `<input data-pr-additions="${r.employee_id}" class="input mono" style="max-width:80px;padding:4px 6px;font-size:11px;" value="${r.other_additions}" />`}</td>
                 <td style="padding:5px 8px;background:${bg};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.paid ? `<span class="mono">${fmt(r.deductions)}</span>` : `<input data-pr-deductions="${r.employee_id}" class="input mono" style="max-width:80px;padding:4px 6px;font-size:11px;" value="${r.deductions}" />`}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:12px;font-weight:700;color:#1B3352;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(net)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:12px;font-weight:700;color:#1B3352;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(net)}</td>
                 <td style="padding:4px;background:${bg};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.id ? `<button data-payslip-employee="${r.employee_id}" style="border:none;background:none;color:#2C4A6E;cursor:pointer;font-size:11px;">قسيمة</button>` : ''}</td>
               </tr>`; }).join('') || `<tr><td colspan="8" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا يوجد موظفين نشطين</td></tr>`}
             </tbody>
@@ -6524,22 +6533,22 @@ function renderEmployeesModal() {
       </div>
 
       <div style="padding:0 16px 16px;">
-        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${['','الرقم الوظيفي','الاسم','الوظيفة','تاريخ التوظيف','الراتب الأساسي','انتهاء الإقامة','الحالة',''].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${['','الرقم الوظيفي','الاسم','الوظيفة','تاريخ التوظيف','الراتب الأساسي','انتهاء الإقامة','الحالة',''].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${emps.map((e,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
                 <td style="padding:4px 8px;background:${bg};border-bottom:1px solid #E4E2DA;">${e.photo_url ? `<img src="${escapeHtml(e.photo_url)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;" onerror="this.style.display='none'" />` : `<div style="width:28px;height:28px;border-radius:50%;background:#DEDACB;display:flex;align-items:center;justify-content:center;font-size:11px;color:#5F5E5A;">${escapeHtml((e.full_name||'؟')[0])}</div>`}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(e.employee_number||'—')}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:500;border-bottom:1px solid #E4E2DA;">${escapeHtml(e.full_name)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(e.job_title||'—')}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(e.hire_date||'—')}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(e.basic_salary)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${empIdBadge(e)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${e.status==='نشط' ? `<span style="background:#E1F5EE;color:#0F6E56;padding:2px 8px;border-radius:10px;">نشط</span>` : `<span style="background:#E4E2DA;color:#5F5E5A;padding:2px 8px;border-radius:10px;">متوقف</span>`}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(e.employee_number||'—')}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:500;border-bottom:1px solid #E4E2DA;">${escapeHtml(e.full_name)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(e.job_title||'—')}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(e.hire_date||'—')}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(e.basic_salary)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${empIdBadge(e)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${e.status==='نشط' ? `<span style="background:#E1F5EE;color:#0F6E56;padding:2px 8px;border-radius:10px;">نشط</span>` : `<span style="background:#E4E2DA;color:#5F5E5A;padding:2px 8px;border-radius:10px;">متوقف</span>`}</td>
                 <td style="padding:4px;background:${bg};border-bottom:1px solid #E4E2DA;white-space:nowrap;">
                   <button data-cv-employee="${e.id}" style="border:none;background:none;color:#1B3352;cursor:pointer;font-size:11px;" title="بطاقة الموظف"><i class="ti ti-id-badge-2"></i></button>
                   <button data-edit-employee="${e.id}" style="border:none;background:none;color:#2C4A6E;cursor:pointer;font-size:11px;">تعديل</button>
@@ -6707,21 +6716,21 @@ function renderFixedAssetsModal() {
       </div>
 
       <div style="padding:0 16px 16px;">
-        <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${['الاسم','الفئة','تاريخ الشراء','التكلفة','مجمع الإهلاك','القيمة الدفترية','إهلاك مستحق الآن',''].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${['الاسم','الفئة','تاريخ الشراء','التكلفة','مجمع الإهلاك','القيمة الدفترية','إهلاك مستحق الآن',''].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${rowsWithDue.map((a,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; const bookValue = Number(a.cost) - Number(a.accumulated_depreciation||0); return `
               <tr>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(a.name)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(a.category)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(a.purchase_date)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(a.cost)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;color:#BA7517;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(a.accumulated_depreciation)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:600;color:#0F6E56;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(bookValue)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;color:${a.due>0?'#C0392B':'#8B8A7A'};">${a.due>0?fmt(a.due):'—'}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(a.name)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(a.category)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(a.purchase_date)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(a.cost)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;color:#BA7517;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(a.accumulated_depreciation)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:600;color:#0F6E56;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(bookValue)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;color:${a.due>0?'#C0392B':'#8B8A7A'};">${a.due>0?fmt(a.due):'—'}</td>
                 <td style="padding:4px;background:${bg};border-bottom:1px solid #E4E2DA;"><button data-edit-asset="${a.id}" style="border:none;background:none;color:#2C4A6E;cursor:pointer;font-size:11px;">تعديل</button></td>
               </tr>`; }).join('') || `<tr><td colspan="8" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد أصول مسجّلة بعد</td></tr>`}
             </tbody>
@@ -6794,10 +6803,10 @@ function renderReportDesignerModal() {
       ${state.rdRan ? `
       <div style="padding:16px;">
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${state.rdRows.length} نتيجة</div>
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${src.columns.filter(c => state.rdColumns.includes(c.key)).map(c => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${c.label}</th>`).join('')}
+              ${src.columns.filter(c => state.rdColumns.includes(c.key)).map(c => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${c.label}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${state.rdRows.slice(0,200).map((row,i) => `<tr>${src.columns.filter(c => state.rdColumns.includes(c.key)).map(c => `<td class="${c.numeric?'mono':''}" style="padding:6px 8px;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${c.numeric?fmt(row[c.key]):escapeHtml(String(row[c.key]??'—'))}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${state.rdColumns.length}" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد نتائج</td></tr>`}
@@ -6871,7 +6880,7 @@ function renderSettlementVoucherModal() {
       <div style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;flex-wrap:wrap;">
         ${iconBtn('stv-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('stv-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number)}
-        ${iconBtn('stv-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF', !f.voucher_number)}
+        ${iconBtn('stv-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number)}
         ${iconBtn('stv-next', 'ti-player-track-next', '#27AE60', t('btn_next'), sortedVouchers.length===0)}
         ${iconBtn('stv-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), sortedVouchers.length===0)}
         ${!state.editingSettlementVoucherId ? iconBtn('stv-save', 'ti-device-floppy', '#1E5AC0', t('btn_save')) : ''}
@@ -6942,7 +6951,7 @@ function renderCashDisbursementModal() {
       <div style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;flex-wrap:wrap;">
         ${iconBtn('cdv-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('cdv-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number)}
-        ${iconBtn('cdv-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF', !f.voucher_number)}
+        ${iconBtn('cdv-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number)}
         ${iconBtn('cdv-next', 'ti-player-track-next', '#27AE60', t('btn_next'), sortedVouchers.length===0)}
         ${iconBtn('cdv-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), sortedVouchers.length===0)}
         ${!state.editingCashDisbursementId ? iconBtn('cdv-save', 'ti-device-floppy', '#1E5AC0', t('btn_save')) : ''}
@@ -6967,18 +6976,18 @@ function renderNetPurchasesReportModal() {
         <button id="npr-print" class="btn" style="padding:8px 16px;">${t('tb_print')}</button>
       </div>
       <div style="padding:0 16px 16px;">
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${[t('npr_col_supplier'),t('npr_col_purchases'),t('npr_col_returns'),t('npr_col_net')].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${[t('npr_col_supplier'),t('npr_col_purchases'),t('npr_col_returns'),t('npr_col_net')].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-              <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.purchases)}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;color:#C0392B;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.returns?fmt(r.returns):'—'}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.net)}</td>
+              <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.purchases)}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;color:#C0392B;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.returns?fmt(r.returns):'—'}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.net)}</td>
               </tr>`; }).join('') || `<tr><td colspan="4" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">${t('click_view')}</td></tr>`}
               ${rows.length ? `<tr><td style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;">${t('je_total')}</td><td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${fmt(totals.purchases)}</td><td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${fmt(totals.returns)}</td><td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${fmt(totals.net)}</td></tr>` : ''}
             </tbody>
@@ -7010,19 +7019,19 @@ function renderTopSellingModal() {
         <div class="print-only" style="${printStyleVars()}">
           <div style="text-align:center;font-weight:700;font-size:14px;margin:8px 0;">${escapeHtml(state.company?.name_ar||'')} — ${t('tsell_title')}</div>
         </div>
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${['#',t('col_item_sku'),t('col_item_name'),t('tsell_col_qty'),t('tsell_col_revenue')].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${['#',t('col_item_sku'),t('col_item_name'),t('tsell_col_qty'),t('tsell_col_revenue')].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${rows.slice(0,50).map((r,i) => { const bg = i<3?'#FDF6E8':(i%2?'#F4F1EA':'#FFFDF6'); return `
               <tr>
-              <td style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:${i<3?'700':'400'};color:${i<3?'#BA7517':'inherit'};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${i+1}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(r.sku)}</td>
-              <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.qty}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.revenue)}</td>
+              <td style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:${i<3?'700':'400'};color:${i<3?'#BA7517':'inherit'};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${i+1}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(r.sku)}</td>
+              <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.qty}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.revenue)}</td>
               </tr>`; }).join('') || `<tr><td colspan="5" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">${t('click_view')}</td></tr>`}
               ${rows.length ? `<tr><td colspan="3" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;">${t('je_total')} (${rows.length})</td><td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${totalQty}</td><td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${fmt(totalRevenue)}</td></tr>` : ''}
             </tbody>
@@ -7052,18 +7061,18 @@ function renderSlowMovingModal() {
         <div class="print-only" style="${printStyleVars()}">
           <div style="text-align:center;font-weight:700;font-size:14px;margin:8px 0;">${escapeHtml(state.company?.name_ar||'')} — ${t('slow_title')} (${t('slow_no_sales_days')} ${escapeHtml(state.slowMovingDays)})</div>
         </div>
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${[t('col_item_sku'),t('col_item_name'),t('slow_col_qty'),t('slow_col_value')].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${[t('col_item_sku'),t('col_item_name'),t('slow_col_qty'),t('slow_col_value')].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(r.sku)}</td>
-              <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.qty}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;color:#C0392B;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.value)}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(r.sku)}</td>
+              <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.qty}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;color:#C0392B;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.value)}</td>
               </tr>`; }).join('') || `<tr><td colspan="4" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">${t('slow_no_results')}</td></tr>`}
               ${rows.length ? `<tr><td colspan="3" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;">${t('slow_total_value')} (${rows.length})</td><td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${fmt(totalValue)}</td></tr>` : ''}
             </tbody>
@@ -7082,7 +7091,7 @@ function renderVoucherReportModal(kind) {
   const from = isReceipt ? state.rvReportFrom : state.pvReportFrom;
   const to = isReceipt ? state.rvReportTo : state.pvReportTo;
   const partyId = isReceipt ? state.rvReportPartyId : state.pvReportPartyId;
-  const parties = state.parties.filter(p => p.party_type === (isReceipt ? 'customer' : 'supplier'));
+  const parties = state.parties;
   const rows = list.filter(v => v.approved
     && (!from || v.voucher_date >= from) && (!to || v.voucher_date <= to)
     && (!partyId || (isReceipt ? v.customer_id : v.supplier_id) === partyId)
@@ -7115,7 +7124,7 @@ function renderVoucherReportModal(kind) {
           </div>
           <button id="${prefix}-excel" class="btn" style="padding:8px 14px;font-size:11.5px;">تصدير اكسل</button>
           <button id="${prefix}-print" class="btn" style="padding:8px 14px;font-size:11.5px;">طباعة</button>
-          <button id="${prefix}-pdf" class="btn" style="padding:8px 14px;font-size:11.5px;background:#D9534F;color:#fff;border-color:#D9534F;">حفظ PDF</button>
+          <button id="${prefix}-pdf" class="btn" style="padding:8px 14px;font-size:11.5px;background:#D9534F;color:#fff;border-color:#D9534F;">حفظ PDF (طباعة)</button>
         </div>
         <div style="display:flex;gap:12px;margin-bottom:12px;">
           <div style="flex:1;background:#F0F6FC;border-radius:8px;padding:10px 14px;"><div style="font-size:10.5px;color:#5F5E5A;">عدد السندات</div><div class="mono" style="font-size:16px;font-weight:700;color:#1B3352;">${rows.length}</div></div>
@@ -7123,15 +7132,15 @@ function renderVoucherReportModal(kind) {
         </div>
         <div style="max-height:400px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
           <table style="width:100%;border-collapse:collapse;">
-            <thead><tr>${['رقم السند','التاريخ',isReceipt?'العميل':'المورد','طريقة الدفع','المبلغ'].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <thead><tr>${['رقم السند','التاريخ',isReceipt?'العميل':'المورد','طريقة الدفع','المبلغ'].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
             <tbody>
               ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.voucher_number)}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.voucher_date)}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.parties?.name||'—')}</td>
-                <td style="padding:6px 8px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.payment_method||'—')}</td>
-                <td class="mono" style="padding:6px 8px;background:${bg};font-size:11px;font-weight:600;border-bottom:1px solid #E4E2DA;">${fmt(r.amount)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.voucher_number)}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.voucher_date)}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.parties?.name||'—')}</td>
+                <td style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.payment_method||'—')}</td>
+                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;font-weight:600;border-bottom:1px solid #E4E2DA;">${fmt(r.amount)}</td>
               </tr>`; }).join('') || `<tr><td colspan="5" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه سندات مطابقة</td></tr>`}
             </tbody>
           </table>
@@ -7163,20 +7172,20 @@ function renderAgingReportModal() {
           <div style="text-align:center;font-weight:700;font-size:14px;margin:8px 0;">${escapeHtml(state.company?.name_ar||'')} — ${t('ar_title')} (${state.agingReportType==='customer'?t('ar_customers'):t('ar_suppliers')})</div>
           <div style="text-align:center;font-size:11px;color:#5F5E5A;margin-bottom:10px;">${t('ar_as_of')} ${escapeHtml(state.agingAsOf||new Date().toISOString().slice(0,10))}</div>
         </div>
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
-              ${[t('ar_col_name'),t('ar_col_0_30'),t('ar_col_31_60'),t('ar_col_61_90'),t('ar_col_90plus'),t('ar_col_total')].map(h => `<th style="padding:7px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+              ${[t('ar_col_name'),t('ar_col_0_30'),t('ar_col_31_60'),t('ar_col_61_90'),t('ar_col_90plus'),t('ar_col_total')].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
               ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
               <tr>
-              <td style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.party.name)}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b0_30?fmt(r.buckets.b0_30):'—'}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b31_60?fmt(r.buckets.b31_60):'—'}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;color:${r.buckets.b61_90?'#BA7517':'inherit'};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b61_90?fmt(r.buckets.b61_90):'—'}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;color:${r.buckets.b90plus?'#C0392B':'inherit'};font-weight:${r.buckets.b90plus?'600':'400'};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b90plus?fmt(r.buckets.b90plus):'—'}</td>
-              <td class="mono" style="padding:6px 8px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.total)}</td>
+              <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.party.name)}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b0_30?fmt(r.buckets.b0_30):'—'}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b31_60?fmt(r.buckets.b31_60):'—'}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;color:${r.buckets.b61_90?'#BA7517':'inherit'};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b61_90?fmt(r.buckets.b61_90):'—'}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;color:${r.buckets.b90plus?'#C0392B':'inherit'};font-weight:${r.buckets.b90plus?'600':'400'};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b90plus?fmt(r.buckets.b90plus):'—'}</td>
+              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.total)}</td>
               </tr>`; }).join('') || `<tr><td colspan="6" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">${t('ar_no_dues')}</td></tr>`}
               ${rows.length ? `
               <tr>
@@ -7224,7 +7233,7 @@ function renderPartiesReportModal() {
           <div style="border:1px solid #A9A48C;border-radius:4px;padding:10px;background:#FCEBEB;"><div style="font-size:11px;color:#5F5E5A;">إجمالي مستحق على العملاء</div><div class="mono" style="font-size:15px;color:#C0392B;">${fmt(totalReceivable)}</div></div>
           <div style="border:1px solid #A9A48C;border-radius:4px;padding:10px;background:#E1F5EE;"><div style="font-size:11px;color:#5F5E5A;">إجمالي مستحق للموردين</div><div class="mono" style="font-size:15px;color:#0F6E56;">${fmt(totalPayable)}</div></div>
         </div>
-        <div class="print-scroll" style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;overflow-x:auto;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${['الكود','الاسم','النوع','الجوال','الرصيد'].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;">${h}</th>`).join('')}
@@ -7253,7 +7262,7 @@ function renderActivityLogModal() {
     <div style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:700px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>سجل حركة المستخدمين</span><button id="al-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       <div style="padding:16px;">
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.4fr 1.6fr 1.2fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;">
             ${['المستخدم','الحركة','التفاصيل','التاريخ والوقت'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -7312,7 +7321,7 @@ function renderUsersModal() {
         </div>
         `}
 
-        <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1.2fr 1fr 1.1fr 0.8fr 0.5fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
             ${['الاسم','اسم المستخدم','الصلاحية','الحالة',''].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
@@ -7397,9 +7406,11 @@ function renderFormModal() {
 }
 
 function iconBtn(id, icon, color, label, disabled) {
-  return `<button id="${id}" ${disabled ? 'disabled' : ''} style="display:flex;flex-direction:column;align-items:center;gap:3px;background:linear-gradient(180deg,#FDFBF3,#E9E4D0);border:1px solid #A9A48C;border-radius:4px;padding:7px 14px;cursor:${disabled?'default':'pointer'};min-width:60px;opacity:${disabled?'0.4':'1'};">
-    <i class="ti ${icon}" style="font-size:20px;color:${color};"></i>
-    <span style="font-size:11px;color:#3A3826;">${label}</span>
+  return `<button id="${id}" ${disabled ? 'disabled' : ''} class="modern-icon-btn" style="display:flex;flex-direction:column;align-items:center;gap:5px;background:#fff;border:1px solid #E4E2DA;border-radius:12px;padding:8px 14px 7px;cursor:${disabled?'default':'pointer'};min-width:64px;opacity:${disabled?'0.4':'1'};box-shadow:0 1px 3px rgba(27,51,82,0.08);transition:transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;">
+    <span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:${color}18;">
+      <i class="ti ${icon}" style="font-size:16px;color:${color};"></i>
+    </span>
+    <span style="font-size:10.5px;color:#3A3826;font-weight:500;">${label}</span>
   </button>`;
 }
 
@@ -7491,7 +7502,7 @@ function renderTabContent() {
     ${state.editingId ? `
     <div style="margin-top:16px;">
       <div style="font-size:12.5px;font-weight:500;color:#3A3826;margin-bottom:8px;">الرصيد حسب المستودع</div>
-      <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+      <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
         <div style="display:grid;grid-template-columns:1fr 1fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;">
           <div style="padding:6px 8px;">المستودع</div><div style="padding:6px 8px;">الكمية</div>
         </div>
@@ -7528,7 +7539,7 @@ function renderTabContent() {
         <input id="bundle-qty" class="input" style="max-width:100px;" placeholder="الكمية" value="1" />
         <button id="bundle-add-btn" class="btn primary" style="padding:6px 14px;">إضافة</button>
       </div>
-      <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+      <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
         ${(state.bundleComponents||[]).map(c => `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;">
             <span>${escapeHtml(c.component_name)} × ${c.quantity}</span>
@@ -7548,7 +7559,7 @@ function renderTabContent() {
         </select>
         <button id="relation-add-btn" class="btn primary" style="padding:6px 14px;">ربط</button>
       </div>
-      <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+      <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
         ${(state.itemRelations||[]).map(r => `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;">
             <span>${escapeHtml(r.related_name)}</span>
@@ -7567,7 +7578,7 @@ function renderTabContent() {
         <input id="veh-year-to-input" class="input mono" placeholder="إلى سنة" />
         <button id="veh-add-btn" class="btn primary" style="padding:6px 14px;">إضافة</button>
       </div>
-      <div style="border:1px solid #A9A48C;border-radius:3px;overflow:hidden;">
+      <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
         ${(state.itemVehicleCompat||[]).map(v => `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;">
             <span>${escapeHtml(v.vehicle_make)} ${escapeHtml(v.vehicle_model)} ${v.year_from||v.year_to ? `(${v.year_from||'—'} - ${v.year_to||'—'})` : ''}</span>
@@ -7738,7 +7749,7 @@ function renderCrmTabContent() {
       </div>
       <button id="crm-add-btn" class="btn primary" style="padding:6px 12px;font-size:12px;">+ عميل جديد</button>
     </div>
-    <div style="border:1px solid #A9A48C;border-radius:6px;overflow:hidden;overflow-x:auto;">
+    <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;">
         <thead><tr>${['الاسم','المدينة','نهاية الاشتراك','الحالة',''].map(h => `<th style="padding:6px 8px;background:#1B3352;color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
         <tbody>
@@ -8765,10 +8776,10 @@ function itemPickerButton(targetSelectId, qtyId, priceId, priceKey, addBtnId) {
 }
 
 // ---------- زر+قائمة منبثقة موحّدة لاختيار عميل/مورد (تستبدل القوائم المنسدلة العادية بكل الفواتير والسندات) ----------
-function partyPickerButton(inputId, partyType, currentId, disabled) {
+function partyPickerButton(inputId, partyType, currentId, disabled, allowBothTypes) {
   const current = currentId ? state.parties.find(p => p.id === currentId) : null;
   const placeholder = partyType === 'customer' ? 'اختر عميل من القائمة...' : partyType === 'supplier' ? 'اختر مورد من القائمة...' : 'اختر عميل أو مورد...';
-  const ctx = JSON.stringify({ inputId, partyType });
+  const ctx = JSON.stringify({ inputId, partyType, allowBothTypes: !!allowBothTypes });
   if (disabled) {
     return `<div>
       <input type="hidden" id="${inputId}" value="${escapeHtml(currentId||'')}" />
@@ -8789,12 +8800,13 @@ function partyPickerButton(inputId, partyType, currentId, disabled) {
 function renderPartyPickerModal() {
   const ctx = state.partyPickerContext || {};
   const q = state.partyPickerQuery.trim().toLowerCase();
-  let results = state.parties.filter(p => ctx.partyType ? p.party_type === ctx.partyType : true);
+  let results = state.parties.filter(p => (ctx.partyType && !ctx.allowBothTypes) ? p.party_type === ctx.partyType : true);
   if (q) results = results.filter(p => (p.name||'').toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q) || (p.phone||'').toLowerCase().includes(q));
   return `
   <div id="pk-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:35;" onclick="document.getElementById('pk-close').click()">
     <div style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:480px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${ctx.partyType==='customer'?'اختيار عميل':ctx.partyType==='supplier'?'اختيار مورد':'اختيار عميل أو مورد'}</span><button id="pk-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      ${ctx.allowBothTypes ? `<div style="padding:6px 14px;background:#F0F6FC;font-size:10.5px;color:#5F5E5A;">تقدر تختار أي طرف — عميل أو مورد — حتى لو مسجّل بنوع مختلف</div>` : ''}
       <div style="padding:10px 14px;border-bottom:1px solid #A9A48C;">
         <input id="pk-search" class="input" autofocus placeholder="ابحث بالاسم، الرقم، أو الجوال..." value="${escapeHtml(state.partyPickerQuery)}" />
       </div>
@@ -8802,7 +8814,7 @@ function renderPartyPickerModal() {
         ${results.map((p,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
         <div data-pick-party="${p.id}" style="padding:10px 14px;background:${bg};cursor:pointer;border-bottom:1px solid #E4E2DA;display:flex;justify-content:space-between;align-items:center;" onmouseover="this.style.background='#DCEBFB'" onmouseout="this.style.background='${bg}'">
           <div>
-            <div style="font-size:12.5px;font-weight:500;">${escapeHtml(p.name)}</div>
+            <div style="font-size:12.5px;font-weight:500;">${escapeHtml(p.name)} ${ctx.allowBothTypes ? `<span style="font-size:9.5px;padding:1px 6px;border-radius:8px;background:${p.party_type==='customer'?'#E1F5EE':'#FAEEDA'};color:${p.party_type==='customer'?'#0F6E56':'#BA7517'};">${p.party_type==='customer'?'عميل':'مورد'}</span>` : ''}</div>
             <div style="font-size:10.5px;color:#8B8A7A;">${p.code?escapeHtml(p.code)+' · ':''}${escapeHtml(p.phone||'')}</div>
           </div>
           <div style="font-size:11px;color:${Number(p.balance)>0?'#C0392B':'#5F5E5A'};" class="mono">${fmt(p.balance||0)}</div>
@@ -10514,6 +10526,9 @@ function bindAppEvents() {
     document.getElementById('sales-exit').onclick = closeSales;
     if (document.getElementById('sales-cancel')) document.getElementById('sales-cancel').onclick = closeSales;
     document.getElementById('sales-print').onclick = () => { window.print(); };
+    if (document.getElementById('sales-pdf')) document.getElementById('sales-pdf').onclick = () => {
+      window.print();
+    };
     if (document.getElementById('si-number-jump-btn')) {
       document.getElementById('si-number-jump-btn').onclick = (ev) => {
         ev.stopPropagation();
@@ -11837,7 +11852,7 @@ function bindAppEvents() {
     };
     if (document.getElementById('rv-print')) document.getElementById('rv-print').onclick = () => { window.print(); };
     if (document.getElementById('rv-pdf')) document.getElementById('rv-pdf').onclick = () => {
-      saveAreaAsPDF('#rv-overlay .print-area', `سند_قبض_${state.receiptVoucherForm.voucher_number}.pdf`, 'rv-pdf');
+      window.print();
     };
     if (document.getElementById('rv-party')) document.getElementById('rv-party').onchange = (ev) => { state.receiptVoucherForm.customer_id = ev.target.value; render(); };
     if (document.getElementById('rv-amount')) document.getElementById('rv-amount').oninput = (ev) => {
@@ -11951,7 +11966,7 @@ function bindAppEvents() {
     };
     if (document.getElementById('pv-print')) document.getElementById('pv-print').onclick = () => { window.print(); };
     if (document.getElementById('pv-pdf')) document.getElementById('pv-pdf').onclick = () => {
-      saveAreaAsPDF('#pv-overlay .print-area', `سند_صرف_${state.paymentVoucherForm.voucher_number}.pdf`, 'pv-pdf');
+      window.print();
     };
     if (document.getElementById('pv-party')) document.getElementById('pv-party').onchange = (ev) => { state.paymentVoucherForm.supplier_id = ev.target.value; render(); };
     if (document.getElementById('pv-amount')) document.getElementById('pv-amount').oninput = (ev) => {
@@ -12879,7 +12894,7 @@ function bindAppEvents() {
     const closeGl = () => { state.showGeneralLedger = false; render(); };
     document.getElementById('gl-close').onclick = closeGl;
     document.getElementById('gl-print').onclick = () => { window.print(); };
-    document.getElementById('gl-pdf').onclick = () => { saveAreaAsPDF('#gl-overlay .print-area', 'General-Ledger.pdf', 'gl-pdf'); };
+    document.getElementById('gl-pdf').onclick = () => { window.print(); };
     if (document.getElementById('gl-excel-formatted')) {
       document.getElementById('gl-excel-formatted').onclick = () => {
         const headers = ['التاريخ', 'رقم القيد', 'رقم الحساب', 'اسم الحساب', 'البيان', 'مدين', 'دائن', 'الرصيد'];
@@ -12906,7 +12921,7 @@ function bindAppEvents() {
     document.getElementById('as-print').onclick = () => { window.print(); };
     document.getElementById('as-pdf').onclick = () => {
       const accCode = state.accountStatementCode || 'account';
-      saveAreaAsPDF('#as-overlay .print-area', `Account-Statement-${accCode}.pdf`, 'as-pdf');
+      window.print();
     };
     if (document.getElementById('as-account-search')) {
       const searchInput = document.getElementById('as-account-search');
@@ -13321,7 +13336,7 @@ function bindAppEvents() {
     bindNumberNav('stv', state.settlementVouchers, openSettlementVoucherById);
     if (document.getElementById('stv-print')) document.getElementById('stv-print').onclick = () => { window.print(); };
     if (document.getElementById('stv-pdf')) document.getElementById('stv-pdf').onclick = () => {
-      saveAreaAsPDF('#stv-overlay .print-area', `سند_تسوية_${state.settlementVoucherForm.voucher_number}.pdf`, 'stv-pdf');
+      window.print();
     };
     if (!readOnly) {
       document.getElementById('stv-party-type').onchange = (ev) => { f.party_type = ev.target.value; f.party_id = ''; render(); };
@@ -13416,7 +13431,7 @@ function bindAppEvents() {
     bindNumberNav('cdv', state.cashDisbursementVouchers, openCashDisbursementById);
     if (document.getElementById('cdv-print')) document.getElementById('cdv-print').onclick = () => { window.print(); };
     if (document.getElementById('cdv-pdf')) document.getElementById('cdv-pdf').onclick = () => {
-      saveAreaAsPDF('#cdv-overlay .print-area', `سند_صرف_صندوق_${state.cashDisbursementForm.voucher_number}.pdf`, 'cdv-pdf');
+      window.print();
     };
     if (!readOnly) {
       document.getElementById('cdv-account').onchange = (ev) => { f.expense_account_code = ev.target.value; };
@@ -14128,7 +14143,7 @@ function bindAppEvents() {
     document.getElementById(`${prefix}-party`).onchange = (ev) => { state[isReceipt?'rvReportPartyId':'pvReportPartyId'] = ev.target.value; render(); };
     document.getElementById(`${prefix}-print`).onclick = () => { window.print(); };
     document.getElementById(`${prefix}-pdf`).onclick = () => {
-      saveAreaAsPDF(`#${prefix}-overlay .print-area`, `كشف سندات ${isReceipt?'قبض':'صرف'}.pdf`, `${prefix}-pdf`);
+      window.print();
     };
     document.getElementById(`${prefix}-excel`).onclick = () => {
       const list = isReceipt ? state.receiptVouchers : state.paymentVouchers;
