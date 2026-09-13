@@ -306,6 +306,7 @@ let state = {
   voucherNumberNavOpen: null, voucherNumberNavQuery: '',
   showRvReport: false, rvReportFrom: '', rvReportTo: '', rvReportPartyId: '',
   showPvReport: false, pvReportFrom: '', pvReportTo: '', pvReportPartyId: '',
+  showDueReminders: false, dueRemindersList: null,
   showPurchaseForm: false,
   purchaseForm: null,
   editingPurchaseId: null,
@@ -1941,6 +1942,7 @@ const PARTIES_SUBMENU = [
   { label: 'كشف سندات صرف', target: '__payment_vouchers_report__' },
   { label: 'كشف حساب عميل/مورد', target: '__statement__' },
   { label: 'كشف اعمار الذمم', target: '__aging_report__' },
+  { label: 'تذكير استحقاق العملاء', target: '__due_reminders__' },
   { label: 'كشف حساب الصندوق', target: '__cashbox_statement__' },
 ];
 
@@ -2117,6 +2119,7 @@ function renderApp() {
   ${state.showItemsStatement ? renderItemsStatementModal() : ''}
   ${state.showRvReport ? renderVoucherReportModal('receipt') : ''}
   ${state.showPvReport ? renderVoucherReportModal('payment') : ''}
+  ${state.showDueReminders ? renderDueRemindersModal() : ''}
   ${state.showInventoryValuation ? renderInventoryValuationModal() : ''}
   ${state.showQuickNewItem ? renderQuickNewItemModal() : ''}
   ${state.showGlobalSearch ? renderGlobalSearchModal() : ''}
@@ -7150,6 +7153,33 @@ function renderVoucherReportModal(kind) {
   </div>`;
 }
 
+function renderDueRemindersModal() {
+  const list = state.dueRemindersList;
+  return `
+  <div id="dr-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:700px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-bell-ringing"></i> تذكير استحقاق العملاء</span><button id="dr-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:14px 16px;">
+        ${list === null ? `<div style="text-align:center;padding:30px;font-size:12.5px;color:#8B8A7A;">جاري التحميل...</div>` : `
+        <div style="font-size:11.5px;color:#5F5E5A;margin-bottom:12px;">${list.length} عميل — يشمل المستحقين خلال 5 أيام والمتأخرين فعلاً</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${list.map(r => { const overdue = r.daysUntilDue < 0; return `
+          <div style="border:1px solid #E4E2DA;border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
+            <div>
+              <div style="font-size:13px;font-weight:600;">${escapeHtml(r.party.name)}</div>
+              <div style="font-size:11px;color:#8B8A7A;margin-top:2px;">فاتورة ${escapeHtml(r.invoiceNumber)} · استحقاق ${r.dueDate} · <span style="color:${overdue?'#C0392B':'#BA7517'};font-weight:600;">${overdue ? `متأخر ${Math.abs(r.daysUntilDue)} يوم` : `باقي ${r.daysUntilDue} يوم`}</span></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;">
+              <div class="mono" style="font-size:13px;color:#C0392B;font-weight:600;">${fmt(r.party.balance)}</div>
+              <button data-send-reminder="${r.party.id}" data-invoice="${escapeHtml(r.invoiceNumber)}" data-due="${r.dueDate}" data-days="${r.daysUntilDue}" style="background:#25D366;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:5px;"><i class="ti ti-brand-whatsapp"></i> تذكير</button>
+            </div>
+          </div>`; }).join('') || `<div style="padding:24px;text-align:center;font-size:12.5px;color:#6E6D5F;">ما فيه عملاء مستحقين حالياً 🎉</div>`}
+        </div>`}
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderAgingReportModal() {
   const rows = state.agingReportRows;
   const totals = rows.reduce((s,r) => ({
@@ -8337,6 +8367,24 @@ async function loadNetPurchasesReport() {
 }
 
 // ---------- مركز التنبيهات الذكي ----------
+// يجمع كل العملاء المستحقين (وصلوا لموعد الاستحقاق أو تجاوزوه) مع تفاصيل كافية لإرسال تذكير واتساب
+async function loadDueReminders() {
+  const today = new Date().toISOString().slice(0,10);
+  const customers = state.parties.filter(p => p.party_type === 'customer' && Number(p.balance||0) > 0 && Number(p.credit_period_days||0) > 0);
+  const results = [];
+  for (const c of customers) {
+    const { data: oldestInv } = await sb.from('sales_invoices').select('invoice_date, invoice_number').eq('customer_id', c.id).eq('approved', true).eq('invoice_type', 'آجل').order('invoice_date', { ascending: true }).limit(1);
+    if (!oldestInv || !oldestInv[0]) continue;
+    const dueDate = new Date(oldestInv[0].invoice_date);
+    dueDate.setDate(dueDate.getDate() + Number(c.credit_period_days));
+    const daysUntilDue = Math.round((dueDate - new Date(today)) / 86400000);
+    if (daysUntilDue <= 5) {
+      results.push({ party: c, invoiceNumber: oldestInv[0].invoice_number, dueDate: dueDate.toISOString().slice(0,10), daysUntilDue });
+    }
+  }
+  return results.sort((a,b) => a.daysUntilDue - b.daysUntilDue);
+}
+
 async function loadAlerts() {
   const alerts = [];
   const today = new Date().toISOString().slice(0,10);
@@ -9438,6 +9486,15 @@ function bindAppEvents() {
         state.agingReportRows = [];
         await loadCompany();
         state.showAgingReport = true;
+        render();
+        return;
+      }
+      if (target === '__due_reminders__') {
+        await loadParties();
+        state.dueRemindersList = null;
+        state.showDueReminders = true;
+        render();
+        state.dueRemindersList = await loadDueReminders();
         render();
         return;
       }
@@ -14170,6 +14227,29 @@ function bindAppEvents() {
   }
   if (state.showRvReport) bindVoucherReport('receipt');
   if (state.showPvReport) bindVoucherReport('payment');
+
+  if (state.showDueReminders) {
+    if (document.getElementById('dr-close')) document.getElementById('dr-close').onclick = () => { state.showDueReminders = false; render(); };
+    document.querySelectorAll('[data-send-reminder]').forEach(btn => {
+      btn.onclick = () => {
+        const party = state.parties.find(p => p.id === btn.dataset.sendReminder);
+        if (!party) return;
+        let phoneRaw = party.mobile || party.phone || '';
+        if (!phoneRaw) {
+          phoneRaw = prompt('ما فيه رقم جوال مسجّل لهذا العميل — اكتب رقم الجوال المراد الإرسال له:', '05') || '';
+          if (!phoneRaw.trim()) return;
+        }
+        let phone = phoneRaw.replace(/[^0-9]/g, '');
+        if (phone.startsWith('0')) phone = '966' + phone.slice(1);
+        else if (!phone.startsWith('966')) phone = '966' + phone;
+        const days = Number(btn.dataset.days);
+        const overdue = days < 0;
+        const statusText = overdue ? `متأخّرة ${Math.abs(days)} يوم عن موعدها` : `تستحق خلال ${days} يوم`;
+        const msg = encodeURIComponent(`السلام عليكم ${party.name}،\n\nنذكّركم بأن فاتورتكم رقم ${btn.dataset.invoice} بمبلغ ${fmt(party.balance)} ريال ${statusText} (تاريخ الاستحقاق: ${btn.dataset.due}).\n\nنرجو ترتيب السداد في أقرب وقت ممكن. شاكرين تعاونكم.`);
+        window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
+      };
+    });
+  }
 
   if (state.showInventoryValuation) {
     document.getElementById('iv-close').onclick = () => { state.showInventoryValuation = false; render(); };
