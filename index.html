@@ -2885,14 +2885,14 @@ function renderHomeSection() {
   const netProfit = state.homeCogs !== null ? (totalSales - state.homeCogs) : (totalSales - totalPurchases);
   const lowStockCount = (state.items||[]).filter(it => Number(it.qty) <= Number(it.reorder_at||0)).length;
 
-  const kpiCard = (icon, label, value, sub, grad, iconColor) => `
+  const kpiCard = (icon, label, value, sub, grad, iconColor, isCount) => `
     <div style="flex:1;min-width:180px;background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 4px 18px rgba(15,62,150,0.08);display:flex;align-items:center;gap:14px;">
       <div style="width:52px;height:52px;border-radius:14px;background:${grad};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
         <i class="ti ${icon}" style="font-size:24px;color:${iconColor};"></i>
       </div>
       <div>
         <div style="font-size:11.5px;color:#5F5E5A;margin-bottom:2px;">${label}</div>
-        <div style="font-size:19px;font-weight:700;color:#1F2421;" class="mono">${fmt(value)}</div>
+        <div style="font-size:19px;font-weight:700;color:#1F2421;" class="mono">${isCount ? Math.round(Number(value)||0) : fmt(value)}</div>
         <div style="font-size:10.5px;color:#A9A48C;">${sub}</div>
       </div>
     </div>`;
@@ -2902,7 +2902,7 @@ function renderHomeSection() {
         ${kpiCard('ti-trending-up', 'إجمالي المبيعات', totalSales, `${salesCount} فاتورة معتمدة`, 'rgba(15,110,86,0.12)', '#0F6E56')}
         ${kpiCard('ti-shopping-cart', 'إجمالي المشتريات', totalPurchases, `${purchasesCount} فاتورة معتمدة`, 'rgba(30,90,192,0.12)', '#2C4A6E')}
         ${kpiCard('ti-chart-line', 'صافي الربح التقديري', netProfit, netProfit >= 0 ? 'وضع إيجابي' : 'يحتاج مراجعة', netProfit >= 0 ? 'rgba(39,174,96,0.12)' : 'rgba(224,73,73,0.12)', netProfit >= 0 ? '#27AE60' : '#E24B4A')}
-        ${kpiCard('ti-alert-triangle', 'أصناف تحتاج طلب', lowStockCount, 'بالمخزون الحالي', 'rgba(186,117,23,0.12)', '#BA7517')}
+        ${kpiCard('ti-alert-triangle', 'أصناف تحتاج طلب', lowStockCount, 'بالمخزون الحالي', 'rgba(186,117,23,0.12)', '#BA7517', true)}
       </div>
       <div style="display:flex;flex:1;">
         <div style="flex:1.3;position:relative;overflow:hidden;background:linear-gradient(135deg,#1B3352 0%,#2C4A6E 45%,#3D6389 100%);display:flex;flex-direction:column;">
@@ -10748,35 +10748,44 @@ function bindAppEvents() {
         const priceInp = ev.target.closest('[data-sales-line-price]');
         if (qtyInp) {
           const idx = parseInt(qtyInp.dataset.salesLineQty, 10);
-          const line = state.salesForm.lines[idx];
-          const item = state.items.find(it => it.id === line.item_id);
-          let newQty = Number(ev.target.value) || 0;
-          if (item && newQty > Number(item.qty)) {
-            showToast(`⛔ الكمية المتاحة بالمخزون ${item.qty} بس — ما تقدر تدخل أكثر منها`, 'error');
-            newQty = Number(item.qty);
-          }
-          line.quantity = newQty;
+          state.salesForm.lines[idx].quantity = Number(ev.target.value) || 0;
           const pos = ev.target.selectionStart;
           render();
           const el = document.querySelector(`[data-sales-line-qty="${idx}"]`);
-          if (el) { el.value = newQty; el.focus(); el.setSelectionRange(Math.min(pos, String(newQty).length), Math.min(pos, String(newQty).length)); }
+          if (el) { el.focus(); el.setSelectionRange(pos, pos); }
         } else if (priceInp) {
           const idx = parseInt(priceInp.dataset.salesLinePrice, 10);
-          const line = state.salesForm.lines[idx];
-          const item = state.items.find(it => it.id === line.item_id);
-          const newPrice = Number(ev.target.value) || 0;
-          if (item && Number(item.cost) > 0 && newPrice < Number(item.cost)) {
-            showToast(`⛔ ما تقدر تبيع أقل من التكلفة (${fmt(item.cost)})`, 'error');
-            line.unit_price = Number(item.cost);
-          } else {
-            line.unit_price = newPrice;
-          }
+          state.salesForm.lines[idx].unit_price = Number(ev.target.value) || 0;
           const pos = ev.target.selectionStart;
           render();
           const el = document.querySelector(`[data-sales-line-price="${idx}"]`);
           if (el) { el.focus(); el.setSelectionRange(pos, pos); }
         }
       });
+      // التحقق والتصحيح يصير بعد ما يخلص المستخدم الكتابة (فقدان التركيز)، مو مع كل حرف — يمنع تصحيح مبكّر يلخبط الرقم أثناء الكتابة
+      tbl2.addEventListener('blur', (ev) => {
+        const qtyInp = ev.target.closest('[data-sales-line-qty]');
+        const priceInp = ev.target.closest('[data-sales-line-price]');
+        if (qtyInp) {
+          const idx = parseInt(qtyInp.dataset.salesLineQty, 10);
+          const line = state.salesForm.lines[idx];
+          const item = state.items.find(it => it.id === line.item_id);
+          if (item && line.quantity > Number(item.qty)) {
+            showToast(`⛔ الكمية المتاحة بالمخزون ${item.qty} بس — ما تقدر تدخل أكثر منها`, 'error');
+            line.quantity = Number(item.qty);
+            render();
+          }
+        } else if (priceInp) {
+          const idx = parseInt(priceInp.dataset.salesLinePrice, 10);
+          const line = state.salesForm.lines[idx];
+          const item = state.items.find(it => it.id === line.item_id);
+          if (item && Number(item.cost) > 0 && line.unit_price < Number(item.cost)) {
+            showToast(`⛔ ما تقدر تبيع أقل من التكلفة (${fmt(item.cost)})`, 'error');
+            line.unit_price = Number(item.cost);
+            render();
+          }
+        }
+      }, true);
     }
     if (document.getElementById('si-discount')) document.getElementById('si-discount').oninput = (ev) => {
       state.salesForm.discount = ev.target.value;
