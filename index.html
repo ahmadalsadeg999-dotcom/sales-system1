@@ -102,7 +102,7 @@ let state = {
   siItemSearch: '', showSiItemSearch: false,
   showGeneralLedger: false, generalLedgerFrom: '', generalLedgerTo: '', generalLedgerData: [],
   showAccountStatement: false, accountStatementFrom: '', accountStatementTo: '', accountStatementCode: '', accountStatementRows: [], accountStatementSearch: '', showAccountStatementSearch: false,
-  asColumnWidths: [40,90,140,90,90,90,180,90,100,90,90,90,90,70,90,80,110,130],
+  asColumnWidths: [40,90,140,90,90,90,180,90,100,90,90,90,90,70,90,80,110,130,100],
   showAsColumnPicker: false,
   asVisibleColumns: null,
   asTempVisibleColumns: null,
@@ -1228,10 +1228,19 @@ function renderStatementContent(p) {
     running += r.total - r.paid;
     return { ...r, running };
   });
+  const stmtColumnsDef = [
+    { key:'date', label:'التاريخ' }, { key:'doc', label:'رقم المستند' }, { key:'opType', label:'نوع العملية' },
+    { key:'total', label:'الإجمالي' }, { key:'paid', label:'المدفوع' }, { key:'balance', label:'الرصيد' },
+  ];
+  const stmtVisible = getVisibleColumns('stmt_visible_columns', stmtColumnsDef, 'stmtVisibleColumns');
+  const stmtCols = stmtColumnsDef.filter(c => stmtVisible.includes(c.key));
   return `
-    <div style="border-bottom:1px solid #A9A48C;padding-bottom:10px;margin-bottom:10px;">
-      <div style="font-size:14px;font-weight:500;">${escapeHtml(p.name)}</div>
-      <div style="font-size:11.5px;color:#5F5E5A;">${escapeHtml(p.code||'')} · ${p.party_type==='supplier'?'مورد':'عميل'} · ${escapeHtml(p.phone||'')}</div>
+    <div style="border-bottom:1px solid #A9A48C;padding-bottom:10px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start;">
+      <div>
+        <div style="font-size:14px;font-weight:500;">${escapeHtml(p.name)}</div>
+        <div style="font-size:11.5px;color:#5F5E5A;">${escapeHtml(p.code||'')} · ${p.party_type==='supplier'?'مورد':'عميل'} · ${escapeHtml(p.phone||'')}</div>
+      </div>
+      <div class="no-print">${renderColumnPickerButton('stmtcols', stmtColumnsDef, stmtVisible, 'stmtTempVisibleColumns')}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
       <div style="border:1px solid #A9A48C;border-radius:4px;padding:10px;background:#F4F1EA;"><div style="font-size:11px;color:#5F5E5A;">الرصيد الافتتاحي</div><div class="mono" style="font-size:15px;">${Number(p.opening_balance||0).toFixed(2)}</div></div>
@@ -1239,18 +1248,15 @@ function renderStatementContent(p) {
       <div style="border:1px solid #A9A48C;border-radius:4px;padding:10px;background:${Number(p.balance)>0?'#FCEBEB':'#E1F5EE'};"><div style="font-size:11px;color:#5F5E5A;">الرصيد الحالي</div><div class="mono" style="font-size:15px;color:${Number(p.balance)>0?'#C0392B':'#0F6E56'};">${Number(p.balance||0).toFixed(2)}</div></div>
     </div>
     <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-      <div style="display:grid;grid-template-columns:0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 1fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;">
-        ${['التاريخ','رقم المستند','نوع العملية','الإجمالي','المدفوع','الرصيد'].map(h => `<div style="padding:6px 8px;">${h}</div>`).join('')}
+      <div style="display:grid;grid-template-columns:repeat(${stmtCols.length},1fr);background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;">
+        ${stmtCols.map(c => `<div style="padding:6px 8px;text-align:center;border-left:1px solid rgba(255,255,255,0.35);">${c.label}</div>`).join('')}
       </div>
-      ${rows.map((r,i) => `
-        <div style="display:grid;grid-template-columns:0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 1fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:11.5px;">
-          <div style="padding:6px 8px;" class="mono">${escapeHtml(r.date||'')}</div>
-          <div style="padding:6px 8px;" class="mono">${escapeHtml(r.doc||'')}</div>
-          <div style="padding:6px 8px;">${escapeHtml(r.opType||'')}</div>
-          <div style="padding:6px 8px;">${r.total.toFixed(2)}</div>
-          <div style="padding:6px 8px;">${r.paid.toFixed(2)}</div>
-          <div style="padding:6px 8px;">${r.running.toFixed(2)}</div>
-        </div>`).join('') || `<div style="padding:14px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد حركات مسجّلة بعد لهذا الحساب</div>`}
+      ${rows.map((r,i) => {
+        const cellVal = { date: escapeHtml(r.date||''), doc: escapeHtml(r.doc||''), opType: escapeHtml(r.opType||''), total: r.total.toFixed(2), paid: r.paid.toFixed(2), balance: r.running.toFixed(2) };
+        return `<div style="display:grid;grid-template-columns:repeat(${stmtCols.length},1fr);background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:11.5px;">
+          ${stmtCols.map(c => `<div style="padding:6px 8px;" class="${c.key!=='opType'?'mono':''}">${cellVal[c.key]}</div>`).join('')}
+        </div>`;
+      }).join('') || `<div style="padding:14px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد حركات مسجّلة بعد لهذا الحساب</div>`}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:36px;padding-top:14px;">
       <div style="text-align:center;"><div style="border-top:1px solid #3A3826;padding-top:6px;font-size:12px;color:#3A3826;">توقيع العميل/المورد</div></div>
@@ -6086,6 +6092,7 @@ const AS_COLUMNS_DEF = [
   { key:'debit', label:'مدين' }, { key:'credit', label:'دائن' }, { key:'balance', label:'الرصيد' },
   { key:'refNumber', label:'رقم المرجع' }, { key:'status', label:'الحالة' }, { key:'entryNumber', label:'رقم القيد' },
   { key:'branch', label:'الفرع' }, { key:'userName', label:'اسم المستخدم' }, { key:'createdAt', label:'تاريخ الإنشاء' },
+  { key:'paymentMethod', label:'طريقة الدفع' },
 ];
 function getAsVisibleColumns() {
   if (state.asVisibleColumns) return state.asVisibleColumns;
@@ -6194,6 +6201,7 @@ function renderAccountStatementModal() {
                   balance: `<span style="color:${l.balance<0?'#C0392B':'#0F6E56'};font-weight:600;">${fmt(l.balance)}</span>`,
                   refNumber: escapeHtml(l.voucherNumber), status: 'معتمد', entryNumber: escapeHtml(l.entryNumber||''),
                   branch: 'الرئيسي', userName: escapeHtml(l.userName), createdAt: escapeHtml(l.createdAt),
+                  paymentMethod: escapeHtml(l.paymentMethod||'—'),
                 };
                 return `<tr>${visibleCols.map(c => `<td class="${['date','voucherNumber','entryNumber','debit','credit','balance','refNumber','createdAt','accCode'].includes(c.key)?'mono':''}" style="padding:7px 8px;background:${bg};font-size:10.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cellVal[c.key]}</td>`).join('')}</tr>`;
               }).join('') || `<tr><td colspan="${visibleCols.length}" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد حركات بالفترة المحددة</td></tr>`}
@@ -7116,6 +7124,61 @@ function renderSlowMovingModal() {
   </div>`;
 }
 
+function getVisibleColumns(storageKey, columnsDef, stateKey) {
+  if (state[stateKey]) return state[stateKey];
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (saved) { state[stateKey] = JSON.parse(saved); return state[stateKey]; }
+  } catch(e) {}
+  state[stateKey] = columnsDef.map(c => c.key);
+  return state[stateKey];
+}
+function renderColumnPickerButton(id, columnsDef, visibleKeys, tempKey) {
+  return `
+  <div style="position:relative;">
+    <button id="${id}-btn" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-columns-3" style="font-size:14px;color:#2C4A6E;"></i> الأعمدة</button>
+    ${state[id+'Open'] ? `
+    <div id="${id}-menu" style="position:absolute;top:44px;left:0;background:#fff;border:1px solid #1B3352;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,0.2);width:200px;z-index:20;padding:10px;" onclick="event.stopPropagation()">
+      <div style="font-size:11.5px;font-weight:600;margin-bottom:8px;color:#1B3352;">اختر الأعمدة المطلوبة</div>
+      <div style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+        ${columnsDef.map(c => `<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" data-col-toggle="${id}:${c.key}" ${(state[tempKey]||visibleKeys).includes(c.key)?'checked':''} /> ${c.label}</label>`).join('')}
+      </div>
+      <button id="${id}-save" class="btn primary" style="padding:6px 12px;width:100%;margin-top:10px;font-size:11.5px;">حفظ</button>
+    </div>` : ''}
+  </div>`;
+}
+function bindColumnPicker(id, storageKey, columnsDef, stateKey, tempKey) {
+  if (document.getElementById(`${id}-btn`)) {
+    document.getElementById(`${id}-btn`).onclick = (ev) => {
+      ev.stopPropagation();
+      state[tempKey] = [...getVisibleColumns(storageKey, columnsDef, stateKey)];
+      state[id+'Open'] = !state[id+'Open'];
+      render();
+    };
+  }
+  document.querySelectorAll(`[data-col-toggle^="${id}:"]`).forEach(cb => {
+    cb.onchange = (ev) => {
+      const key = cb.dataset.colToggle.split(':')[1];
+      if (!state[tempKey]) state[tempKey] = [...getVisibleColumns(storageKey, columnsDef, stateKey)];
+      if (ev.target.checked) { if (!state[tempKey].includes(key)) state[tempKey].push(key); }
+      else { state[tempKey] = state[tempKey].filter(k => k !== key); }
+    };
+  });
+  if (document.getElementById(`${id}-save`)) {
+    document.getElementById(`${id}-save`).onclick = () => {
+      if (!state[tempKey] || state[tempKey].length === 0) { showToast('اختر عمود واحد على الأقل', 'error'); return; }
+      state[stateKey] = [...state[tempKey]];
+      try { localStorage.setItem(storageKey, JSON.stringify(state[stateKey])); } catch(e) {}
+      state[id+'Open'] = false;
+      showToast('تم حفظ إعدادات الأعمدة');
+      render();
+    };
+  }
+  if (state[id+'Open']) {
+    document.addEventListener('click', function closeMenu() { state[id+'Open'] = false; render(); document.removeEventListener('click', closeMenu); }, { once: true });
+  }
+}
+
 function renderVoucherReportModal(kind) {
   const isReceipt = kind === 'receipt';
   const prefix = isReceipt ? 'rvrep' : 'pvrep';
@@ -7129,6 +7192,13 @@ function renderVoucherReportModal(kind) {
     && (!partyId || (isReceipt ? v.customer_id : v.supplier_id) === partyId)
   ).sort((a,b) => (a.voucher_date||'').localeCompare(b.voucher_date||''));
   const total = rows.reduce((s,r) => s + Number(r.amount||0), 0);
+  const vrepColumnsDef = [
+    { key:'voucherNumber', label:'رقم السند' }, { key:'date', label:'التاريخ' },
+    { key:'party', label: isReceipt?'العميل':'المورد' }, { key:'paymentMethod', label:'طريقة الدفع' }, { key:'amount', label:'المبلغ' },
+    { key:'userName', label:'اسم المستخدم' },
+  ];
+  const vrepVisible = getVisibleColumns(`${prefix}_visible_columns`, vrepColumnsDef, `${prefix}VisibleColumns`);
+  const vrepCols = vrepColumnsDef.filter(c => vrepVisible.includes(c.key));
   return `
   <div id="${prefix}-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
     <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:800px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
@@ -7157,6 +7227,7 @@ function renderVoucherReportModal(kind) {
           <button id="${prefix}-excel" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-file-spreadsheet" style="font-size:14px;color:#0F6E56;"></i> تصدير اكسل</button>
           <button id="${prefix}-print" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-printer" style="font-size:14px;color:#5F5E5A;"></i> طباعة</button>
           <button id="${prefix}-pdf" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-file-type-pdf" style="font-size:14px;color:#D9534F;"></i> حفظ PDF (طباعة)</button>
+          ${renderColumnPickerButton(`${prefix}cols`, vrepColumnsDef, vrepVisible, `${prefix}TempVisibleColumns`)}
         </div>
         <div style="display:flex;gap:12px;margin-bottom:12px;">
           <div style="flex:1;background:#F0F6FC;border-radius:8px;padding:10px 14px;"><div style="font-size:10.5px;color:#5F5E5A;">عدد السندات</div><div class="mono" style="font-size:16px;font-weight:700;color:#1B3352;">${rows.length}</div></div>
@@ -7164,16 +7235,13 @@ function renderVoucherReportModal(kind) {
         </div>
         <div style="max-height:400px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
           <table style="width:100%;border-collapse:collapse;">
-            <thead><tr>${['رقم السند','التاريخ',isReceipt?'العميل':'المورد','طريقة الدفع','المبلغ'].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
+            <thead><tr>${vrepCols.map(c => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:center;border-left:1px solid rgba(255,255,255,0.35);">${c.label}</th>`).join('')}</tr></thead>
             <tbody>
-              ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
-              <tr>
-                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.voucher_number)}</td>
-                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.voucher_date)}</td>
-                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.parties?.name||'—')}</td>
-                <td style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.payment_method||'—')}</td>
-                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11px;font-weight:600;border-bottom:1px solid #E4E2DA;">${fmt(r.amount)}</td>
-              </tr>`; }).join('') || `<tr><td colspan="5" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه سندات مطابقة</td></tr>`}
+              ${rows.map((r,i) => {
+                const bg = i%2?'#F4F1EA':'#FFFDF6';
+                const cellVal = { voucherNumber: escapeHtml(r.voucher_number), date: escapeHtml(r.voucher_date), party: escapeHtml(r.parties?.name||'—'), paymentMethod: escapeHtml(r.payment_method||'—'), amount: fmt(r.amount), userName: escapeHtml(state.users.find(u=>u.id===r.created_by)?.display_name || state.users.find(u=>u.id===r.created_by)?.username || '—') };
+                return `<tr>${vrepCols.map(c => `<td class="${['voucherNumber','date','amount'].includes(c.key)?'mono':''}" style="padding:9px 10px;background:${bg};font-size:11px;border-bottom:1px solid #E4E2DA;${c.key==='amount'?'font-weight:600;':''}">${cellVal[c.key]}</td>`).join('')}</tr>`;
+              }).join('') || `<tr><td colspan="${vrepCols.length}" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه سندات مطابقة</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -8723,7 +8791,7 @@ async function loadGeneralLedger() {
 async function loadAccountStatement() {
   if (!state.accountStatementCode) { state.accountStatementRows = []; return; }
   await loadUsers();
-  let q = sb.from('journal_entry_lines').select('account_code, debit, credit, description, journal_entries!inner(entry_date, entry_number, description, voucher_number, source_type, created_by, created_at)').eq('account_code', state.accountStatementCode);
+  let q = sb.from('journal_entry_lines').select('account_code, debit, credit, description, journal_entries!inner(entry_date, entry_number, description, voucher_number, source_type, source_id, created_by, created_at)').eq('account_code', state.accountStatementCode);
   if (state.accountStatementFrom) q = q.gte('journal_entries.entry_date', state.accountStatementFrom);
   if (state.accountStatementTo) q = q.lte('journal_entries.entry_date', state.accountStatementTo);
   const { data } = await q;
@@ -8734,6 +8802,19 @@ async function loadAccountStatement() {
     sales_invoice:'فاتورة بيع', purchase_invoice:'فاتورة شراء', sales_return:'مردود بيع', purchase_return:'مردود شراء',
     stock_count:'سند جرد', manual:'قيد يومية', closing:'قيد إقفال',
   };
+  // نجيب طريقة الدفع (كاش/شبكة...) من مصدر كل حركة، دفعة واحدة لكل نوع مستند (مو استعلام لكل صف — أداء أفضل)
+  const sourceTableMap = { receipt_voucher:'receipt_vouchers', payment_voucher:'payment_vouchers', settlement_voucher:'settlement_vouchers', cash_disbursement:'cash_disbursement_vouchers', sales_invoice:'sales_invoices', purchase_invoice:'purchase_invoices' };
+  const idsByTable = {};
+  (data||[]).forEach(l => {
+    const table = sourceTableMap[l.journal_entries.source_type];
+    if (table && l.journal_entries.source_id) { if (!idsByTable[table]) idsByTable[table] = new Set(); idsByTable[table].add(l.journal_entries.source_id); }
+  });
+  const paymentMethodById = {};
+  for (const table of Object.keys(idsByTable)) {
+    const ids = [...idsByTable[table]];
+    const { data: pmRows } = await sb.from(table).select('id, payment_method').in('id', ids);
+    (pmRows||[]).forEach(r => { paymentMethodById[r.id] = r.payment_method || '—'; });
+  }
   const lines = (data||[]).map(l => {
     const je = l.journal_entries;
     const user = state.users.find(u => u.id === je.created_by);
@@ -8742,6 +8823,7 @@ async function loadAccountStatement() {
       debit: Number(l.debit||0), credit: Number(l.credit||0),
       voucherNumber: je.voucher_number || '—', voucherType: sourceTypeLabels[je.source_type] || je.source_type || '—',
       userName: user?.display_name || user?.username || '—', createdAt: je.created_at ? je.created_at.slice(0,16).replace('T',' ') : '—',
+      paymentMethod: paymentMethodById[je.source_id] || '—',
     };
   }).sort((x,y) => (x.date||'').localeCompare(y.date||''));
   let running = 0;
@@ -9600,6 +9682,7 @@ function bindAppEvents() {
       if (target === '__receipt_vouchers_report__') {
         await loadParties();
         await loadReceiptVouchers();
+        await loadUsers();
         state.rvReportFrom = ''; state.rvReportTo = ''; state.rvReportPartyId = '';
         state.showRvReport = true;
         render();
@@ -9608,6 +9691,7 @@ function bindAppEvents() {
       if (target === '__payment_vouchers_report__') {
         await loadParties();
         await loadPaymentVouchers();
+        await loadUsers();
         state.pvReportFrom = ''; state.pvReportTo = ''; state.pvReportPartyId = '';
         state.showPvReport = true;
         render();
@@ -14311,6 +14395,12 @@ function bindAppEvents() {
   function bindVoucherReport(kind) {
     const isReceipt = kind === 'receipt';
     const prefix = isReceipt ? 'rvrep' : 'pvrep';
+    const vrepColumnsDef = [
+      { key:'voucherNumber', label:'رقم السند' }, { key:'date', label:'التاريخ' },
+      { key:'party', label: isReceipt?'العميل':'المورد' }, { key:'paymentMethod', label:'طريقة الدفع' }, { key:'amount', label:'المبلغ' },
+      { key:'userName', label:'اسم المستخدم' },
+    ];
+    bindColumnPicker(`${prefix}cols`, `${prefix}_visible_columns`, vrepColumnsDef, `${prefix}VisibleColumns`, `${prefix}TempVisibleColumns`);
     document.getElementById(`${prefix}-close`).onclick = () => { state[isReceipt?'showRvReport':'showPvReport'] = false; render(); };
     document.getElementById(`${prefix}-from`).onchange = (ev) => { state[isReceipt?'rvReportFrom':'pvReportFrom'] = ev.target.value; render(); };
     document.getElementById(`${prefix}-to`).onchange = (ev) => { state[isReceipt?'rvReportTo':'pvReportTo'] = ev.target.value; render(); };
@@ -14664,6 +14754,11 @@ function bindAppEvents() {
     const closeStatement = () => { state.showStatement = false; render(); };
     document.getElementById('statement-close').onclick = closeStatement;
     document.getElementById('statement-exit').onclick = closeStatement;
+    const stmtColumnsDef = [
+      { key:'date', label:'التاريخ' }, { key:'doc', label:'رقم المستند' }, { key:'opType', label:'نوع العملية' },
+      { key:'total', label:'الإجمالي' }, { key:'paid', label:'المدفوع' }, { key:'balance', label:'الرصيد' },
+    ];
+    bindColumnPicker('stmtcols', 'stmt_visible_columns', stmtColumnsDef, 'stmtVisibleColumns', 'stmtTempVisibleColumns');
     document.getElementById('statement-party-select').onchange = async (ev) => {
       state.statementPartyId = ev.target.value;
       const party = state.parties.find(p => p.id === state.statementPartyId);
