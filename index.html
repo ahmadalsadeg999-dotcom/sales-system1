@@ -49,6 +49,8 @@
   @media print {
     .print-only { display: block !important; }
     @page { size: A4; margin: 10mm; }
+    @page wide-landscape { size: A4 landscape; margin: 10mm; }
+    .print-landscape { page: wide-landscape; }
     body * { visibility: hidden; }
     .print-area, .print-area * { visibility: visible; font-family: 'Segoe UI', 'Tahoma', 'Arial', sans-serif !important; }
     .print-area {
@@ -100,6 +102,10 @@ let state = {
   siItemSearch: '', showSiItemSearch: false,
   showGeneralLedger: false, generalLedgerFrom: '', generalLedgerTo: '', generalLedgerData: [],
   showAccountStatement: false, accountStatementFrom: '', accountStatementTo: '', accountStatementCode: '', accountStatementRows: [], accountStatementSearch: '', showAccountStatementSearch: false,
+  asColumnWidths: [40,90,140,90,90,90,180,90,100,90,90,90,90,70,90,80,110,130],
+  showAsColumnPicker: false,
+  asVisibleColumns: null,
+  asTempVisibleColumns: null,
   showReportDesigner: false, rdSource: '', rdColumns: [], rdFrom: '', rdTo: '', rdRows: [], rdRan: false,
   showFixedAssets: false, fixedAssets: [], showAssetForm: false, editingAssetId: null, assetForm: null,
   showEmployees: false, employees: [], showEmployeeForm: false, editingEmployeeId: null, employeeForm: null, showEmployeeCV: false, cvEmployeeId: null,
@@ -6073,6 +6079,24 @@ function renderGeneralLedgerModal() {
   </div>`;
 }
 
+const AS_COLUMNS_DEF = [
+  { key:'idx', label:'م' }, { key:'accCode', label:'رقم الحساب' }, { key:'accName', label:'اسم الحساب' },
+  { key:'date', label:'التاريخ' }, { key:'voucherNumber', label:'رقم السند' }, { key:'voucherType', label:'نوع السند' },
+  { key:'desc', label:'البيان' }, { key:'accCurrency', label:'عملة الحساب' }, { key:'txnCurrency', label:'عملة المعاملة' },
+  { key:'debit', label:'مدين' }, { key:'credit', label:'دائن' }, { key:'balance', label:'الرصيد' },
+  { key:'refNumber', label:'رقم المرجع' }, { key:'status', label:'الحالة' }, { key:'entryNumber', label:'رقم القيد' },
+  { key:'branch', label:'الفرع' }, { key:'userName', label:'اسم المستخدم' }, { key:'createdAt', label:'تاريخ الإنشاء' },
+];
+function getAsVisibleColumns() {
+  if (state.asVisibleColumns) return state.asVisibleColumns;
+  try {
+    const saved = localStorage.getItem('as_visible_columns');
+    if (saved) { state.asVisibleColumns = JSON.parse(saved); return state.asVisibleColumns; }
+  } catch(e) {}
+  state.asVisibleColumns = AS_COLUMNS_DEF.map(c => c.key);
+  return state.asVisibleColumns;
+}
+
 function renderAccountStatementModal() {
   const postingAccounts = state.chartOfAccounts.filter(a => a.is_posting_account);
   const account = postingAccounts.find(a => a.code === state.accountStatementCode);
@@ -6080,9 +6104,11 @@ function renderAccountStatementModal() {
   const totalDebit = rows.reduce((s,r) => s+r.debit, 0);
   const totalCredit = rows.reduce((s,r) => s+r.credit, 0);
   const finalBalance = rows.length ? rows[rows.length-1].balance : 0;
+  const visibleKeys = getAsVisibleColumns();
+  const visibleCols = AS_COLUMNS_DEF.filter(c => visibleKeys.includes(c.key));
   return `
   <div id="as-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
-    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:800px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    <div class="print-area print-landscape" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:1400px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>كشف حساب</span><button id="as-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       <div class="no-print" style="margin:16px 16px 0;border:1px solid #DEDACB;border-radius:8px;background:#FAF9F4;padding:14px 14px 10px;position:relative;">
         ${partyField('الحساب', `<input id="as-account-search" class="input" autocomplete="off" placeholder="اكتب اسم أو رقم الحساب..." value="${account ? escapeHtml(account.code+' — '+account.name) : escapeHtml(state.accountStatementSearch)}" />`)}
@@ -6100,9 +6126,20 @@ function renderAccountStatementModal() {
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid #EDEAE0;display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
           <div>${partyField('من تاريخ', `<input id="as-from" type="date" class="input" value="${escapeHtml(state.accountStatementFrom)}" />`)}</div>
           <div>${partyField('إلى تاريخ', `<input id="as-to" type="date" class="input" value="${escapeHtml(state.accountStatementTo)}" />`)}</div>
-          <button id="as-apply" class="btn primary" style="padding:8px 16px;">تطبيق</button>
-          <button id="as-print" class="btn" style="padding:8px 16px;">طباعة</button>
-          <button id="as-pdf" class="btn" style="padding:8px 16px;"><i class="ti ti-file-type-pdf" style="font-size:14px;"></i> حفظ PDF</button>
+          <button id="as-apply" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:linear-gradient(180deg,#5A96EA,#2C4A6E);color:#fff;border:1px solid #1B3352;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.1);">تطبيق</button>
+          <button id="as-print" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-printer" style="font-size:14px;color:#5F5E5A;"></i> طباعة</button>
+          <button id="as-pdf" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-file-type-pdf" style="font-size:14px;color:#D9534F;"></i> حفظ PDF</button>
+          <div style="position:relative;">
+            <button id="as-columns-btn" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-columns-3" style="font-size:14px;color:#2C4A6E;"></i> الأعمدة</button>
+            ${state.showAsColumnPicker ? `
+            <div id="as-columns-menu" style="position:absolute;top:44px;left:0;background:#fff;border:1px solid #1B3352;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,0.2);width:220px;z-index:20;padding:10px;" onclick="event.stopPropagation()">
+              <div style="font-size:11.5px;font-weight:600;margin-bottom:8px;color:#1B3352;">اختر الأعمدة المطلوبة</div>
+              <div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+                ${AS_COLUMNS_DEF.map(c => `<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" data-as-col-toggle="${c.key}" ${(state.asTempVisibleColumns||visibleKeys).includes(c.key)?'checked':''} /> ${c.label}</label>`).join('')}
+              </div>
+              <button id="as-columns-save" class="btn primary" style="padding:6px 12px;width:100%;margin-top:10px;font-size:11.5px;">حفظ</button>
+            </div>` : ''}
+          </div>
         </div>
       </div>
       ${account ? `
@@ -6137,45 +6174,37 @@ function renderAccountStatementModal() {
           </div>
         </div>
 
-        <div class="no-print" style="max-height:400px;overflow-y:auto;border:1px solid #EDEAE0;border-radius:10px;">
-          ${rows.map((l,i) => `
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;${i<rows.length-1?'border-bottom:1px solid #F0EEE6;':''}background:${i%2?'#FDFBF7':'#fff'};">
-            <div style="width:32px;height:32px;border-radius:8px;background:${l.debit?'#FCEBEB':'#E1F5EE'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-              <i class="ti ${l.debit?'ti-arrow-up-right':'ti-arrow-down-left'}" style="color:${l.debit?'#C0392B':'#0F6E56'};font-size:16px;"></i>
-            </div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:12.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(l.desc||'—')}</div>
-              <div style="font-size:10.5px;color:#8B8A7A;" class="mono">${escapeHtml(l.date)} ${l.entryNumber?'· '+escapeHtml(l.entryNumber):''}</div>
-            </div>
-            <div style="text-align:left;flex-shrink:0;">
-              <div style="font-weight:700;font-size:13px;color:${l.debit?'#C0392B':'#0F6E56'};" class="mono">${l.debit?'+':'-'}${fmt(l.debit||l.credit)}</div>
-              <div style="font-size:10px;color:#8B8A7A;" class="mono">رصيد: ${fmt(l.balance)}</div>
-            </div>
-          </div>`).join('') || `<div style="padding:24px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد حركات بالفترة المحددة</div>`}
-        </div>
-
-        <div class="print-only print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
-          <table style="width:100%;border-collapse:collapse;">
+        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;max-height:400px;overflow-y:auto;">
+          <table id="as-table" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+            <colgroup>
+              ${visibleCols.map((c,idx) => `<col style="width:${state.asColumnWidths[AS_COLUMNS_DEF.findIndex(d=>d.key===c.key)]||90}px;" />`).join('')}
+            </colgroup>
             <thead>
               <tr>
-                ${['التاريخ','رقم القيد','البيان','مدين','دائن','الرصيد'].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
+                ${visibleCols.map((c) => { const idx = AS_COLUMNS_DEF.findIndex(d=>d.key===c.key); return `<th style="padding:8px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10px;font-weight:500;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative;border-left:1px solid rgba(255,255,255,0.35);">${c.label}<div data-as-col-resize="${idx}" style="position:absolute;top:0;bottom:0;left:0;width:6px;cursor:col-resize;"></div></th>`; }).join('')}
               </tr>
             </thead>
             <tbody>
-              ${rows.map((l,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
-              <tr>
-                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(l.date)}</td>
-                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${escapeHtml(l.entryNumber||'')}</td>
-                <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.desc||'')}</td>
-                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${l.debit?fmt(l.debit):''}</td>
-                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;">${l.credit?fmt(l.credit):''}</td>
-                <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;text-align:right;color:${l.balance<0?'#C0392B':'#0F6E56'};">${fmt(l.balance)}</td>
-              </tr>`; }).join('') || `<tr><td colspan="6" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد حركات بالفترة المحددة</td></tr>`}
+              ${rows.map((l,i) => {
+                const bg = i%2?'#F4F1EA':'#FFFDF6';
+                const cellVal = {
+                  idx: i+1, accCode: escapeHtml(account.code), accName: escapeHtml(account.name), date: escapeHtml(l.date),
+                  voucherNumber: escapeHtml(l.voucherNumber), voucherType: escapeHtml(l.voucherType), desc: escapeHtml(l.desc||''),
+                  accCurrency: 'ريال سعودي', txnCurrency: 'ريال سعودي', debit: l.debit?fmt(l.debit):'', credit: l.credit?fmt(l.credit):'',
+                  balance: `<span style="color:${l.balance<0?'#C0392B':'#0F6E56'};font-weight:600;">${fmt(l.balance)}</span>`,
+                  refNumber: escapeHtml(l.voucherNumber), status: 'معتمد', entryNumber: escapeHtml(l.entryNumber||''),
+                  branch: 'الرئيسي', userName: escapeHtml(l.userName), createdAt: escapeHtml(l.createdAt),
+                };
+                return `<tr>${visibleCols.map(c => `<td class="${['date','voucherNumber','entryNumber','debit','credit','balance','refNumber','createdAt','accCode'].includes(c.key)?'mono':''}" style="padding:7px 8px;background:${bg};font-size:10.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cellVal[c.key]}</td>`).join('')}</tr>`;
+              }).join('') || `<tr><td colspan="${visibleCols.length}" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد حركات بالفترة المحددة</td></tr>`}
               ${rows.length ? `<tr>
-                <td colspan="3" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;">الإجمالي</td>
-                <td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;text-align:right;">${fmt(totalDebit)}</td>
-                <td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;text-align:right;">${fmt(totalCredit)}</td>
-                <td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;text-align:right;color:${finalBalance<0?'#C0392B':'#0F6E56'};">${fmt(finalBalance)}</td>
+                ${visibleCols.map(c => {
+                  if (c.key === 'debit') return `<td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;">${fmt(totalDebit)}</td>`;
+                  if (c.key === 'credit') return `<td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;">${fmt(totalCredit)}</td>`;
+                  if (c.key === 'balance') return `<td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;color:${finalBalance<0?'#C0392B':'#0F6E56'};">${fmt(finalBalance)}</td>`;
+                  if (c.key === visibleCols[0].key) return `<td style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;">الإجمالي</td>`;
+                  return `<td style="padding:7px 8px;background:var(--print-accent,#FFF2CC);border-top:2px solid #000;"></td>`;
+                }).join('')}
               </tr>` : ''}
             </tbody>
           </table>
@@ -7125,9 +7154,9 @@ function renderVoucherReportModal(kind) {
           <div style="flex:1;min-width:160px;"><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">${isReceipt?'العميل':'المورد'}</div>
             <select id="${prefix}-party" class="input"><option value="">الكل</option>${parties.map(p => `<option value="${p.id}" ${partyId===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}</select>
           </div>
-          <button id="${prefix}-excel" class="btn" style="padding:8px 14px;font-size:11.5px;">تصدير اكسل</button>
-          <button id="${prefix}-print" class="btn" style="padding:8px 14px;font-size:11.5px;">طباعة</button>
-          <button id="${prefix}-pdf" class="btn" style="padding:8px 14px;font-size:11.5px;background:#D9534F;color:#fff;border-color:#D9534F;">حفظ PDF (طباعة)</button>
+          <button id="${prefix}-excel" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-file-spreadsheet" style="font-size:14px;color:#0F6E56;"></i> تصدير اكسل</button>
+          <button id="${prefix}-print" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-printer" style="font-size:14px;color:#5F5E5A;"></i> طباعة</button>
+          <button id="${prefix}-pdf" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-file-type-pdf" style="font-size:14px;color:#D9534F;"></i> حفظ PDF (طباعة)</button>
         </div>
         <div style="display:flex;gap:12px;margin-bottom:12px;">
           <div style="flex:1;background:#F0F6FC;border-radius:8px;padding:10px 14px;"><div style="font-size:10.5px;color:#5F5E5A;">عدد السندات</div><div class="mono" style="font-size:16px;font-weight:700;color:#1B3352;">${rows.length}</div></div>
@@ -8693,13 +8722,28 @@ async function loadGeneralLedger() {
 
 async function loadAccountStatement() {
   if (!state.accountStatementCode) { state.accountStatementRows = []; return; }
-  let q = sb.from('journal_entry_lines').select('account_code, debit, credit, description, journal_entries!inner(entry_date, entry_number, description)').eq('account_code', state.accountStatementCode);
+  await loadUsers();
+  let q = sb.from('journal_entry_lines').select('account_code, debit, credit, description, journal_entries!inner(entry_date, entry_number, description, voucher_number, source_type, created_by, created_at)').eq('account_code', state.accountStatementCode);
   if (state.accountStatementFrom) q = q.gte('journal_entries.entry_date', state.accountStatementFrom);
   if (state.accountStatementTo) q = q.lte('journal_entries.entry_date', state.accountStatementTo);
   const { data } = await q;
   const account = state.chartOfAccounts.find(a => a.code === state.accountStatementCode);
   const isDebitNormal = account && (account.account_type === 'asset' || account.account_type === 'expense');
-  const lines = (data||[]).map(l => ({ date: l.journal_entries.entry_date, entryNumber: l.journal_entries.entry_number, desc: l.description || l.journal_entries.description, debit: Number(l.debit||0), credit: Number(l.credit||0) })).sort((x,y) => (x.date||'').localeCompare(y.date||''));
+  const sourceTypeLabels = {
+    receipt_voucher:'سند قبض', payment_voucher:'سند صرف', settlement_voucher:'سند تسوية', cash_disbursement:'سند صرف صندوق',
+    sales_invoice:'فاتورة بيع', purchase_invoice:'فاتورة شراء', sales_return:'مردود بيع', purchase_return:'مردود شراء',
+    stock_count:'سند جرد', manual:'قيد يومية', closing:'قيد إقفال',
+  };
+  const lines = (data||[]).map(l => {
+    const je = l.journal_entries;
+    const user = state.users.find(u => u.id === je.created_by);
+    return {
+      date: je.entry_date, entryNumber: je.entry_number, desc: l.description || je.description,
+      debit: Number(l.debit||0), credit: Number(l.credit||0),
+      voucherNumber: je.voucher_number || '—', voucherType: sourceTypeLabels[je.source_type] || je.source_type || '—',
+      userName: user?.display_name || user?.username || '—', createdAt: je.created_at ? je.created_at.slice(0,16).replace('T',' ') : '—',
+    };
+  }).sort((x,y) => (x.date||'').localeCompare(y.date||''));
   let running = 0;
   state.accountStatementRows = lines.map(l => {
     running += isDebitNormal ? (l.debit - l.credit) : (l.credit - l.debit);
@@ -12984,10 +13028,74 @@ function bindAppEvents() {
   if (state.showAccountStatement) {
     const closeAs = () => { state.showAccountStatement = false; render(); };
     document.getElementById('as-close').onclick = closeAs;
-    document.getElementById('as-print').onclick = () => { window.print(); };
+    if (document.getElementById('as-columns-btn')) {
+      document.getElementById('as-columns-btn').onclick = (ev) => {
+        ev.stopPropagation();
+        state.asTempVisibleColumns = [...getAsVisibleColumns()];
+        state.showAsColumnPicker = !state.showAsColumnPicker;
+        render();
+      };
+    }
+    document.querySelectorAll('[data-as-col-toggle]').forEach(cb => {
+      cb.onchange = (ev) => {
+        const key = cb.dataset.asColToggle;
+        if (!state.asTempVisibleColumns) state.asTempVisibleColumns = [...getAsVisibleColumns()];
+        if (ev.target.checked) { if (!state.asTempVisibleColumns.includes(key)) state.asTempVisibleColumns.push(key); }
+        else { state.asTempVisibleColumns = state.asTempVisibleColumns.filter(k => k !== key); }
+      };
+    });
+    if (document.getElementById('as-columns-save')) {
+      document.getElementById('as-columns-save').onclick = () => {
+        if (!state.asTempVisibleColumns || state.asTempVisibleColumns.length === 0) { showToast('اختر عمود واحد على الأقل', 'error'); return; }
+        state.asVisibleColumns = [...state.asTempVisibleColumns];
+        try { localStorage.setItem('as_visible_columns', JSON.stringify(state.asVisibleColumns)); } catch(e) {}
+        state.showAsColumnPicker = false;
+        showToast('تم حفظ إعدادات الأعمدة');
+        render();
+      };
+    }
+    if (state.showAsColumnPicker) {
+      document.addEventListener('click', function closeColMenu() { state.showAsColumnPicker = false; render(); document.removeEventListener('click', closeColMenu); }, { once: true });
+    }
+    document.querySelectorAll('[data-as-col-resize]').forEach(handle => {
+      handle.onmousedown = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const idx = parseInt(handle.dataset.asColResize, 10);
+        const startX = ev.clientX;
+        const startWidth = state.asColumnWidths[idx];
+        const onMove = (moveEv) => {
+          // بالعربي (RTL) السحب لليسار يكبّر العمود
+          const delta = startX - moveEv.clientX;
+          const newWidth = Math.max(35, startWidth + delta);
+          state.asColumnWidths[idx] = newWidth;
+          const table = document.getElementById('as-table');
+          if (table) {
+            const col = table.querySelectorAll('col')[idx];
+            if (col) col.style.width = newWidth + 'px';
+          }
+        };
+        const onUp = () => {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      };
+    });
+    const printLandscape = () => {
+      const style = document.createElement('style');
+      style.textContent = '@page { size: A4 landscape; margin: 10mm; }';
+      document.head.appendChild(style);
+      const cleanup = () => { style.remove(); window.removeEventListener('afterprint', cleanup); };
+      window.addEventListener('afterprint', cleanup);
+      window.print();
+      setTimeout(cleanup, 5000); // شبكة أمان لو المتصفح ما أطلق afterprint لأي سبب
+    };
+    document.getElementById('as-print').onclick = printLandscape;
     document.getElementById('as-pdf').onclick = () => {
       const accCode = state.accountStatementCode || 'account';
-      window.print();
+      printLandscape();
     };
     if (document.getElementById('as-account-search')) {
       const searchInput = document.getElementById('as-account-search');
