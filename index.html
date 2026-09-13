@@ -235,6 +235,7 @@ let state = {
   itemMovementRows: [],
   paymentMethods: [],
   showPaymentMethodsSettings: false,
+  editingPmId: null,
   showDesignerPanel: false,
   crmClients: [], crmSearch: '', crmStatusFilter: 'الكل', crmShowForm: false, crmEditingId: null, crmForm: null, crmShowDetail: false, crmDetailId: null, crmLogs: [], crmNewLogNote: '',
   designerUnlocked: false,
@@ -308,6 +309,7 @@ let state = {
   partyFormErrors: {},
   purchases: [],
   purchaseQuery: '',
+  purchaseFilterSupplierId: '', purchaseFilterType: 'الكل', purchaseFilterFromNum: '', purchaseFilterToNum: '', showPurchaseFilters: false,
   receiptVoucherQuery: '', paymentVoucherQuery: '', settlementVoucherQuery: '',
   voucherNumberNavOpen: null, voucherNumberNavQuery: '',
   showRvReport: false, rvReportFrom: '', rvReportTo: '', rvReportPartyId: '',
@@ -319,23 +321,27 @@ let state = {
   purchaseActiveTab: 'معلومات الفاتورة',
   quotations: [],
   quotationQuery: '',
+  quoteFilterCustomerId: '', quoteFilterFromNum: '', quoteFilterToNum: '', showQuoteFilters: false,
   showQuoteForm: false,
   quoteForm: null,
   editingQuoteId: null,
   quoteActiveTab: 'معلومات العرض',
   salesInvoices: [],
   salesQuery: '',
+  salesFilterCustomerId: '', salesFilterType: 'الكل', salesFilterFromNum: '', salesFilterToNum: '', showSalesFilters: false,
   showSalesForm: false,
   salesForm: null,
   editingSalesId: null,
   salesActiveTab: 'معلومات الفاتورة',
   salesReturns: [],
   salesReturnQuery: '',
+  srFilterCustomerId: '', srFilterFromNum: '', srFilterToNum: '', showSrFilters: false,
   showSalesReturnForm: false,
   salesReturnForm: null,
   editingSalesReturnId: null,
   purchaseReturns: [],
   purchaseReturnQuery: '',
+  prFilterSupplierId: '', prFilterFromNum: '', prFilterToNum: '', showPrFilters: false,
   showPurchaseReturnForm: false,
   purchaseReturnForm: null,
   editingPurchaseReturnId: null,
@@ -926,8 +932,14 @@ async function loadPurchases() {
 
 function filteredPurchases() {
   const q = state.purchaseQuery.trim().toLowerCase();
-  if (!q) return state.purchases;
-  return state.purchases.filter(p => (p.invoice_number||'').toLowerCase().includes(q) || (p.parties?.name||'').toLowerCase().includes(q));
+  let list = state.purchases;
+  if (q) list = list.filter(p => (p.invoice_number||'').toLowerCase().includes(q) || (p.parties?.name||'').toLowerCase().includes(q));
+  if (state.purchaseFilterSupplierId) list = list.filter(p => p.supplier_id === state.purchaseFilterSupplierId);
+  if (state.purchaseFilterType && state.purchaseFilterType !== 'الكل') list = list.filter(p => p.invoice_type === state.purchaseFilterType);
+  const extractNum = (s) => { const m = (s||'').match(/(\d+)\s*$/); return m ? parseInt(m[1], 10) : null; };
+  if (state.purchaseFilterFromNum.trim()) { const from = extractNum(state.purchaseFilterFromNum); if (from !== null) list = list.filter(p => { const n = extractNum(p.invoice_number); return n !== null && n >= from; }); }
+  if (state.purchaseFilterToNum.trim()) { const to = extractNum(state.purchaseFilterToNum); if (to !== null) list = list.filter(p => { const n = extractNum(p.invoice_number); return n !== null && n <= to; }); }
+  return list;
 }
 
 function newPurchaseForm() {
@@ -1271,8 +1283,13 @@ async function loadQuotations() {
 }
 function filteredQuotations() {
   const q = state.quotationQuery.trim().toLowerCase();
-  if (!q) return state.quotations;
-  return state.quotations.filter(x => (x.quote_number||'').toLowerCase().includes(q) || (x.parties?.name||'').toLowerCase().includes(q));
+  let list = state.quotations;
+  if (q) list = list.filter(x => (x.quote_number||'').toLowerCase().includes(q) || (x.parties?.name||'').toLowerCase().includes(q));
+  if (state.quoteFilterCustomerId) list = list.filter(x => x.customer_id === state.quoteFilterCustomerId);
+  const extractNum = (s) => { const m = (s||'').match(/(\d+)\s*$/); return m ? parseInt(m[1], 10) : null; };
+  if (state.quoteFilterFromNum && state.quoteFilterFromNum.trim()) { const from = extractNum(state.quoteFilterFromNum); if (from !== null) list = list.filter(x => { const n = extractNum(x.quote_number); return n !== null && n >= from; }); }
+  if (state.quoteFilterToNum && state.quoteFilterToNum.trim()) { const to = extractNum(state.quoteFilterToNum); if (to !== null) list = list.filter(x => { const n = extractNum(x.quote_number); return n !== null && n <= to; }); }
+  return list;
 }
 function newQuoteForm() {
   return { quote_number:'', customer_id:'', customer_ref:'', quote_date:new Date().toISOString().slice(0,10), valid_until:'', price_mode:'قبل الضريبة', default_tax:'15', no_tax:false, discount:'0', notes:'', lines:[], status:'مفتوح' };
@@ -1307,8 +1324,14 @@ async function loadSalesInvoices() {
 }
 function filteredSalesInvoices() {
   const q = state.salesQuery.trim().toLowerCase();
-  if (!q) return state.salesInvoices;
-  return state.salesInvoices.filter(x => (x.invoice_number||'').toLowerCase().includes(q) || (x.parties?.name||'').toLowerCase().includes(q));
+  let list = state.salesInvoices;
+  if (q) list = list.filter(x => (x.invoice_number||'').toLowerCase().includes(q) || (x.parties?.name||'').toLowerCase().includes(q));
+  if (state.salesFilterCustomerId) list = list.filter(x => x.customer_id === state.salesFilterCustomerId);
+  if (state.salesFilterType && state.salesFilterType !== 'الكل') list = list.filter(x => x.invoice_type === state.salesFilterType);
+  const extractNum = (s) => { const m = (s||'').match(/(\d+)\s*$/); return m ? parseInt(m[1], 10) : null; };
+  if (state.salesFilterFromNum.trim()) { const from = extractNum(state.salesFilterFromNum); if (from !== null) list = list.filter(x => { const n = extractNum(x.invoice_number); return n !== null && n >= from; }); }
+  if (state.salesFilterToNum.trim()) { const to = extractNum(state.salesFilterToNum); if (to !== null) list = list.filter(x => { const n = extractNum(x.invoice_number); return n !== null && n <= to; }); }
+  return list;
 }
 function newSalesForm() {
   return { invoice_number:'', invoice_type:'نقدي', price_mode:'قبل الضريبة', default_tax:'15', no_tax:false, customer_id:'', walkin_customer_name:'', walkin_customer_tax_number:'', walkin_customer_address:'', cash_customer_mode:'walkin', customer_ref:'', order_number:'', warehouse_id: defaultWarehouseId(), quotation_id:null, quotation_number_display:'', invoice_date:new Date().toISOString().slice(0,10), discount:'0', paid_amount:'0', notes:'', lines:[], approved:false };
@@ -1337,8 +1360,13 @@ async function loadSalesReturns() {
 }
 function filteredSalesReturns() {
   const q = state.salesReturnQuery.trim().toLowerCase();
-  if (!q) return state.salesReturns;
-  return state.salesReturns.filter(x => (x.return_number||'').toLowerCase().includes(q) || (x.parties?.name||'').toLowerCase().includes(q));
+  let list = state.salesReturns;
+  if (q) list = list.filter(x => (x.return_number||'').toLowerCase().includes(q) || (x.parties?.name||'').toLowerCase().includes(q));
+  if (state.srFilterCustomerId) list = list.filter(x => x.customer_id === state.srFilterCustomerId);
+  const extractNum = (s) => { const m = (s||'').match(/(\d+)\s*$/); return m ? parseInt(m[1], 10) : null; };
+  if (state.srFilterFromNum && state.srFilterFromNum.trim()) { const from = extractNum(state.srFilterFromNum); if (from !== null) list = list.filter(x => { const n = extractNum(x.return_number); return n !== null && n >= from; }); }
+  if (state.srFilterToNum && state.srFilterToNum.trim()) { const to = extractNum(state.srFilterToNum); if (to !== null) list = list.filter(x => { const n = extractNum(x.return_number); return n !== null && n <= to; }); }
+  return list;
 }
 function newSalesReturnForm() {
   return { return_number:'', customer_id:'', warehouse_id: defaultWarehouseId(), return_date:new Date().toISOString().slice(0,10), discount:'0', notes:'', lines:[], sourceInvoiceItems:[], approved:false };
@@ -1366,8 +1394,13 @@ async function loadPurchaseReturns() {
 }
 function filteredPurchaseReturns() {
   const q = state.purchaseReturnQuery.trim().toLowerCase();
-  if (!q) return state.purchaseReturns;
-  return state.purchaseReturns.filter(x => (x.return_number||'').toLowerCase().includes(q) || (x.parties?.name||'').toLowerCase().includes(q));
+  let list = state.purchaseReturns;
+  if (q) list = list.filter(x => (x.return_number||'').toLowerCase().includes(q) || (x.parties?.name||'').toLowerCase().includes(q));
+  if (state.prFilterSupplierId) list = list.filter(x => x.supplier_id === state.prFilterSupplierId);
+  const extractNum = (s) => { const m = (s||'').match(/(\d+)\s*$/); return m ? parseInt(m[1], 10) : null; };
+  if (state.prFilterFromNum && state.prFilterFromNum.trim()) { const from = extractNum(state.prFilterFromNum); if (from !== null) list = list.filter(x => { const n = extractNum(x.return_number); return n !== null && n >= from; }); }
+  if (state.prFilterToNum && state.prFilterToNum.trim()) { const to = extractNum(state.prFilterToNum); if (to !== null) list = list.filter(x => { const n = extractNum(x.return_number); return n !== null && n <= to; }); }
+  return list;
 }
 function newPurchaseReturnForm() {
   return { return_number:'', supplier_id:'', warehouse_id: defaultWarehouseId(), return_date:new Date().toISOString().slice(0,10), discount:'0', notes:'', lines:[], sourceInvoiceItems:[], approved:false };
@@ -2350,12 +2383,24 @@ function renderPartyTabContent() {
 
 function renderQuotationsSection() {
   const list = filteredQuotations();
+  const customers = state.parties.filter(p => p.party_type === 'customer');
   return `
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="quote-search" class="input" placeholder="بحث برقم العرض أو اسم العميل..." value="${escapeHtml(state.quotationQuery)}" /></div>
+          <button id="quote-filters-toggle" class="btn" style="padding:8px 14px;"><i class="ti ti-filter" style="font-size:14px;color:#2C4A6E;"></i> فلاتر متقدمة</button>
           <button id="new-quote-btn" class="btn primary" style="padding:8px 14px;">+ عرض سعر جديد</button>
         </div>
+        ${state.showQuoteFilters ? `
+        <div style="background:#F4F5F7;border:1px solid #E4E2DA;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+          <div style="min-width:180px;">
+            <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">العميل</div>
+            <select id="quote-filter-customer" class="input"><option value="">كل العملاء</option>${customers.map(c => `<option value="${c.id}" ${state.quoteFilterCustomerId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>
+          </div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">من عرض رقم</div><input id="quote-filter-from" class="input" style="width:120px;" placeholder="مثلاً 10" value="${escapeHtml(state.quoteFilterFromNum)}" /></div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">إلى عرض رقم</div><input id="quote-filter-to" class="input" style="width:120px;" placeholder="مثلاً 50" value="${escapeHtml(state.quoteFilterToNum)}" /></div>
+          <button id="quote-filters-clear" class="btn" style="padding:8px 14px;">مسح الفلاتر</button>
+        </div>` : ''}
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} عرض</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
@@ -2530,15 +2575,35 @@ function renderQuoteFormModal() {
 
 function renderPurchasesSection() {
   const list = filteredPurchases();
+  const suppliers = state.parties.filter(p => p.party_type === 'supplier');
   return `
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;">
             <input id="purchase-search" class="input" placeholder="بحث برقم الفاتورة أو اسم المورد..." value="${escapeHtml(state.purchaseQuery)}" />
           </div>
+          <button id="purchase-filters-toggle" class="btn" style="padding:8px 14px;"><i class="ti ti-filter" style="font-size:14px;color:#2C4A6E;"></i> فلاتر متقدمة</button>
           <button id="new-purchase-btn" class="btn primary" style="padding:8px 14px;">+ فاتورة شراء جديدة</button>
           <button id="print-purchases-list" class="btn" style="padding:8px 14px;"><i class="ti ti-printer" style="font-size:14px;"></i> طباعة القائمة</button>
         </div>
+        ${state.showPurchaseFilters ? `
+        <div style="background:#F4F5F7;border:1px solid #E4E2DA;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+          <div style="min-width:180px;">
+            <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">المورد</div>
+            <select id="purchase-filter-supplier" class="input"><option value="">كل الموردين</option>${suppliers.map(c => `<option value="${c.id}" ${state.purchaseFilterSupplierId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>
+          </div>
+          <div style="min-width:140px;">
+            <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">نوع الفاتورة</div>
+            <select id="purchase-filter-type" class="input">
+              <option value="الكل" ${state.purchaseFilterType==='الكل'?'selected':''}>الكل (نقدي وآجل)</option>
+              <option value="نقدي" ${state.purchaseFilterType==='نقدي'?'selected':''}>نقدي فقط</option>
+              <option value="آجل" ${state.purchaseFilterType==='آجل'?'selected':''}>آجل فقط</option>
+            </select>
+          </div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">من فاتورة رقم</div><input id="purchase-filter-from" class="input" style="width:120px;" placeholder="مثلاً 10" value="${escapeHtml(state.purchaseFilterFromNum)}" /></div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">إلى فاتورة رقم</div><input id="purchase-filter-to" class="input" style="width:120px;" placeholder="مثلاً 50" value="${escapeHtml(state.purchaseFilterToNum)}" /></div>
+          <button id="purchase-filters-clear" class="btn" style="padding:8px 14px;">مسح الفلاتر</button>
+        </div>` : ''}
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} فاتورة</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
@@ -3204,12 +3269,32 @@ function renderDashboardSectionOld() {
 
 function renderSalesSection() {
   const list = filteredSalesInvoices();
+  const customers = state.parties.filter(p => p.party_type === 'customer');
   return `
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="sales-search" class="input" placeholder="بحث برقم الفاتورة أو اسم العميل..." value="${escapeHtml(state.salesQuery)}" /></div>
+          <button id="sales-filters-toggle" class="btn" style="padding:8px 14px;"><i class="ti ti-filter" style="font-size:14px;color:#2C4A6E;"></i> فلاتر متقدمة</button>
           <button id="new-sales-btn" class="btn primary" style="padding:8px 14px;">+ فاتورة بيع جديدة</button>
         </div>
+        ${state.showSalesFilters ? `
+        <div style="background:#F4F5F7;border:1px solid #E4E2DA;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+          <div style="min-width:180px;">
+            <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">العميل</div>
+            <select id="sales-filter-customer" class="input"><option value="">كل العملاء</option>${customers.map(c => `<option value="${c.id}" ${state.salesFilterCustomerId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>
+          </div>
+          <div style="min-width:140px;">
+            <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">نوع الفاتورة</div>
+            <select id="sales-filter-type" class="input">
+              <option value="الكل" ${state.salesFilterType==='الكل'?'selected':''}>الكل (نقدي وآجل)</option>
+              <option value="نقدي" ${state.salesFilterType==='نقدي'?'selected':''}>نقدي فقط</option>
+              <option value="آجل" ${state.salesFilterType==='آجل'?'selected':''}>آجل فقط</option>
+            </select>
+          </div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">من فاتورة رقم</div><input id="sales-filter-from" class="input" style="width:120px;" placeholder="مثلاً 10" value="${escapeHtml(state.salesFilterFromNum)}" /></div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">إلى فاتورة رقم</div><input id="sales-filter-to" class="input" style="width:120px;" placeholder="مثلاً 50" value="${escapeHtml(state.salesFilterToNum)}" /></div>
+          <button id="sales-filters-clear" class="btn" style="padding:8px 14px;">مسح الفلاتر</button>
+        </div>` : ''}
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} فاتورة</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
@@ -3516,12 +3601,24 @@ function renderSalesFormModal() {
 
 function renderSalesReturnsSection() {
   const list = filteredSalesReturns();
+  const customers = state.parties.filter(p => p.party_type === 'customer');
   return `
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="sr-search" class="input" placeholder="بحث برقم السند أو اسم العميل..." value="${escapeHtml(state.salesReturnQuery)}" /></div>
+          <button id="sr-filters-toggle" class="btn" style="padding:8px 14px;"><i class="ti ti-filter" style="font-size:14px;color:#2C4A6E;"></i> فلاتر متقدمة</button>
           <button id="new-sr-btn" class="btn primary" style="padding:8px 14px;">+ سند مردود بيع جديد</button>
         </div>
+        ${state.showSrFilters ? `
+        <div style="background:#F4F5F7;border:1px solid #E4E2DA;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+          <div style="min-width:180px;">
+            <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">العميل</div>
+            <select id="sr-filter-customer" class="input"><option value="">كل العملاء</option>${customers.map(c => `<option value="${c.id}" ${state.srFilterCustomerId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>
+          </div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">من سند رقم</div><input id="sr-filter-from" class="input" style="width:120px;" placeholder="مثلاً 10" value="${escapeHtml(state.srFilterFromNum)}" /></div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">إلى سند رقم</div><input id="sr-filter-to" class="input" style="width:120px;" placeholder="مثلاً 50" value="${escapeHtml(state.srFilterToNum)}" /></div>
+          <button id="sr-filters-clear" class="btn" style="padding:8px 14px;">مسح الفلاتر</button>
+        </div>` : ''}
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
@@ -3662,12 +3759,24 @@ function renderSalesReturnFormModal() {
 
 function renderPurchaseReturnsSection() {
   const list = filteredPurchaseReturns();
+  const suppliers = state.parties.filter(p => p.party_type === 'supplier');
   return `
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="pr-search" class="input" placeholder="بحث برقم السند أو اسم المورد..." value="${escapeHtml(state.purchaseReturnQuery)}" /></div>
+          <button id="pr-filters-toggle" class="btn" style="padding:8px 14px;"><i class="ti ti-filter" style="font-size:14px;color:#2C4A6E;"></i> فلاتر متقدمة</button>
           <button id="new-pr-btn" class="btn primary" style="padding:8px 14px;">+ سند مردود شراء جديد</button>
         </div>
+        ${state.showPrFilters ? `
+        <div style="background:#F4F5F7;border:1px solid #E4E2DA;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+          <div style="min-width:180px;">
+            <div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">المورد</div>
+            <select id="pr-filter-supplier" class="input"><option value="">كل الموردين</option>${suppliers.map(c => `<option value="${c.id}" ${state.prFilterSupplierId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>
+          </div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">من سند رقم</div><input id="pr-filter-from" class="input" style="width:120px;" placeholder="مثلاً 10" value="${escapeHtml(state.prFilterFromNum)}" /></div>
+          <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">إلى سند رقم</div><input id="pr-filter-to" class="input" style="width:120px;" placeholder="مثلاً 50" value="${escapeHtml(state.prFilterToNum)}" /></div>
+          <button id="pr-filters-clear" class="btn" style="padding:8px 14px;">مسح الفلاتر</button>
+        </div>` : ''}
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
@@ -5163,23 +5272,36 @@ function renderVoucherFormModal(kind) {
 }
 
 function renderPaymentMethodsModal() {
+  const postingAccounts = state.chartOfAccounts.filter(a => a.is_posting_account);
   return `
   <div id="pm-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
-    <div style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:460px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:560px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${t('pm_title')}</span><button id="pm-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       <div style="padding:16px;">
         <div style="display:flex;gap:8px;margin-bottom:14px;">
           <input id="pm-new-name" class="input" placeholder="${t('pm_new_ph')}" />
           <button id="pm-add-btn" class="btn primary" style="padding:7px 14px;">${t('pm_add')}</button>
         </div>
+        <div style="font-size:10.5px;color:#8B8A7A;margin-bottom:8px;">اربط كل طريقة دفع بحسابها المحاسبي الحقيقي (بدل التخمين بالاسم) — يحدّد أي حساب يُقيَّد فيه المبلغ وقت الاعتماد.</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           ${state.paymentMethods.map((m,i) => `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:${i%2?'#F4F1EA':'#FFFDF6'};border-bottom:1px solid #E4E2DA;">
-              <span style="font-size:13px;${!m.active?'color:#A9A48C;text-decoration:line-through;':''}">${escapeHtml(m.name)}</span>
-              <div style="display:flex;gap:8px;align-items:center;">
-                <label style="font-size:11px;color:#5F5E5A;"><input data-toggle-pm="${m.id}" type="checkbox" ${m.active?'checked':''} /> ${t('pm_active')}</label>
-                <button data-delete-pm="${m.id}" style="border:none;background:none;color:#C0392B;cursor:pointer;font-size:13px;">✕</button>
+            <div style="padding:9px 10px;background:${i%2?'#F4F1EA':'#FFFDF6'};border-bottom:1px solid #E4E2DA;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+                ${state.editingPmId === m.id
+                  ? `<input data-pm-edit-name="${m.id}" class="input" style="flex:1;font-size:13px;" value="${escapeHtml(m.name)}" />`
+                  : `<span style="font-size:13px;flex:1;${!m.active?'color:#A9A48C;text-decoration:line-through;':''}">${escapeHtml(m.name)}</span>`}
+                <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+                  <label style="font-size:11px;color:#5F5E5A;white-space:nowrap;"><input data-toggle-pm="${m.id}" type="checkbox" ${m.active?'checked':''} /> ${t('pm_active')}</label>
+                  ${state.editingPmId === m.id
+                    ? `<button data-save-pm-name="${m.id}" style="border:none;background:none;color:#0F6E56;cursor:pointer;font-size:13px;"><i class="ti ti-check"></i></button>`
+                    : `<button data-edit-pm="${m.id}" style="border:none;background:none;color:#2C4A6E;cursor:pointer;font-size:13px;"><i class="ti ti-pencil"></i></button>`}
+                  <button data-delete-pm="${m.id}" style="border:none;background:none;color:#C0392B;cursor:pointer;font-size:13px;">✕</button>
+                </div>
               </div>
+              <select data-pm-account="${m.id}" class="input" style="font-size:11.5px;padding:5px 8px;">
+                <option value="">— بدون ربط (يستخدم التخمين بالاسم) —</option>
+                ${postingAccounts.map(a => `<option value="${a.code}" ${m.account_code===a.code?'selected':''}>${a.code} - ${escapeHtml(a.name)}</option>`).join('')}
+              </select>
             </div>`).join('') || `<div style="padding:14px;text-align:center;font-size:12px;color:#6E6D5F;">${t('pm_no_methods')}</div>`}
         </div>
       </div>
@@ -8960,6 +9082,9 @@ async function postJournalEntry(entryDate, description, sourceType, sourceId, li
 }
 // يحدد حساب الصندوق أو البنك حسب طريقة الدفع المختارة (نص حر قابل للتخصيص)
 function cashOrBankAccount(paymentMethod) {
+  // أولوية للربط الحقيقي المحفوظ لكل طريقة دفع (بدل التخمين بالاسم)
+  const method = state.paymentMethods.find(m => m.name === paymentMethod);
+  if (method && method.account_code) return method.account_code;
   return (paymentMethod||'').includes('بنك') || (paymentMethod||'').includes('تحويل') ? '110102' : '110101';
 }
 
@@ -9952,6 +10077,7 @@ function bindAppEvents() {
       }
       if (target === '__payment_methods__') {
         await loadPaymentMethods();
+        await loadChartOfAccounts();
         state.showPaymentMethodsSettings = true;
         render();
         return;
@@ -10246,6 +10372,27 @@ function bindAppEvents() {
       document.getElementById('purchase-search').focus();
       document.getElementById('purchase-search').setSelectionRange(state.purchaseQuery.length, state.purchaseQuery.length);
     };
+    if (document.getElementById('purchase-filters-toggle')) {
+      document.getElementById('purchase-filters-toggle').onclick = () => { state.showPurchaseFilters = !state.showPurchaseFilters; render(); };
+    }
+    if (document.getElementById('purchase-filter-supplier')) {
+      document.getElementById('purchase-filter-supplier').onchange = (ev) => { state.purchaseFilterSupplierId = ev.target.value; render(); };
+    }
+    if (document.getElementById('purchase-filter-type')) {
+      document.getElementById('purchase-filter-type').onchange = (ev) => { state.purchaseFilterType = ev.target.value; render(); };
+    }
+    if (document.getElementById('purchase-filter-from')) {
+      document.getElementById('purchase-filter-from').oninput = (ev) => { state.purchaseFilterFromNum = ev.target.value; render(); document.getElementById('purchase-filter-from')?.focus(); };
+    }
+    if (document.getElementById('purchase-filter-to')) {
+      document.getElementById('purchase-filter-to').oninput = (ev) => { state.purchaseFilterToNum = ev.target.value; render(); document.getElementById('purchase-filter-to')?.focus(); };
+    }
+    if (document.getElementById('purchase-filters-clear')) {
+      document.getElementById('purchase-filters-clear').onclick = () => {
+        state.purchaseFilterSupplierId = ''; state.purchaseFilterType = 'الكل'; state.purchaseFilterFromNum = ''; state.purchaseFilterToNum = '';
+        render();
+      };
+    }
     document.getElementById('new-purchase-btn').onclick = () => {
       state.purchaseForm = newPurchaseForm();
       state.purchaseForm.invoice_number = nextDocNumber(state.purchases, 'invoice_number', 'P', 4);
@@ -10613,6 +10760,24 @@ function bindAppEvents() {
       const el = document.getElementById('quote-search');
       if (el) { el.focus(); el.setSelectionRange(state.quotationQuery.length, state.quotationQuery.length); }
     };
+    if (document.getElementById('quote-filters-toggle')) {
+      document.getElementById('quote-filters-toggle').onclick = () => { state.showQuoteFilters = !state.showQuoteFilters; render(); };
+    }
+    if (document.getElementById('quote-filter-customer')) {
+      document.getElementById('quote-filter-customer').onchange = (ev) => { state.quoteFilterCustomerId = ev.target.value; render(); };
+    }
+    if (document.getElementById('quote-filter-from')) {
+      document.getElementById('quote-filter-from').oninput = (ev) => { state.quoteFilterFromNum = ev.target.value; render(); document.getElementById('quote-filter-from')?.focus(); };
+    }
+    if (document.getElementById('quote-filter-to')) {
+      document.getElementById('quote-filter-to').oninput = (ev) => { state.quoteFilterToNum = ev.target.value; render(); document.getElementById('quote-filter-to')?.focus(); };
+    }
+    if (document.getElementById('quote-filters-clear')) {
+      document.getElementById('quote-filters-clear').onclick = () => {
+        state.quoteFilterCustomerId = ''; state.quoteFilterFromNum = ''; state.quoteFilterToNum = '';
+        render();
+      };
+    }
     document.getElementById('new-quote-btn').onclick = () => {
       state.quoteForm = newQuoteForm();
       state.quoteForm.quote_number = nextDocNumber(state.quotations, 'quote_number', 'Q', 4);
@@ -10745,6 +10910,27 @@ function bindAppEvents() {
       const el = document.getElementById('sales-search');
       if (el) { el.focus(); el.setSelectionRange(state.salesQuery.length, state.salesQuery.length); }
     };
+    if (document.getElementById('sales-filters-toggle')) {
+      document.getElementById('sales-filters-toggle').onclick = () => { state.showSalesFilters = !state.showSalesFilters; render(); };
+    }
+    if (document.getElementById('sales-filter-customer')) {
+      document.getElementById('sales-filter-customer').onchange = (ev) => { state.salesFilterCustomerId = ev.target.value; render(); };
+    }
+    if (document.getElementById('sales-filter-type')) {
+      document.getElementById('sales-filter-type').onchange = (ev) => { state.salesFilterType = ev.target.value; render(); };
+    }
+    if (document.getElementById('sales-filter-from')) {
+      document.getElementById('sales-filter-from').oninput = (ev) => { state.salesFilterFromNum = ev.target.value; render(); document.getElementById('sales-filter-from')?.focus(); };
+    }
+    if (document.getElementById('sales-filter-to')) {
+      document.getElementById('sales-filter-to').oninput = (ev) => { state.salesFilterToNum = ev.target.value; render(); document.getElementById('sales-filter-to')?.focus(); };
+    }
+    if (document.getElementById('sales-filters-clear')) {
+      document.getElementById('sales-filters-clear').onclick = () => {
+        state.salesFilterCustomerId = ''; state.salesFilterType = 'الكل'; state.salesFilterFromNum = ''; state.salesFilterToNum = '';
+        render();
+      };
+    }
     document.getElementById('new-sales-btn').onclick = () => {
       state.salesForm = newSalesForm();
       state.salesForm.invoice_number = nextDocNumber(state.salesInvoices, 'invoice_number', 'S', 4);
@@ -11204,6 +11390,24 @@ function bindAppEvents() {
       const el = document.getElementById('sr-search');
       if (el) { el.focus(); el.setSelectionRange(state.salesReturnQuery.length, state.salesReturnQuery.length); }
     };
+    if (document.getElementById('sr-filters-toggle')) {
+      document.getElementById('sr-filters-toggle').onclick = () => { state.showSrFilters = !state.showSrFilters; render(); };
+    }
+    if (document.getElementById('sr-filter-customer')) {
+      document.getElementById('sr-filter-customer').onchange = (ev) => { state.srFilterCustomerId = ev.target.value; render(); };
+    }
+    if (document.getElementById('sr-filter-from')) {
+      document.getElementById('sr-filter-from').oninput = (ev) => { state.srFilterFromNum = ev.target.value; render(); document.getElementById('sr-filter-from')?.focus(); };
+    }
+    if (document.getElementById('sr-filter-to')) {
+      document.getElementById('sr-filter-to').oninput = (ev) => { state.srFilterToNum = ev.target.value; render(); document.getElementById('sr-filter-to')?.focus(); };
+    }
+    if (document.getElementById('sr-filters-clear')) {
+      document.getElementById('sr-filters-clear').onclick = () => {
+        state.srFilterCustomerId = ''; state.srFilterFromNum = ''; state.srFilterToNum = '';
+        render();
+      };
+    }
     document.getElementById('new-sr-btn').onclick = () => {
       state.salesReturnForm = newSalesReturnForm();
       state.salesReturnForm.return_number = nextDocNumber(state.salesReturns, 'return_number', 'SR', 4);
@@ -11378,6 +11582,24 @@ function bindAppEvents() {
       const el = document.getElementById('pr-search');
       if (el) { el.focus(); el.setSelectionRange(state.purchaseReturnQuery.length, state.purchaseReturnQuery.length); }
     };
+    if (document.getElementById('pr-filters-toggle')) {
+      document.getElementById('pr-filters-toggle').onclick = () => { state.showPrFilters = !state.showPrFilters; render(); };
+    }
+    if (document.getElementById('pr-filter-supplier')) {
+      document.getElementById('pr-filter-supplier').onchange = (ev) => { state.prFilterSupplierId = ev.target.value; render(); };
+    }
+    if (document.getElementById('pr-filter-from')) {
+      document.getElementById('pr-filter-from').oninput = (ev) => { state.prFilterFromNum = ev.target.value; render(); document.getElementById('pr-filter-from')?.focus(); };
+    }
+    if (document.getElementById('pr-filter-to')) {
+      document.getElementById('pr-filter-to').oninput = (ev) => { state.prFilterToNum = ev.target.value; render(); document.getElementById('pr-filter-to')?.focus(); };
+    }
+    if (document.getElementById('pr-filters-clear')) {
+      document.getElementById('pr-filters-clear').onclick = () => {
+        state.prFilterSupplierId = ''; state.prFilterFromNum = ''; state.prFilterToNum = '';
+        render();
+      };
+    }
     document.getElementById('new-pr-btn').onclick = () => {
       state.purchaseReturnForm = newPurchaseReturnForm();
       state.purchaseReturnForm.return_number = nextDocNumber(state.purchaseReturns, 'return_number', 'PR', 4);
@@ -12675,6 +12897,32 @@ function bindAppEvents() {
         if (!confirm('حذف طريقة الدفع هذه؟')) return;
         { const { error: pmDelErr } = await sb.from('payment_methods').delete().eq('id', btn.dataset.deletePm); if (pmDelErr) { showToast('فشل الحذف', 'error'); return; } }
         await loadPaymentMethods();
+        render();
+      };
+    });
+    document.querySelectorAll('[data-edit-pm]').forEach(btn => {
+      btn.onclick = () => { state.editingPmId = btn.dataset.editPm; render(); };
+    });
+    document.querySelectorAll('[data-save-pm-name]').forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.savePmName;
+        const input = document.querySelector(`[data-pm-edit-name="${id}"]`);
+        const newName = input.value.trim();
+        if (!newName) { showToast('الاسم لا يمكن أن يكون فاضي', 'error'); return; }
+        const { error } = await sb.from('payment_methods').update({ name: newName }).eq('id', id);
+        if (error) { showToast('فشل تحديث الاسم', 'error'); return; }
+        state.editingPmId = null;
+        await loadPaymentMethods();
+        render();
+      };
+    });
+    document.querySelectorAll('[data-pm-account]').forEach(sel => {
+      sel.onchange = async () => {
+        const id = sel.dataset.pmAccount;
+        const { error } = await sb.from('payment_methods').update({ account_code: sel.value || null }).eq('id', id);
+        if (error) { showToast('فشل ربط الحساب — تأكد من ترحيل ملف SQL "ربط_طرق_الدفع_بالحسابات"', 'error'); return; }
+        await loadPaymentMethods();
+        showToast('تم ربط طريقة الدفع بالحساب بنجاح');
         render();
       };
     });
