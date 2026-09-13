@@ -1396,6 +1396,41 @@ function calcReturnTotals(f, priceKey) {
   return { subtotal, discount, net, taxTotal, grandTotal };
 }
 
+// دالة عامة قابلة لإعادة الاستخدام: تطبع/تحفظ أي قائمة (فواتير، سندات، أصناف...) كمستند واحد منسّق
+function printListAsDocument(title, headers, rows) {
+  const c = state.company || {};
+  const overlay = document.createElement('div');
+  overlay.id = 'print-list-overlay';
+  overlay.className = 'print-area';
+  overlay.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:9999;padding:20px;overflow:auto;';
+  overlay.innerHTML = `
+    <div dir="ltr" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px double #1B3352;padding-bottom:10px;${printStyleVars()}">
+      <div style="text-align:left;font-size:11px;line-height:1.5;" dir="ltr">${c.name_en ? `<div style="font-weight:700;font-size:13px;">${escapeHtml(c.name_en)}</div>` : ''}</div>
+      ${c.logo_url ? `<img src="${escapeHtml(c.logo_url)}" style="height:50px;" />` : ''}
+      <div style="text-align:right;font-size:11px;line-height:1.5;">${c.name_ar ? `<div style="font-weight:700;font-size:13px;">${escapeHtml(c.name_ar)}</div>` : ''}</div>
+    </div>
+    <div style="text-align:center;margin:10px 0 4px;">
+      <span style="display:inline-block;background:#1B3352;color:#fff;font-weight:700;font-size:15px;padding:6px 28px;border-radius:20px;letter-spacing:0.5px;">${escapeHtml(title)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#5F5E5A;padding:6px 2px 12px;">
+      <span>${rows.length} سجل</span><span>${new Date().toLocaleString('ar-SA')}</span>
+    </div>
+    <table style="width:100%;border-collapse:collapse;">
+      <thead><tr>${headers.map(h => `<th style="padding:8px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:center;border-left:1px solid rgba(255,255,255,0.35);">${escapeHtml(h)}</th>`).join('')}</tr></thead>
+      <tbody>
+        ${rows.map((r,i) => `<tr>${r.map(cell => `<td style="padding:6px 8px;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:10.5px;border-bottom:1px solid #E4E2DA;text-align:center;">${escapeHtml(String(cell??''))}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length}" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد بيانات</td></tr>`}
+      </tbody>
+    </table>`;
+  document.body.appendChild(overlay);
+  const landscapeStyle = document.createElement('style');
+  landscapeStyle.textContent = '@media print { body > *:not(#print-list-overlay) { display:none !important; } #print-list-overlay { position:static !important; } } @page { size: A4 landscape; margin: 10mm; }';
+  document.head.appendChild(landscapeStyle);
+  const cleanup = () => { overlay.remove(); landscapeStyle.remove(); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
+  window.print();
+  setTimeout(cleanup, 8000);
+}
+
 function saveAreaAsPDF(areaSelector, filename, btnId) {
   const el = document.querySelector(areaSelector);
   if (!el || !window.html2pdf) { alert('تعذّر إنشاء ملف PDF — تأكد من الاتصال بالإنترنت وحاول من جديد'); return; }
@@ -2485,6 +2520,7 @@ function renderQuoteFormModal() {
         ${iconBtn('quote-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.quotations.length===0)}
         ${iconBtn('quote-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.quotations.length===0)}
         ${iconBtn('quote-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.quote_number)}
+        ${iconBtn('quote-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.quote_number)}
         ${f.status!=='محول لفاتورة' ? iconBtn('quote-save', 'ti-device-floppy', '#2C4A6E', 'حفظ') : ''}
         ${(f.status!=='محول لفاتورة' && f.quote_number) ? iconBtn('quote-convert', 'ti-arrow-forward', '#0F6E56', 'تحويل لفاتورة بيع') : ''}
       </div>
@@ -2501,6 +2537,7 @@ function renderPurchasesSection() {
             <input id="purchase-search" class="input" placeholder="بحث برقم الفاتورة أو اسم المورد..." value="${escapeHtml(state.purchaseQuery)}" />
           </div>
           <button id="new-purchase-btn" class="btn primary" style="padding:8px 14px;">+ فاتورة شراء جديدة</button>
+          <button id="print-purchases-list" class="btn" style="padding:8px 14px;"><i class="ti ti-printer" style="font-size:14px;"></i> طباعة القائمة</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} فاتورة</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
@@ -2865,6 +2902,7 @@ function renderPurchaseFormModal() {
         ${iconBtn('purchase-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.purchases.length===0)}
         ${iconBtn('purchase-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.purchases.length===0)}
         ${iconBtn('purchase-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingPurchaseId)}
+        ${iconBtn('purchase-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingPurchaseId)}
         ${f.approved ? '' : iconBtn('purchase-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('purchase-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && state.editingPurchaseId && canApprove()) ? iconBtn('purchase-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
@@ -3613,6 +3651,7 @@ function renderSalesReturnFormModal() {
         ${iconBtn('sr-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.salesReturns.length===0)}
         ${iconBtn('sr-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.salesReturns.length===0)}
         ${iconBtn('sr-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingSalesReturnId)}
+        ${iconBtn('sr-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingSalesReturnId)}
         ${f.approved ? '' : iconBtn('sr-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('sr-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && state.editingSalesReturnId && canApprove()) ? iconBtn('sr-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
@@ -3758,6 +3797,7 @@ function renderPurchaseReturnFormModal() {
         ${iconBtn('pr-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.purchaseReturns.length===0)}
         ${iconBtn('pr-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.purchaseReturns.length===0)}
         ${iconBtn('pr-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingPurchaseReturnId)}
+        ${iconBtn('pr-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingPurchaseReturnId)}
         ${f.approved ? '' : iconBtn('pr-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('pr-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && state.editingPurchaseReturnId && canApprove()) ? iconBtn('pr-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
@@ -3867,6 +3907,7 @@ function renderStockCountFormModal() {
         ${iconBtn('sc-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.stockCounts.length===0)}
         ${iconBtn('sc-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.stockCounts.length===0)}
         ${iconBtn('sc-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingStockCountId)}
+        ${iconBtn('sc-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingStockCountId)}
         ${f.approved ? '' : iconBtn('sc-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('sc-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && state.editingStockCountId && canApprove()) ? iconBtn('sc-approve', 'ti-lock', '#0F6E56', 'ترحيل (تحديث المخزون)') : ''}
@@ -3998,6 +4039,7 @@ function renderTransferFormModal() {
         ${iconBtn('tr-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.transfers.length===0)}
         ${iconBtn('tr-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.transfers.length===0)}
         ${iconBtn('tr-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingTransferId)}
+        ${iconBtn('tr-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingTransferId)}
         ${f.approved ? '' : iconBtn('tr-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('tr-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && state.editingTransferId && canApprove()) ? iconBtn('tr-approve', 'ti-lock', '#0F6E56', 'ترحيل (نقل المخزون)') : ''}
@@ -10213,6 +10255,14 @@ function bindAppEvents() {
       state.showPurchaseForm = true;
       render();
     };
+    if (document.getElementById('print-purchases-list')) {
+      document.getElementById('print-purchases-list').onclick = () => {
+        const list = filteredPurchases();
+        const headers = ['رقم الفاتورة','المورد','التاريخ','الإجمالي','الحالة'];
+        const rows = list.map(p => [p.invoice_number, p.parties?.name||p.walkin_supplier_name||'مورد نقدي', p.invoice_date, fmt(p.total), p.approved?'معتمدة':'مسودة']);
+        printListAsDocument('قائمة فواتير الشراء', headers, rows);
+      };
+    }
     document.querySelectorAll('[data-open-purchase]').forEach(row => {
       row.onclick = () => { openPurchaseById(row.dataset.openPurchase); };
     });
@@ -10224,6 +10274,7 @@ function bindAppEvents() {
     document.getElementById('purchase-exit').onclick = closeForm;
     if (document.getElementById('purchase-cancel')) document.getElementById('purchase-cancel').onclick = closeForm;
     document.getElementById('purchase-print').onclick = () => { window.print(); };
+    if (document.getElementById('purchase-pdf')) document.getElementById('purchase-pdf').onclick = () => { window.print(); };
     document.getElementById('purchase-next').onclick = () => {
       const list = filteredPurchases();
       if (list.length === 0) return;
@@ -10579,6 +10630,7 @@ function bindAppEvents() {
     document.getElementById('quote-close').onclick = closeQuote;
     document.getElementById('quote-exit').onclick = closeQuote;
     document.getElementById('quote-print').onclick = () => { window.print(); };
+    if (document.getElementById('quote-pdf')) document.getElementById('quote-pdf').onclick = () => { window.print(); };
     document.getElementById('quote-next').onclick = () => {
       const list = filteredQuotations();
       if (list.length === 0) return;
@@ -11169,6 +11221,7 @@ function bindAppEvents() {
     document.getElementById('sr-exit').onclick = closeSR;
     if (document.getElementById('sr-cancel')) document.getElementById('sr-cancel').onclick = closeSR;
     document.getElementById('sr-print').onclick = () => { window.print(); };
+    if (document.getElementById('sr-pdf')) document.getElementById('sr-pdf').onclick = () => { window.print(); };
     document.getElementById('sr-next').onclick = () => {
       const list = filteredSalesReturns();
       if (list.length === 0) return;
@@ -11342,6 +11395,7 @@ function bindAppEvents() {
     document.getElementById('pr-exit').onclick = closePR;
     if (document.getElementById('pr-cancel')) document.getElementById('pr-cancel').onclick = closePR;
     document.getElementById('pr-print').onclick = () => { window.print(); };
+    if (document.getElementById('pr-pdf')) document.getElementById('pr-pdf').onclick = () => { window.print(); };
     document.getElementById('pr-next').onclick = () => {
       const list = filteredPurchaseReturns();
       if (list.length === 0) return;
@@ -11507,6 +11561,7 @@ function bindAppEvents() {
     document.getElementById('sc-exit').onclick = closeSC;
     if (document.getElementById('sc-cancel')) document.getElementById('sc-cancel').onclick = closeSC;
     document.getElementById('sc-print').onclick = () => { window.print(); };
+    if (document.getElementById('sc-pdf')) document.getElementById('sc-pdf').onclick = () => { window.print(); };
     document.getElementById('sc-next').onclick = () => {
       const list = filteredStockCounts();
       if (list.length === 0) return;
@@ -11731,6 +11786,7 @@ function bindAppEvents() {
     document.getElementById('tr-exit').onclick = closeTr;
     if (document.getElementById('tr-cancel')) document.getElementById('tr-cancel').onclick = closeTr;
     document.getElementById('tr-print').onclick = () => { window.print(); };
+    if (document.getElementById('tr-pdf')) document.getElementById('tr-pdf').onclick = () => { window.print(); };
     document.getElementById('tr-next').onclick = () => {
       const list = filteredTransfers();
       if (list.length === 0) return;
