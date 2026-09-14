@@ -2312,10 +2312,10 @@ function renderPartiesSection() {
               <div style="padding:7px 8px;">${p.is_deferred ? `<span style="background:#FAEEDA;color:#BA7517;padding:2px 8px;border-radius:10px;font-size:10.5px;white-space:nowrap;">آجل</span>` : `<span style="background:#E1F5EE;color:#0F6E56;padding:2px 8px;border-radius:10px;font-size:10.5px;white-space:nowrap;">نقدي</span>`}</div>
               <div style="padding:7px 8px;">${tier ? `<span title="إجمالي المشتريات: ${fmt(state.customerTotalPurchases?.[p.id]||0)}" style="background:${tier.bg};color:${tier.color};padding:2px 8px;border-radius:10px;font-size:10px;white-space:nowrap;display:inline-flex;align-items:center;gap:3px;"><i class="ti ${tier.icon}" style="font-size:11px;"></i> ${tier.label}</span>` : '—'}</div>
               <div style="padding:4px 6px;display:flex;gap:4px;">
-                <button data-edit-party="${p.id}" style="border:1px solid #A9A48C;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:pointer;">✎</button>
+                <button data-edit-party="${p.id}" style="border:1px solid #E4E2DA;background:#F0F6FC;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#2C4A6E;box-shadow:0 1px 2px rgba(27,51,82,0.08);transition:transform 0.1s ease;">✎</button>
                 ${Number(p.balance) !== 0
-                  ? `<button disabled title="ما يمكن الحذف — عنده رصيد ${fmt(p.balance)} (يعني له معاملات مسجّلة)" style="border:1px solid #DEDACB;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:not-allowed;color:#C7C4B4;">✕</button>`
-                  : `<button data-del-party="${p.id}" style="border:1px solid #A9A48C;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:pointer;color:#C0392B;">✕</button>`}
+                  ? `<button disabled title="ما يمكن الحذف — عنده رصيد ${fmt(p.balance)} (يعني له معاملات مسجّلة)" style="border:1px solid #E4E2DA;background:#F4F1EA;border-radius:8px;width:28px;height:28px;cursor:not-allowed;color:#C7C4B4;">✕</button>`
+                  : `<button data-del-party="${p.id}" style="border:1px solid #F5D5D0;background:#FCEBEB;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#C0392B;box-shadow:0 1px 2px rgba(192,57,43,0.08);transition:transform 0.1s ease;">✕</button>`}
               </div>
             </div>`; }).join('')}
           ${list.length === 0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">${t('no_results')}</div>` : ''}
@@ -5848,8 +5848,8 @@ function renderItemsSection(items, lowStock) {
               <div style="padding:7px 8px;color:${Number(item.qty) <= Number(item.reorder_at||0) ? '#C0392B' : '#1F2421'};">${item.qty}</div>
               <div style="padding:7px 8px;">${Number(item.price).toFixed(2)}</div>
               <div style="padding:4px 6px;display:flex;gap:4px;">
-                <button data-edit="${item.id}" style="border:1px solid #A9A48C;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:pointer;">✎</button>
-                <button data-del="${item.id}" style="border:1px solid #A9A48C;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:pointer;color:#C0392B;">✕</button>
+                <button data-edit="${item.id}" style="border:1px solid #E4E2DA;background:#F0F6FC;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#2C4A6E;box-shadow:0 1px 2px rgba(27,51,82,0.08);transition:transform 0.1s ease;">✎</button>
+                <button data-del="${item.id}" style="border:1px solid #F5D5D0;background:#FCEBEB;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#C0392B;box-shadow:0 1px 2px rgba(192,57,43,0.08);transition:transform 0.1s ease;">✕</button>
               </div>
             </div>`;
           }).join('')}
@@ -7820,7 +7820,7 @@ function renderUsersModal() {
                 <button data-toggle-active="${u.id}" ${u.id === state.session.user.id ? 'disabled' : ''} style="border:none;border-radius:12px;padding:3px 10px;font-size:11px;cursor:pointer;background:${u.active ? '#E1F5EE' : '#FCEBEB'};color:${u.active ? '#0F6E56' : '#C0392B'};">${u.active ? 'نشط' : 'غير نشط'}</button>
               </div>
               <div style="padding:4px 6px;">
-                ${u.id === state.session.user.id ? '' : `<button data-del-user="${u.id}" style="border:1px solid #A9A48C;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:pointer;color:#C0392B;">✕</button>`}
+                ${u.id === state.session.user.id ? '' : `<button data-del-user="${u.id}" style="border:1px solid #F5D5D0;background:#FCEBEB;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#C0392B;box-shadow:0 1px 2px rgba(192,57,43,0.08);transition:transform 0.1s ease;">✕</button>`}
               </div>
             </div>
             <div style="padding:4px 8px 8px 8px;display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:${u.role==='admin'?'#A9A48C':'#5F5E5A'};border-top:1px dashed #DEDACB;">
