@@ -4,6 +4,12 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>نظام المبيعات - المخزون</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1B3352" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="نظام المبيعات" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
@@ -2529,7 +2535,7 @@ function renderQuoteFormModal() {
       <div style="padding:14px 16px;">
         ${f.status!=='محول لفاتورة' ? `
         <div class="no-print" id="qt-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
-        <div class="no-print" style="display:flex;gap:8px;margin-bottom:6px;">
+        <div class="no-print" style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
           <select id="qt-item-select" class="input" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
           ${itemPickerButton('qt-item-select','qt-item-qty','qt-item-price','price','qt-add-line')}
           <input id="qt-item-qty" class="input" style="max-width:80px;" placeholder="الكمية" />
@@ -2902,7 +2908,7 @@ function renderPurchaseFormModal() {
           </div>
         </div>
         <div class="no-print" id="pi-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
-        <div class="no-print" style="display:flex;gap:8px;margin-bottom:10px;">
+        <div class="no-print" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
           <input id="pi-quick-sku" class="input mono" style="max-width:140px;" placeholder="رقم الصنف (Enter)" dir="ltr" />
           <button id="pi-new-item-btn" type="button" class="no-print" style="padding:0 12px;border:1px dashed #2C4A6E;background:#F0F6FC;color:#1B3352;border-radius:4px;cursor:pointer;font-size:11.5px;white-space:nowrap;"><i class="ti ti-plus" style="font-size:12px;"></i> صنف جديد غير موجود</button>
           <select id="pi-item-select" class="input" style="display:none;">
@@ -3549,7 +3555,7 @@ function renderSalesFormModal() {
         </div>
         <div id="si-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
         <div id="si-last-prices" style="display:none;margin-bottom:8px;padding:6px 12px;background:#FDFBF3;border:1px solid #DEDACB;border-radius:4px;font-size:11.5px;color:#3A3826;"></div>
-        <div style="display:flex;gap:8px;margin-bottom:6px;">
+        <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
           <input id="si-quick-sku" class="input mono" style="max-width:140px;" placeholder="رقم الصنف (Enter)" dir="ltr" />
           <select id="si-item-select" class="input" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
           ${itemPickerButton('si-item-select','si-item-qty','si-item-price','price','si-add-line')}
@@ -4174,7 +4180,7 @@ function renderTransferFormModal() {
       <div style="padding:14px 16px;">
         ${!f.approved ? `
         <div class="no-print" id="tr-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
-        <div class="no-print" style="display:flex;gap:8px;margin-bottom:10px;">
+        <div class="no-print" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
           <select id="tr-item-select" class="input" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
           ${itemPickerButton('tr-item-select','tr-item-qty',null,null,'tr-add-line')}
           <input id="tr-item-qty" class="input" style="max-width:80px;" placeholder="الكمية" />
@@ -7551,13 +7557,26 @@ function renderPerformanceReportModal() {
   const d = state.perfReportData;
   return `
   <div id="perf-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
-    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:640px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
-      <div class="win-title"><span><i class="ti ti-report-analytics"></i> تقرير أداء دوري</span><button id="perf-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
-      <div style="padding:16px;">
+    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:640px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title no-print"><span><i class="ti ti-report-analytics"></i> تقرير أداء دوري</span><button id="perf-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div class="print-only" style="padding:16px 18px 0;${printStyleVars()}">
+        <div dir="ltr" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px double #1B3352;padding-bottom:10px;">
+          <div style="text-align:left;font-size:11px;line-height:1.5;" dir="ltr">${state.company?.name_en ? `<div style="font-weight:700;font-size:13px;">${escapeHtml(state.company.name_en)}</div>` : ''}</div>
+          ${state.company?.logo_url ? `<img src="${escapeHtml(state.company.logo_url)}" style="height:50px;" />` : ''}
+          <div style="text-align:right;font-size:11px;line-height:1.5;">${state.company?.name_ar ? `<div style="font-weight:700;font-size:13px;">${escapeHtml(state.company.name_ar)}</div>` : ''}</div>
+        </div>
+        <div style="text-align:center;margin:10px 0 4px;">
+          <span style="display:inline-block;background:#1B3352;color:#fff;font-weight:700;font-size:15px;padding:6px 28px;border-radius:20px;letter-spacing:0.5px;">تقرير أداء دوري</span>
+        </div>
+        ${d ? `<div style="text-align:center;font-size:10.5px;color:#5F5E5A;padding:4px 2px 12px;">الفترة من ${d.fromDate} إلى ${d.toDate}</div>` : ''}
+      </div>
+      <div class="no-print" style="padding:16px;">
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:16px;">
           <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">من تاريخ</div><input id="perf-from" type="date" class="input" value="${escapeHtml(state.perfReportFrom)}" /></div>
           <div><div style="font-size:10.5px;color:#5F5E5A;margin-bottom:4px;">إلى تاريخ</div><input id="perf-to" type="date" class="input" value="${escapeHtml(state.perfReportTo)}" /></div>
           <button id="perf-apply" class="btn primary" style="padding:8px 16px;">تطبيق</button>
+          <button id="perf-print" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-printer" style="font-size:14px;color:#5F5E5A;"></i> طباعة</button>
+          <button id="perf-pdf" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-file-type-pdf" style="font-size:14px;color:#D9534F;"></i> حفظ PDF</button>
           <button id="perf-whatsapp" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#25D366;color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:12.5px;"><i class="ti ti-brand-whatsapp"></i> إرسال للمدير</button>
         </div>
         ${d ? `
@@ -15149,6 +15168,8 @@ function bindAppEvents() {
       state.perfReportData = await loadPerformanceReport(state.perfReportFrom, state.perfReportTo);
       render();
     };
+    document.getElementById('perf-print').onclick = () => { window.print(); };
+    document.getElementById('perf-pdf').onclick = () => { window.print(); };
     document.getElementById('perf-whatsapp').onclick = () => {
       const d = state.perfReportData;
       if (!d) return;
@@ -16047,6 +16068,9 @@ async function init() {
 sb.auth.onAuthStateChange((event, session) => {
   state.session = session;
 });
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
 init();
 </script>
 </body>
