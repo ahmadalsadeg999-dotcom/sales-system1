@@ -499,8 +499,13 @@ const TRANSLATIONS = {
     quick_shortcuts: 'اختصارات سريعة',
     sc_new_sale: 'فاتورة بيع جديدة', sc_new_purchase: 'فاتورة شراء جديدة', sc_new_item: 'إضافة صنف',
     sc_new_party: 'إضافة عميل/مورد', sc_receipt: 'سند قبض', sc_reports: 'التقارير العامة',
+    kpi_total_sales: 'إجمالي المبيعات', kpi_total_purchases: 'إجمالي المشتريات', kpi_net_profit: 'صافي الربح التقديري', kpi_needs_reorder: 'أصناف تحتاج طلب',
+    kpi_approved_invoices: 'فاتورة معتمدة', kpi_positive: 'وضع إيجابي', kpi_needs_review: 'يحتاج مراجعة', kpi_current_stock: 'بالمخزون الحالي',
+    home_search_full: 'بحث شامل', home_open_doc: 'فتح مستند برقمه', home_quick_shortcuts: 'اختصارات سريعة',
+    home_good_evening: 'مساء الخير', home_good_morning: 'صباح الخير',
+    all_rights_reserved: 'جميع الحقوق محفوظة لـ', developed_by: 'تطوير:',
     menu_home: 'الرئيسية', menu_items: 'الاصناف', menu_warehouses: 'المستودعات', menu_sales: 'المبيعات',
-    menu_purchases: 'المشتريات', menu_orders: 'الطلبيات', menu_parties: 'العملاء والموردين', menu_accounting: 'المحاسبة',
+    menu_purchases: 'المشتريات', menu_orders: 'الطلبيات', menu_parties: 'العملاء والموردين', menu_accounting: 'المحاسبة', menu_hr: 'شؤون الموظفين',
     menu_reports: 'تقارير عامة', menu_system: 'النظام', menu_help: 'المساعدة', menu_logout: 'خروج',
     items_search_ph: 'بحث بالاسم، رقم الصنف، أو رقم الشركة...', items_new_btn: '+ صنف جديد',
     items_count: 'صنف', items_needs_reorder: 'صنف يحتاج طلب',
@@ -618,8 +623,13 @@ const TRANSLATIONS = {
     quick_shortcuts: 'Quick Shortcuts',
     sc_new_sale: 'New Sales Invoice', sc_new_purchase: 'New Purchase Invoice', sc_new_item: 'Add Item',
     sc_new_party: 'Add Customer/Supplier', sc_receipt: 'Receipt Voucher', sc_reports: 'General Reports',
+    kpi_total_sales: 'Total Sales', kpi_total_purchases: 'Total Purchases', kpi_net_profit: 'Est. Net Profit', kpi_needs_reorder: 'Items Need Reorder',
+    kpi_approved_invoices: 'approved invoices', kpi_positive: 'Positive', kpi_needs_review: 'Needs Review', kpi_current_stock: 'in current stock',
+    home_search_full: 'Full Search', home_open_doc: 'Open Document by Number', home_quick_shortcuts: 'Quick Shortcuts',
+    home_good_evening: 'Good Evening', home_good_morning: 'Good Morning',
+    all_rights_reserved: 'All rights reserved to', developed_by: 'Developed by:',
     menu_home: 'Home', menu_items: 'Items', menu_warehouses: 'Warehouses', menu_sales: 'Sales',
-    menu_purchases: 'Purchases', menu_orders: 'Orders', menu_parties: 'Customers & Suppliers', menu_accounting: 'Accounting',
+    menu_purchases: 'Purchases', menu_orders: 'Orders', menu_parties: 'Customers & Suppliers', menu_accounting: 'Accounting', menu_hr: 'HR',
     menu_reports: 'Reports', menu_system: 'System', menu_help: 'Help', menu_logout: 'Logout',
     items_search_ph: 'Search by name, item number, or company number...', items_new_btn: '+ New Item',
     items_count: 'items', items_needs_reorder: 'need reorder',
@@ -735,6 +745,7 @@ function t(key) {
 function menuLabel(m) {
   const map = { 'الرئيسية':'menu_home', 'الاصناف':'menu_items', 'المستودعات':'menu_warehouses', 'المبيعات':'menu_sales',
     'المشتريات':'menu_purchases', 'الطلبيات':'menu_orders', 'العملاء والموردين':'menu_parties', 'المحاسبة':'menu_accounting',
+    'شؤون الموظفين':'menu_hr',
     'تقارير عامة':'menu_reports', 'النظام':'menu_system', 'المساعدة':'menu_help', 'خروج':'menu_logout' };
   return map[m] ? t(map[m]) : m;
 }
@@ -838,7 +849,7 @@ function renderAuth() {
             <line x1="72" y1="118" x2="128" y2="118" stroke="#22C55E" stroke-width="11" stroke-linecap="round"/>
           </svg>
           <div style="text-align:right;">
-            <div style="font-size:10.5px;color:#5F5E5A;font-weight:500;">تطوير: أحمد سوفت</div>
+            <div style="font-size:10.5px;color:#5F5E5A;font-weight:500;">${t('developed_by')} أحمد سوفت</div>
             <div style="font-size:9.5px;color:#A9A48C;" dir="ltr">0545335561</div>
           </div>
         </div>
@@ -2174,7 +2185,7 @@ function renderApp() {
           </div>
         ` : `<button data-section="${m}" style="padding:8px 12px;font-size:12.5px;cursor:pointer;background:${state.activeSection===m?'#E8E4DA':'transparent'};border:none;border-bottom:${state.activeSection===m?'2px solid #2C4A6E':'2px solid transparent'};font-weight:${state.activeSection===m?'500':'400'};color:${m==='خروج'?'#C0392B':'#3A3826'};display:flex;align-items:center;gap:5px;">${m==='خروج'?'<i class="ti ti-door-exit" style="font-size:15px;"></i>':''}${menuLabel(m)}</button>`).join('')}
       </div>
-      ${state.activeSection === 'الرئيسية' ? renderHomeSection() : state.activeSection === 'الاصناف' ? renderItemsSection(items, lowStock) : state.activeSection === 'العملاء والموردين' ? renderPartiesSection() : state.activeSection === 'المشتريات' ? renderPurchasesSection() : state.activeSection === 'المبيعات' ? renderSalesSection() : state.activeSection === '__quotations__' ? renderQuotationsSection() : state.activeSection === '__sales_returns__' ? renderSalesReturnsSection() : state.activeSection === '__purchase_returns__' ? renderPurchaseReturnsSection() : state.activeSection === '__stock_counts__' ? renderStockCountsSection() : state.activeSection === '__warehouses__' ? renderWarehousesSection() : state.activeSection === '__transfers__' ? renderTransfersSection() : state.activeSection === '__receipt_vouchers__' ? renderReceiptVouchersSection() : state.activeSection === '__payment_vouchers__' ? renderPaymentVouchersSection() : state.activeSection === '__settlement_voucher__' ? renderSettlementVouchersSection() : state.activeSection === '__sales_reps__' ? renderRepsSection() : state.activeSection === 'تقارير عامة' ? renderDashboardSection() : renderPlaceholderSection()}
+      ${state.activeSection === 'الرئيسية' ? renderHomeSection() : state.activeSection === 'الاصناف' ? renderItemsSection(items, lowStock) : state.activeSection === 'العملاء والموردين' ? renderPartiesSection() : state.activeSection === 'المشتريات' ? renderPurchasesSection() : state.activeSection === 'المبيعات' ? renderSalesSection() : state.activeSection === '__quotations__' ? renderQuotationsSection() : state.activeSection === '__sales_returns__' ? renderSalesReturnsSection() : state.activeSection === '__purchase_returns__' ? renderPurchaseReturnsSection() : state.activeSection === '__stock_counts__' ? renderStockCountsSection() : state.activeSection === '__warehouses__' ? renderWarehousesSection() : state.activeSection === '__transfers__' ? renderTransfersSection() : state.activeSection === '__receipt_vouchers__' ? renderReceiptVouchersSection() : state.activeSection === '__payment_vouchers__' ? renderPaymentVouchersSection() : state.activeSection === '__settlement_voucher__' ? renderSettlementVouchersSection() : state.activeSection === '__sales_reps__' ? renderRepsSection() : state.activeSection === 'تقارير عامة' ? renderDashboardSection() : state.activeSection === 'المساعدة' ? renderHelpSection() : renderPlaceholderSection()}
     </div>
   </div>
   ${state.showForm ? renderFormModal() : ''}
@@ -3055,10 +3066,10 @@ function renderHomeSection() {
 
   return `
       <div style="padding:24px 32px 8px;display:flex;gap:16px;flex-wrap:wrap;">
-        ${kpiCard('ti-trending-up', 'إجمالي المبيعات', totalSales, `${salesCount} فاتورة معتمدة`, 'rgba(15,110,86,0.12)', '#0F6E56')}
-        ${kpiCard('ti-shopping-cart', 'إجمالي المشتريات', totalPurchases, `${purchasesCount} فاتورة معتمدة`, 'rgba(30,90,192,0.12)', '#2C4A6E')}
-        ${kpiCard('ti-chart-line', 'صافي الربح التقديري', netProfit, netProfit >= 0 ? 'وضع إيجابي' : 'يحتاج مراجعة', netProfit >= 0 ? 'rgba(39,174,96,0.12)' : 'rgba(224,73,73,0.12)', netProfit >= 0 ? '#27AE60' : '#E24B4A')}
-        ${kpiCard('ti-alert-triangle', 'أصناف تحتاج طلب', lowStockCount, 'بالمخزون الحالي', 'rgba(186,117,23,0.12)', '#BA7517', true)}
+        ${kpiCard('ti-trending-up', t('kpi_total_sales'), totalSales, `${salesCount} ${t('kpi_approved_invoices')}`, 'rgba(15,110,86,0.12)', '#0F6E56')}
+        ${kpiCard('ti-shopping-cart', t('kpi_total_purchases'), totalPurchases, `${purchasesCount} ${t('kpi_approved_invoices')}`, 'rgba(30,90,192,0.12)', '#2C4A6E')}
+        ${kpiCard('ti-chart-line', t('kpi_net_profit'), netProfit, netProfit >= 0 ? t('kpi_positive') : t('kpi_needs_review'), netProfit >= 0 ? 'rgba(39,174,96,0.12)' : 'rgba(224,73,73,0.12)', netProfit >= 0 ? '#27AE60' : '#E24B4A')}
+        ${kpiCard('ti-alert-triangle', t('kpi_needs_reorder'), lowStockCount, t('kpi_current_stock'), 'rgba(186,117,23,0.12)', '#BA7517', true)}
       </div>
       <div style="display:flex;flex:1;">
         <div style="flex:1.3;position:relative;overflow:hidden;background:linear-gradient(135deg,#1B3352 0%,#2C4A6E 45%,#3D6389 100%);display:flex;flex-direction:column;">
@@ -3086,8 +3097,8 @@ function renderHomeSection() {
             <div style="margin-top:36px;">
               <div style="color:#B8C8DC;font-size:12px;font-weight:500;margin-bottom:12px;">${t('quick_shortcuts')}</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                ${homeShortcut('ti-search', 'فتح مستند برقمه', '__quick_open__')}
-                ${homeShortcut('ti-search-plus', 'بحث شامل', '__global_search__')}
+                ${homeShortcut('ti-search', t('home_open_doc'), '__quick_open__')}
+                ${homeShortcut('ti-search-plus', t('home_search_full'), '__global_search__')}
                 ${homeShortcut('ti-file-invoice', t('sc_new_sale'), 'المبيعات')}
                 ${homeShortcut('ti-shopping-cart', t('sc_new_purchase'), 'المشتريات')}
                 ${homeShortcut('ti-cube-plus', t('sc_new_item'), 'الاصناف')}
@@ -3110,7 +3121,7 @@ function renderHomeSection() {
               </div>`).join('')}
             ${phones.length === 0 ? `<div style="font-size:12px;color:#A9A48C;">عبّي بيانات التواصل من "النظام ← بيانات الشركة"</div>` : ''}
           </div>
-          <div style="margin-top:32px;font-size:11px;color:#A9A48C;">جميع الحقوق محفوظة لـ ${escapeHtml(c.name_ar || c.name_en || 'شركتك')}</div>
+          <div style="margin-top:32px;font-size:11px;color:#A9A48C;">${t('all_rights_reserved')} ${escapeHtml(c.name_ar || c.name_en || 'شركتك')}</div>
           <div style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;">
             <svg width="32" height="32" viewBox="0 0 200 200">
               <rect x="10" y="10" width="180" height="180" rx="38" fill="#0F172A"/>
@@ -3119,7 +3130,7 @@ function renderHomeSection() {
               <line x1="72" y1="118" x2="128" y2="118" stroke="#22C55E" stroke-width="11" stroke-linecap="round"/>
             </svg>
             <div style="text-align:right;">
-              <div style="font-size:11px;color:#5F5E5A;font-weight:500;">تطوير: أحمد سوفت</div>
+              <div style="font-size:11px;color:#5F5E5A;font-weight:500;">${t('developed_by')} أحمد سوفت</div>
               <div style="font-size:10px;color:#A9A48C;" dir="ltr">0545335561</div>
             </div>
           </div>
@@ -5752,6 +5763,43 @@ function renderCashboxStatementModal() {
       </div>
     </div>
   </div>`;
+}
+
+function renderHelpSection() {
+  const shortcuts = [
+    { keys:'F1', desc:'بحث شامل بكل النظام (فواتير، أصناف، عملاء...)' },
+    { keys:'F2', desc:'فتح فاتورة بيع جديدة مباشرة' },
+    { keys:'F3', desc:'فتح فاتورة شراء جديدة مباشرة' },
+    { keys:'F4', desc:'فتح سند قبض جديد مباشرة' },
+    { keys:'Esc', desc:'إغلاق أي نافذة أو شاشة مفتوحة حالياً' },
+  ];
+  return `
+      <div class="panel">
+        <div style="max-width:700px;">
+          <div style="font-size:16px;font-weight:700;color:#1B3352;margin-bottom:4px;">دليل الاستخدام</div>
+          <div style="font-size:12px;color:#5F5E5A;margin-bottom:20px;">أهم الاختصارات والنصائح لاستخدام أسرع للنظام</div>
+
+          <div style="background:#fff;border:1px solid #E4E2DA;border-radius:12px;padding:18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
+            <div style="font-size:13px;font-weight:600;color:#1B3352;margin-bottom:12px;display:flex;align-items:center;gap:6px;"><i class="ti ti-keyboard"></i> اختصارات لوحة المفاتيح</div>
+            ${shortcuts.map((s,i) => `
+              <div style="display:flex;align-items:center;gap:12px;padding:8px 0;${i<shortcuts.length-1?'border-bottom:1px solid #F0EEE5;':''}">
+                <span style="background:#1B3352;color:#fff;font-family:monospace;font-size:12px;font-weight:600;padding:4px 12px;border-radius:6px;min-width:50px;text-align:center;">${s.keys}</span>
+                <span style="font-size:12.5px;color:#3A3826;">${s.desc}</span>
+              </div>`).join('')}
+            <div style="font-size:10.5px;color:#8B8A7A;margin-top:10px;">💡 الاختصارات (عدا Esc) ما تشتغل وأنت تكتب داخل حقل نصي — بس وأنت متصفح الشاشات عادي.</div>
+          </div>
+
+          <div style="background:#fff;border:1px solid #E4E2DA;border-radius:12px;padding:18px;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
+            <div style="font-size:13px;font-weight:600;color:#1B3352;margin-bottom:12px;display:flex;align-items:center;gap:6px;"><i class="ti ti-bulb"></i> نصائح سريعة</div>
+            <div style="font-size:12px;color:#3A3826;line-height:2;">
+              • بأي جدول عريض (زي كشف الحساب)، تقدر تسحب حافة أي عمود لتكبيره أو تصغيره<br/>
+              • زر "الأعمدة" بالكشوفات الكبيرة يخليك تختار بس الأعمدة اللي تهمك<br/>
+              • كل الفواتير والسندات فيها زر "حفظ PDF (طباعة)" — يفتح نافذة الطباعة، اختر "Save as PDF" منها<br/>
+              • رقم أي فاتورة أو سند بأعلى النافذة قابل للضغط — يفتحلك قائمة للتنقل السريع بين المستندات
+            </div>
+          </div>
+        </div>
+      </div>`;
 }
 
 function renderPlaceholderSection() {
@@ -15912,6 +15960,59 @@ function getPartyAccountCode(partyId, partyType) {
   return party?.account_code || controlAccount;
 }
 
+// معالج الاختصارات الشاملة — يشتغل بكل الشاشات، يتجاهل الاختصارات لو المستخدم يكتب بحقل نصي عادي (غير مقصود)
+function handleGlobalShortcuts(ev) {
+  if (!state.session) return; // الاختصارات تشتغل بعد تسجيل الدخول بس
+  const tag = (ev.target.tagName || '').toLowerCase();
+  const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || ev.target.isContentEditable;
+
+  // Esc يشتغل حتى أثناء الكتابة — يقفل أي نافذة مفتوحة
+  if (ev.key === 'Escape') {
+    const openModals = ['showSalesForm','showPurchaseForm','showQuoteForm','showSalesReturnForm','showPurchaseReturnForm',
+      'showReceiptVoucherForm','showPaymentVoucherForm','showSettlementVoucher','showCashDisbursement','showPartyForm',
+      'showItemForm','showGlobalSearch','showQuickOpen','showDueReminders','showPerformanceReport','showSupplierPriceCompare',
+      'showAccountStatement','showStatement','showAgingReport','showFiscalLock','showPaymentMethodsSettings'];
+    for (const key of openModals) { if (state[key]) { state[key] = false; render(); return; } }
+    return;
+  }
+
+  if (isTyping) return; // باقي الاختصارات ما تشتغل أثناء الكتابة العادية (تجنّب تعارض مع حروف عادية)
+
+  if (ev.key === 'F1') {
+    ev.preventDefault();
+    loadParties().then(() => {
+      state.globalSearchQuery = ''; state.globalSearchResults = null;
+      state.showGlobalSearch = true;
+      render();
+    });
+  } else if (ev.key === 'F2') {
+    ev.preventDefault();
+    state.activeSection = 'المبيعات';
+    state.salesForm = newSalesForm();
+    state.salesForm.invoice_number = nextDocNumber(state.salesInvoices, 'invoice_number', 'S', 4);
+    state.editingSalesId = null;
+    state.showSalesForm = true;
+    render();
+  } else if (ev.key === 'F3') {
+    ev.preventDefault();
+    state.activeSection = 'المشتريات';
+    state.purchaseForm = newPurchaseForm();
+    state.purchaseForm.invoice_number = nextDocNumber(state.purchases, 'invoice_number', 'P', 4);
+    state.editingPurchaseId = null;
+    state.showPurchaseForm = true;
+    render();
+  } else if (ev.key === 'F4') {
+    ev.preventDefault();
+    state.activeSection = '__receipt_vouchers__';
+    state.receiptVoucherForm = newReceiptVoucherForm();
+    state.receiptVoucherForm.voucher_number = nextDocNumber(state.receiptVouchers, 'voucher_number', 'RV', 4);
+    state.editingReceiptVoucherId = null;
+    state.docJournalNumbers = [];
+    state.showReceiptVoucherForm = true;
+    render();
+  }
+}
+
 async function init() {
   try {
     const { data: license } = await sb.from('license_settings').select('*').eq('id', 1).maybeSingle();
@@ -15935,6 +16036,7 @@ async function init() {
   if (state.session) { await loadProfile(); await loadItems(); await loadParties(); await loadPurchases(); await loadSalesInvoices(); await loadWarehouses(); await loadPaymentMethods(); state.homeCogs = await calcHomeNetProfit(); await loadAllAltNumbersMap(); }
   render();
   if (state.session) checkAndRunAutoBackup(); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
+  document.addEventListener('keydown', handleGlobalShortcuts);
 }
 sb.auth.onAuthStateChange((event, session) => {
   state.session = session;
