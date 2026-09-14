@@ -11626,6 +11626,7 @@ function bindAppEvents() {
     if (document.getElementById('sr-approve')) {
       document.getElementById('sr-approve').onclick = async () => {
         const f = state.salesReturnForm;
+        if (!(await checkFiscalPeriodAllowed(f.return_date))) return;
         if (!confirm('اعتماد سند المردود يزيد المخزون تلقائياً، وينقص رصيد العميل فقط لو كان مردود آجل (بدون طريقة دفع محددة). متابعة؟')) return;
         const t = calcReturnTotals(f, 'unit_price');
         let returnCost = 0;
@@ -11820,6 +11821,15 @@ function bindAppEvents() {
     if (document.getElementById('pr-approve')) {
       document.getElementById('pr-approve').onclick = async () => {
         const f = state.purchaseReturnForm;
+        if (!(await checkFiscalPeriodAllowed(f.return_date))) return;
+        // تحقق من كفاية الرصيد قبل الاعتماد — يمنع رصيد سالب فعلي (مو بس إخفاءه بـ Math.max)
+        for (const l of f.lines) {
+          const item = state.items.find(it => it.id === l.item_id);
+          const currentQty = item ? Number(item.qty) : 0;
+          if (currentQty < l.quantity) {
+            if (!confirm(`⚠️ تحذير: رصيد "${l.item_name}" الحالي (${currentQty}) أقل من كمية المردود (${l.quantity}) — يعني ترجع أكثر مما عندك بالمخزون فعلياً. هذا قد يشير لخطأ بالكمية. تبي تكمل رغم ذلك؟`)) return;
+          }
+        }
         if (!confirm('اعتماد سند المردود ينقص المخزون تلقائياً، وينقص المستحق للمورد فقط لو كان مردود آجل (بدون طريقة دفع محددة). متابعة؟')) return;
         const t = calcReturnTotals(f, 'unit_cost');
         for (const l of f.lines) {
@@ -12469,6 +12479,7 @@ function bindAppEvents() {
     if (document.getElementById('rv-approve')) {
       document.getElementById('rv-approve').onclick = async () => {
         const f = state.receiptVoucherForm;
+        if (!(await checkFiscalPeriodAllowed(f.voucher_date))) return;
         if (!confirm('اعتماد سند القبض ينقص من رصيد العميل المستحق فوراً. متابعة؟')) return;
         const customer = state.parties.find(p => p.id === f.customer_id);
         let rvBalErr = null;
@@ -12583,6 +12594,7 @@ function bindAppEvents() {
     if (document.getElementById('pv-approve')) {
       document.getElementById('pv-approve').onclick = async () => {
         const f = state.paymentVoucherForm;
+        if (!(await checkFiscalPeriodAllowed(f.voucher_date))) return;
         if (!confirm('اعتماد سند الصرف ينقص من المستحق للمورد فوراً. متابعة؟')) return;
         const supplier = state.parties.find(p => p.id === f.supplier_id);
         let pvBalErr = null;
@@ -14063,6 +14075,7 @@ function bindAppEvents() {
     }
     if (document.getElementById('stv-approve')) {
       document.getElementById('stv-approve').onclick = async () => {
+        if (!(await checkFiscalPeriodAllowed(f.voucher_date))) return;
         if (!confirm('اعتماد سند التسوية يعدّل رصيد الطرف مباشرة ويرحّل قيد محاسبي، ولا يمكن التراجع من هنا. متابعة؟')) return;
         const party = state.parties.find(p => p.id === f.party_id);
         const delta = f.direction === 'increase' ? Number(f.amount) : -Number(f.amount);
