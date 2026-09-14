@@ -504,6 +504,9 @@ const TRANSLATIONS = {
     home_search_full: 'بحث شامل', home_open_doc: 'فتح مستند برقمه', home_quick_shortcuts: 'اختصارات سريعة',
     home_good_evening: 'مساء الخير', home_good_morning: 'صباح الخير',
     all_rights_reserved: 'جميع الحقوق محفوظة لـ', developed_by: 'تطوير:',
+    status_approved: 'معتمدة', status_draft: 'مسودة',
+    title_sales_invoice: 'فاتورة بيع', title_purchase_invoice: 'فاتورة شراء',
+    auto_generated: 'سيُنشأ تلقائياً',
     menu_home: 'الرئيسية', menu_items: 'الاصناف', menu_warehouses: 'المستودعات', menu_sales: 'المبيعات',
     menu_purchases: 'المشتريات', menu_orders: 'الطلبيات', menu_parties: 'العملاء والموردين', menu_accounting: 'المحاسبة', menu_hr: 'شؤون الموظفين',
     menu_reports: 'تقارير عامة', menu_system: 'النظام', menu_help: 'المساعدة', menu_logout: 'خروج',
@@ -628,6 +631,9 @@ const TRANSLATIONS = {
     home_search_full: 'Full Search', home_open_doc: 'Open Document by Number', home_quick_shortcuts: 'Quick Shortcuts',
     home_good_evening: 'Good Evening', home_good_morning: 'Good Morning',
     all_rights_reserved: 'All rights reserved to', developed_by: 'Developed by:',
+    status_approved: 'Approved', status_draft: 'Draft',
+    title_sales_invoice: 'Sales Invoice', title_purchase_invoice: 'Purchase Invoice',
+    auto_generated: 'Auto-generated on save',
     menu_home: 'Home', menu_items: 'Items', menu_warehouses: 'Warehouses', menu_sales: 'Sales',
     menu_purchases: 'Purchases', menu_orders: 'Orders', menu_parties: 'Customers & Suppliers', menu_accounting: 'Accounting', menu_hr: 'HR',
     menu_reports: 'Reports', menu_system: 'System', menu_help: 'Help', menu_logout: 'Logout',
@@ -1720,7 +1726,7 @@ function renderGenericReportModal() {
               <td class="mono" style="padding:6px 5px;border-left:1px solid #ccc;border-bottom:1px solid #ccc;font-size:11px;white-space:nowrap;">${fmt(r.tax_total)}</td>
               <td class="mono" style="padding:6px 5px;border-left:1px solid #ccc;border-bottom:1px solid #ccc;font-size:11px;font-weight:500;white-space:nowrap;">${fmt(r.total)}</td>
               <td style="padding:6px 5px;border-bottom:1px solid #ccc;font-size:11px;white-space:nowrap;${cfg.hasStatus?'border-left:1px solid #ccc;':''}">${escapeHtml(r.payment_method || '—')}</td>
-              ${cfg.hasStatus ? `<td style="padding:6px 5px;border-bottom:1px solid #ccc;font-size:11px;white-space:nowrap;color:${r.approved?'#0F6E56':'#BA7517'};">${r.approved?'معتمدة':'مسودة'}</td>` : ''}
+              ${cfg.hasStatus ? `<td style="padding:6px 5px;border-bottom:1px solid #ccc;font-size:11px;white-space:nowrap;color:${r.approved?'#0F6E56':'#BA7517'};">${r.approved?t('status_approved'):t('status_draft')}</td>` : ''}
               </tr>`).join('') || `<tr><td colspan="${cfg.hasType&&cfg.hasStatus?11:cfg.hasType||cfg.hasStatus?10:9}" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">اضغط "عرض" لتطبيق الفلاتر</td></tr>`}
               ${results.length > 0 ? `
               <tr>
@@ -2511,7 +2517,7 @@ function renderQuoteFormModal() {
 
       <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
         <label style="font-size:12.5px;color:#3A3826;">رقم العرض</label>
-        <input class="input mono" value="${escapeHtml(f.quote_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+        <input class="input mono" value="${escapeHtml(f.quote_number || t('auto_generated'))}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
         ${partyField(t('inv_customer'), partyPickerButton('qt-customer','customer',f.customer_id,f.status==='محول لفاتورة'))}
@@ -2664,7 +2670,7 @@ function renderPurchasesSection() {
               <div style="padding:7px 8px;">${escapeHtml(p.parties?.name || p.walkin_supplier_name || 'مورد نقدي')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.invoice_date)}</div>
               <div style="padding:7px 8px;">${fmt(p.total)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?'معتمدة':'مسودة'}</span></div>
+              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
             </div>`).join('')}
           ${list.length === 0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد فواتير بعد</div>` : ''}
         </div>
@@ -2796,7 +2802,7 @@ function renderPurchaseFormModal() {
   <div id="purchase-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
     <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:900px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title">
-        <span>فاتورة شراء</span>
+        <span>${t('title_purchase_invoice')}</span>
         <button id="purchase-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button>
       </div>
       ${f.approved ? `<div class="no-print" style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">${t('approved_label')}</div>` : ''}
@@ -3356,7 +3362,7 @@ function renderSalesSection() {
               <div style="padding:7px 8px;">${escapeHtml(p.parties?.name || p.walkin_customer_name || 'زبون نقدي')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.invoice_date)}</div>
               <div style="padding:7px 8px;">${fmt(p.total)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?'معتمدة':'مسودة'}</span></div>
+              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
             </div>`).join('')}
           ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد فواتير بعد</div>` : ''}
         </div>
@@ -3380,7 +3386,7 @@ function renderSalesFormModal() {
   return `
   <div id="sales-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
     <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:900px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
-      <div class="win-title"><span>فاتورة بيع</span><button id="sales-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div class="win-title"><span>${t('title_sales_invoice')}</span><button id="sales-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       ${f.approved ? `<div class="no-print" style="margin:8px 16px 0;display:flex;align-items:center;justify-content:center;gap:10px;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">
         <span>معتمدة</span>
         <canvas id="si-qr-canvas-preview" style="width:36px;height:36px;background:#fff;border-radius:2px;"></canvas>
@@ -3465,7 +3471,7 @@ function renderSalesFormModal() {
       <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;position:relative;">
         <label style="font-size:12.5px;color:#3A3826;">رقم الفاتورة</label>
         <button id="si-number-jump-btn" type="button" class="input mono" style="max-width:140px;background:#EDEAE0;color:#5F5E5A;cursor:${state.salesInvoices.length?'pointer':'default'};display:flex;align-items:center;justify-content:space-between;gap:6px;">
-          <span>${escapeHtml(f.invoice_number || 'سيُنشأ تلقائياً')}</span>
+          <span>${escapeHtml(f.invoice_number || t('auto_generated'))}</span>
           ${state.salesInvoices.length ? `<i class="ti ti-chevron-down" style="font-size:13px;"></i>` : ''}
         </button>
         ${state.showSalesJumpList ? `
@@ -3486,7 +3492,7 @@ function renderSalesFormModal() {
                 </div>
                 <div style="text-align:left;">
                   <div style="font-size:10.5px;color:#8B8A7A;" class="mono">${escapeHtml(inv.invoice_date)}</div>
-                  <div style="font-size:10.5px;padding:1px 6px;border-radius:8px;background:${inv.approved?'#E1F5EE':'#FAEEDA'};color:${inv.approved?'#0F6E56':'#BA7517'};display:inline-block;">${inv.approved?'معتمدة':'مسودة'}</div>
+                  <div style="font-size:10.5px;padding:1px 6px;border-radius:8px;background:${inv.approved?'#E1F5EE':'#FAEEDA'};color:${inv.approved?'#0F6E56':'#BA7517'};display:inline-block;">${inv.approved?t('status_approved'):t('status_draft')}</div>
                 </div>
               </div>`).join('') || `<div style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد نتائج</div>`}
           </div>
@@ -3680,7 +3686,7 @@ function renderSalesReturnsSection() {
               <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.return_date)}</div>
               <div style="padding:7px 8px;">${fmt(p.total)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?'معتمد':'مسودة'}</span></div>
+              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
             </div>`).join('')}
           ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
         </div>
@@ -3838,7 +3844,7 @@ function renderPurchaseReturnsSection() {
               <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.return_date)}</div>
               <div style="padding:7px 8px;">${fmt(p.total)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?'معتمد':'مسودة'}</span></div>
+              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
             </div>`).join('')}
           ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
         </div>
@@ -3984,7 +3990,7 @@ function renderStockCountsSection() {
               <div style="padding:7px 8px;">${escapeHtml(p.warehouses?.name||'—')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.count_date)}</div>
               <div style="padding:7px 8px;">${escapeHtml(p.notes||'—')}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?'معتمد':'مسودة'}</span></div>
+              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
             </div>`).join('')}
           ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
         </div>
@@ -4013,7 +4019,7 @@ function renderStockCountFormModal() {
 
       <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
         <label style="font-size:12.5px;color:#3A3826;">رقم السند</label>
-        <input class="input mono" value="${escapeHtml(f.count_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+        <input class="input mono" value="${escapeHtml(f.count_number || t('auto_generated'))}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
         ${partyField(t('sc_warehouse')+' *', `<select id="sc-warehouse" class="input" ${f.approved||f.lines.length?'disabled':''}>${state.warehouses.map(w => `<option value="${w.id}" ${f.warehouse_id===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>`)}
@@ -4141,7 +4147,7 @@ function renderTransfersSection() {
               <div style="padding:7px 8px;">${escapeHtml(p.from?.name||'—')}</div>
               <div style="padding:7px 8px;">${escapeHtml(p.to?.name||'—')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.transfer_date)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?'معتمد':'مسودة'}</span></div>
+              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
             </div>`).join('')}
           ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
         </div>
@@ -4158,7 +4164,7 @@ function renderTransferFormModal() {
       ${f.approved ? `<div class="no-print" style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">${t('approved_short')}</div>` : ''}
       <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
         <label style="font-size:12.5px;color:#3A3826;">${t('voucher_number_label')}</label>
-        <input class="input mono" value="${escapeHtml(f.transfer_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+        <input class="input mono" value="${escapeHtml(f.transfer_number || t('auto_generated'))}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
         ${partyField(t('tr_from')+' *', `<select id="tr-from" class="input" ${f.approved?'disabled':''}>${state.warehouses.map(w => `<option value="${w.id}" ${f.from_warehouse_id===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>`)}
@@ -4303,7 +4309,7 @@ function renderOpeningInvFormModal() {
       ${f.approved ? `<div style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">معتمد</div>` : ''}
       <div style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
         <label style="font-size:12.5px;color:#3A3826;">رقم المستند</label>
-        <input class="input mono" value="${escapeHtml(f.doc_number || 'سيُنشأ تلقائياً')}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+        <input class="input mono" value="${escapeHtml(f.doc_number || t('auto_generated'))}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
       </div>
       <div style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
         ${partyField('المستودع *', `<select id="oif-warehouse" class="input" ${f.approved||f.lines.length?'disabled':''}>${state.warehouses.map(w => `<option value="${w.id}" ${f.warehouse_id===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>`)}
@@ -5181,7 +5187,7 @@ function renderReceiptVouchersSection() {
               <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_date)}</div>
               <div style="padding:7px 8px;">${fmt(p.amount)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?'معتمد':'مسودة'}</span></div>
+              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
             </div>`).join('')}
           ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
         </div>
@@ -5209,7 +5215,7 @@ function renderSettlementVouchersSection() {
               <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_date)}</div>
               <div style="padding:7px 8px;">${fmt(p.amount)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?'معتمد':'مسودة'}</span></div>
+              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
             </div>`).join('')}
           ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
         </div>
@@ -5237,7 +5243,7 @@ function renderPaymentVouchersSection() {
               <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_date)}</div>
               <div style="padding:7px 8px;">${fmt(p.amount)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?'معتمد':'مسودة'}</span></div>
+              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
             </div>`).join('')}
           ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
         </div>
@@ -8066,7 +8072,7 @@ function renderTabContent() {
   }
   return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
     ${field('رقم الشركة', `<input id="f-company" class="input" value="${escapeHtml(f.company)}" />`)}
-    ${field('رقم السجل', `<input id="f-registry_number" class="input" value="${escapeHtml(f.registry_number || (state.editingId ? '' : 'سيُنشأ تلقائياً'))}" disabled style="background:#EDEAE0;color:#5F5E5A;" />`)}
+    ${field('رقم السجل', `<input id="f-registry_number" class="input" value="${escapeHtml(f.registry_number || (state.editingId ? '' : t('auto_generated')))}" disabled style="background:#EDEAE0;color:#5F5E5A;" />`)}
     ${field('رقم المجموعة', `<input id="f-group_number" class="input" value="${escapeHtml(f.group_number)}" />`)}
     ${field('الباركود', `<input id="f-barcode" class="input mono" dir="ltr" value="${escapeHtml(f.barcode||'')}" />`)}
     ${field('المورد الافتراضي', `<select id="f-default_supplier_id" class="input"><option value="">بدون تحديد</option>${state.parties.filter(p=>p.party_type==='supplier').map(p => `<option value="${p.id}" ${f.default_supplier_id===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}</select>`)}
@@ -10696,7 +10702,7 @@ function bindAppEvents() {
       document.getElementById('print-purchases-list').onclick = () => {
         const list = filteredPurchases();
         const headers = ['رقم الفاتورة','المورد','التاريخ','الإجمالي','الحالة'];
-        const rows = list.map(p => [p.invoice_number, p.parties?.name||p.walkin_supplier_name||'مورد نقدي', p.invoice_date, fmt(p.total), p.approved?'معتمدة':'مسودة']);
+        const rows = list.map(p => [p.invoice_number, p.parties?.name||p.walkin_supplier_name||'مورد نقدي', p.invoice_date, fmt(p.total), p.approved?t('status_approved'):t('status_draft')]);
         printListAsDocument('قائمة فواتير الشراء', headers, rows);
       };
     }
@@ -12635,7 +12641,7 @@ function bindAppEvents() {
     });
     document.getElementById('pr-excel').onclick = () => {
       const headers = ['م','رقم الفاتورة','اسم المورد','النوع','المجموع','الخصم','الصافي','الضريبة','المجموع/ض','الحالة'];
-      const rows = state.purchasesReportResults.map((p,i) => [i+1, p.invoice_number, p.parties?.name||'—', p.invoice_type||'', Number(p.subtotal||0), Number(p.discount||0), Number(p.subtotal||0)-Number(p.discount||0), Number(p.tax_total||0), Number(p.total||0), p.approved?'معتمدة':'مسودة']);
+      const rows = state.purchasesReportResults.map((p,i) => [i+1, p.invoice_number, p.parties?.name||'—', p.invoice_type||'', Number(p.subtotal||0), Number(p.discount||0), Number(p.subtotal||0)-Number(p.discount||0), Number(p.tax_total||0), Number(p.total||0), p.approved?t('status_approved'):t('status_draft')]);
       exportFormattedAccountingSheet('كشف فواتير المشتريات.xlsx', 'فواتير المشتريات', headers, rows);
     };
   }
@@ -15444,7 +15450,7 @@ function bindAppEvents() {
       const rows = state.genericReportResults.map((r,i) => [
         i+1, r[cfg.numField], r.parties?.name||'—', ...(cfg.hasType?[r.invoice_type||'']:[]),
         r[dateField], r.parties?.tax_number||'', Number(r.subtotal||0), Number(r.tax_total||0), Number(r.total||0), r.payment_method||'',
-        ...(cfg.hasStatus?[r.approved?'معتمدة':'مسودة']:[]),
+        ...(cfg.hasStatus?[r.approved?t('status_approved'):t('status_draft')]:[]),
       ]);
       exportFormattedAccountingSheet(`${cfg.title}.xlsx`, cfg.title.slice(0,31), headers, rows);
     };
