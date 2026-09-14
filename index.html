@@ -8872,6 +8872,18 @@ async function loadAlerts() {
   }
   if (dueSoonCount > 0) alerts.push({ severity:'medium', text:`${dueSoonCount} عميل يقترب موعد استحقاقه خلال 5 أيام`, target:'__aging_report__' });
 
+  // تذكير أسبوعي بالتقرير الدوري — يظهر مرة وحدة بس بأول فتح للبرنامج يوم الاثنين (يتتبّع عبر localStorage عشان ما يتكرر بنفس الأسبوع)
+  const now = new Date();
+  if (now.getDay() === 1) { // الاثنين
+    const weekKey = `${now.getFullYear()}-W${Math.ceil((((now - new Date(now.getFullYear(),0,1)) / 86400000) + new Date(now.getFullYear(),0,1).getDay()+1) / 7)}`;
+    let lastShownWeek = null;
+    try { lastShownWeek = localStorage.getItem('perf_report_reminder_week'); } catch(e) {}
+    if (lastShownWeek !== weekKey) {
+      alerts.push({ severity:'low', text:'📊 يوم الاثنين! تحب تشوف وترسل تقرير الأداء الأسبوعي؟', target:'__performance_report__' });
+      try { localStorage.setItem('perf_report_reminder_week', weekKey); } catch(e) {}
+    }
+  }
+
   // 3) فواتير محفوظة كمسودة أكثر من 3 أيام
   const threeDaysAgo = new Date(); threeDaysAgo.setDate(threeDaysAgo.getDate()-3);
   const { data: oldDraftSales } = await sb.from('sales_invoices').select('id').eq('approved', false).lte('created_at', threeDaysAgo.toISOString());
@@ -10956,6 +10968,15 @@ function bindAppEvents() {
       document.getElementById('purchase-unlock').onclick = async () => {
         if (!confirm('فك الاعتماد يرجّع الكمية المشتراة من المخزون، ويرجّع رصيد المورد، ويحذف القيد المحاسبي.\n\n⚠️ تنبيه مهم: لو صار شراء ثاني لنفس الأصناف بعد هذي الفاتورة، التكلفة المرجّحة الحالية قد ما ترجع لقيمتها الأصلية بالضبط — راجع تكلفة الأصناف يدوياً بعد فك الاعتماد لو احتجت. متابعة؟')) return;
         const f = state.purchaseForm;
+        // منع صارم لو فك الاعتماد راح يخلّي رصيد أي صنف سالب فعلياً (يعني انباع جزء من الكمية المشتراة بهذي الفاتورة)
+        for (const l of f.lines) {
+          const item = state.items.find(it => it.id === l.item_id);
+          const currentQty = item ? Number(item.qty) : 0;
+          if (currentQty < l.quantity) {
+            alert(`⛔ ما تقدر تفك الاعتماد — رصيد "${l.item_name}" الحالي (${currentQty}) أقل من الكمية المشتراة بهذي الفاتورة (${l.quantity})، غالباً لأنه انباع جزء منها. لازم تراجع الكمية يدوياً أول.`);
+            return;
+          }
+        }
         const t = calcPurchaseTotals(f);
         const warnings = [];
         for (const l of f.lines) {
@@ -11990,12 +12011,13 @@ function bindAppEvents() {
       document.getElementById('pr-approve').onclick = async () => {
         const f = state.purchaseReturnForm;
         if (!(await checkFiscalPeriodAllowed(f.return_date))) return;
-        // تحقق من كفاية الرصيد قبل الاعتماد — يمنع رصيد سالب فعلي (مو بس إخفاءه بـ Math.max)
+        // منع صارم (مو تحذير قابل للتجاوز) — يطابق نفس حماية فاتورة البيع والتحويل بين المستودعات
         for (const l of f.lines) {
           const item = state.items.find(it => it.id === l.item_id);
           const currentQty = item ? Number(item.qty) : 0;
           if (currentQty < l.quantity) {
-            if (!confirm(`⚠️ تحذير: رصيد "${l.item_name}" الحالي (${currentQty}) أقل من كمية المردود (${l.quantity}) — يعني ترجع أكثر مما عندك بالمخزون فعلياً. هذا قد يشير لخطأ بالكمية. تبي تكمل رغم ذلك؟`)) return;
+            alert(`⛔ ما تقدر تعتمد — رصيد "${l.item_name}" الحالي (${currentQty}) أقل من كمية المردود (${l.quantity})`);
+            return;
           }
         }
         if (!confirm('اعتماد سند المردود ينقص المخزون تلقائياً، وينقص المستحق للمورد فقط لو كان مردود آجل (بدون طريقة دفع محددة). متابعة؟')) return;
