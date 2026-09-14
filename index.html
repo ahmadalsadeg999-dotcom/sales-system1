@@ -2521,9 +2521,9 @@ function renderQuoteFormModal() {
         </div>
       </div>
 
-      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
+      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;position:relative;">
         <label style="font-size:12.5px;color:#3A3826;">رقم العرض</label>
-        <input class="input mono" value="${escapeHtml(f.quote_number || t('auto_generated'))}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+        ${renderNumberNavHtml('quote', f.quote_number, state.editingQuoteId, state.quotations, 'quote_number', v => v.parties?.name)}
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
         ${partyField(t('inv_customer'), partyPickerButton('qt-customer','customer',f.customer_id,f.status==='محول لفاتورة'))}
@@ -4023,9 +4023,9 @@ function renderStockCountFormModal() {
         </div>
       </div>
 
-      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
+      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;position:relative;">
         <label style="font-size:12.5px;color:#3A3826;">رقم السند</label>
-        <input class="input mono" value="${escapeHtml(f.count_number || t('auto_generated'))}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+        ${renderNumberNavHtml('sc', f.count_number, state.editingStockCountId, state.stockCounts, 'count_number', v => v.warehouses?.name||'')}
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
         ${partyField(t('sc_warehouse')+' *', `<select id="sc-warehouse" class="input" ${f.approved||f.lines.length?'disabled':''}>${state.warehouses.map(w => `<option value="${w.id}" ${f.warehouse_id===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>`)}
@@ -4168,9 +4168,9 @@ function renderTransferFormModal() {
     <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:820px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${t('tr_title')}</span><button id="tr-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       ${f.approved ? `<div class="no-print" style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">${t('approved_short')}</div>` : ''}
-      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
+      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;position:relative;">
         <label style="font-size:12.5px;color:#3A3826;">${t('voucher_number_label')}</label>
-        <input class="input mono" value="${escapeHtml(f.transfer_number || t('auto_generated'))}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
+        ${renderNumberNavHtml('tr', f.transfer_number, state.editingTransferId, state.transfers, 'transfer_number', v => v.notes||'')}
       </div>
       <div class="no-print" style="padding:8px 16px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
         ${partyField(t('tr_from')+' *', `<select id="tr-from" class="input" ${f.approved?'disabled':''}>${state.warehouses.map(w => `<option value="${w.id}" ${f.from_warehouse_id===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>`)}
@@ -7577,7 +7577,8 @@ function renderPerformanceReportModal() {
           <button id="perf-apply" class="btn primary" style="padding:8px 16px;">تطبيق</button>
           <button id="perf-print" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-printer" style="font-size:14px;color:#5F5E5A;"></i> طباعة</button>
           <button id="perf-pdf" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-file-type-pdf" style="font-size:14px;color:#D9534F;"></i> حفظ PDF</button>
-          <button id="perf-whatsapp" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#25D366;color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:12.5px;"><i class="ti ti-brand-whatsapp"></i> إرسال للمدير</button>
+          <button id="perf-print" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-printer" style="font-size:14px;color:#5F5E5A;"></i> طباعة</button>
+          <button id="perf-pdf" style="display:flex;align-items:center;gap:6px;height:38px;padding:0 18px;background:#fff;color:#3A3826;border:1px solid #C7C4B4;border-radius:10px;cursor:pointer;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,0.06);"><i class="ti ti-file-type-pdf" style="font-size:14px;color:#D9534F;"></i> حفظ PDF (طباعة)</button>
         </div>
         ${d ? `
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
@@ -8952,7 +8953,7 @@ async function loadAlerts() {
     let lastShownWeek = null;
     try { lastShownWeek = localStorage.getItem('perf_report_reminder_week'); } catch(e) {}
     if (lastShownWeek !== weekKey) {
-      alerts.push({ severity:'low', text:'📊 يوم الاثنين! تحب تشوف وترسل تقرير الأداء الأسبوعي؟', target:'__performance_report__' });
+      alerts.push({ severity:'low', text:'📊 يوم الاثنين! تحب تشوف تقرير الأداء الأسبوعي؟', target:'__performance_report__' });
       try { localStorage.setItem('perf_report_reminder_week', weekKey); } catch(e) {}
     }
   }
@@ -11127,6 +11128,7 @@ function bindAppEvents() {
   if (state.showQuoteForm) {
     const closeQuote = () => { state.showQuoteForm = false; render(); };
     document.getElementById('quote-close').onclick = closeQuote;
+    bindNumberNav('quote', state.quotations, openQuoteById);
     document.getElementById('quote-exit').onclick = closeQuote;
     document.getElementById('quote-print').onclick = () => { window.print(); };
     if (document.getElementById('quote-pdf')) document.getElementById('quote-pdf').onclick = () => { window.print(); };
@@ -12150,6 +12152,7 @@ function bindAppEvents() {
   if (state.showStockCountForm) {
     const closeSC = () => { state.showStockCountForm = false; render(); };
     document.getElementById('sc-close').onclick = closeSC;
+    bindNumberNav('sc', state.stockCounts, openStockCountById);
     document.getElementById('sc-exit').onclick = closeSC;
     if (document.getElementById('sc-cancel')) document.getElementById('sc-cancel').onclick = closeSC;
     document.getElementById('sc-print').onclick = () => { window.print(); };
@@ -12375,6 +12378,7 @@ function bindAppEvents() {
   if (state.showTransferForm) {
     const closeTr = () => { state.showTransferForm = false; render(); };
     document.getElementById('tr-close').onclick = closeTr;
+    bindNumberNav('tr', state.transfers, openTransferById);
     document.getElementById('tr-exit').onclick = closeTr;
     if (document.getElementById('tr-cancel')) document.getElementById('tr-cancel').onclick = closeTr;
     document.getElementById('tr-print').onclick = () => { window.print(); };
@@ -15170,25 +15174,8 @@ function bindAppEvents() {
     };
     document.getElementById('perf-print').onclick = () => { window.print(); };
     document.getElementById('perf-pdf').onclick = () => { window.print(); };
-    document.getElementById('perf-whatsapp').onclick = () => {
-      const d = state.perfReportData;
-      if (!d) return;
-      let phoneRaw = state.company?.whatsapp || state.company?.mobile || '';
-      const sendNow = (phoneRaw) => {
-        let phone = phoneRaw.replace(/[^0-9]/g, '');
-        if (phone.startsWith('0')) phone = '966' + phone.slice(1);
-        else if (!phone.startsWith('966')) phone = '966' + phone;
-        const topCustLines = d.topCustomers.map((c,i) => `${i+1}. ${c.name} — ${fmt(c.total)}`).join('\n') || 'لا يوجد';
-        const topItemLines = d.topItems.map((it,i) => `${i+1}. ${it.name} — ${it.qty} وحدة`).join('\n') || 'لا يوجد';
-        const msg = encodeURIComponent(`📊 تقرير أداء من ${d.fromDate} إلى ${d.toDate}\n\nإجمالي المبيعات: ${fmt(d.totalSales)} (${d.salesCount} فاتورة)\nإجمالي المشتريات: ${fmt(d.totalPurchases)} (${d.purchasesCount} فاتورة)\nصافي الفرق: ${fmt(d.netProfit)}\n\n🏆 أفضل العملاء:\n${topCustLines}\n\n📦 أكثر الأصناف مبيعاً:\n${topItemLines}`);
-        window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
-      };
-      if (!phoneRaw) {
-        phoneRaw = prompt('ما فيه رقم جوال مسجّل للشركة — اكتب رقم المدير للإرسال:', '05') || '';
-        if (!phoneRaw.trim()) return;
-      }
-      sendNow(phoneRaw);
-    };
+    document.getElementById('perf-print').onclick = () => { window.print(); };
+    document.getElementById('perf-pdf').onclick = () => { window.print(); };
   }
 
   if (state.showDueReminders) {
