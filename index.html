@@ -11247,6 +11247,20 @@ function bindAppEvents() {
         const f = state.salesForm;
         if (f.invoice_type === 'آجل' && !f.customer_id) { alert('اختر العميل — إلزامي لفاتورة آجل'); return; }
         if (f.lines.length === 0) { alert('أضف صنف واحد على الأقل'); return; }
+        // التحقق من الحد الائتماني للعميل قبل حفظ فاتورة آجلة
+        if (f.invoice_type === 'آجل' && f.customer_id) {
+          const customer = state.parties.find(p => p.id === f.customer_id);
+          const creditLimit = Number(customer?.credit_limit || 0);
+          if (creditLimit > 0) {
+            const t0 = calcLineTotals(f);
+            const currentBalance = Number(customer?.balance || 0);
+            const newBalance = currentBalance + t0.grandTotal;
+            if (newBalance > creditLimit) {
+              const exceedBy = newBalance - creditLimit;
+              if (!confirm(`⚠️ تحذير: هذي الفاتورة تتجاوز الحد الائتماني للعميل "${customer.name}"\n\nالحد المسموح: ${fmt(creditLimit)}\nالرصيد الحالي: ${fmt(currentBalance)}\nبعد هذي الفاتورة: ${fmt(newBalance)}\nمقدار التجاوز: ${fmt(exceedBy)}\n\nتبي تكمل الحفظ رغم ذلك؟`)) return;
+            }
+          }
+        }
         setBtnLoading(document.getElementById('sales-save'), true, 'جاري الحفظ');
         const t = calcLineTotals(f);
         const headerPayload = { invoice_type:f.invoice_type, customer_id:f.customer_id||null, walkin_customer_name: f.invoice_type==='نقدي' ? (f.walkin_customer_name||null) : null, walkin_customer_tax_number: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_tax_number||null) : null, walkin_customer_address: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_address||null) : null, customer_ref:f.customer_ref||null, order_number:f.order_number||null, warehouse_id: f.warehouse_id||null, payment_method: f.payment_method||null, quotation_id:f.quotation_id||null, invoice_date:f.invoice_date, discount:t.discount, paid_amount:Number(f.paid_amount)||0, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal, no_tax:!!f.no_tax };
