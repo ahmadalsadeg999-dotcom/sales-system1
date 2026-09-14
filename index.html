@@ -2240,6 +2240,20 @@ function renderApp() {
   `;
 }
 
+// يحسب إجمالي مشتريات كل عميل (فواتير معتمدة فقط) لتصنيفهم لفئات (عادي/فضي/ذهبي/بلاتيني)
+async function loadCustomerTotalPurchases() {
+  const { data } = await sb.from('sales_invoices').select('customer_id, total').eq('approved', true).not('customer_id', 'is', null);
+  const totals = {};
+  (data||[]).forEach(r => { totals[r.customer_id] = (totals[r.customer_id]||0) + Number(r.total||0); });
+  state.customerTotalPurchases = totals;
+}
+function customerTier(totalPurchased) {
+  if (totalPurchased >= 50000) return { label:'بلاتيني', bg:'#EDE7F6', color:'#5E35B1', icon:'ti-crown' };
+  if (totalPurchased >= 20000) return { label:'ذهبي', bg:'#FFF8E1', color:'#B7950B', icon:'ti-medal' };
+  if (totalPurchased >= 5000) return { label:'فضي', bg:'#ECEFF1', color:'#607D8B', icon:'ti-award' };
+  return null;
+}
+
 function renderPartiesSection() {
   const list = filteredParties();
   const typeLabel = pt => pt === 'customer' ? t('label_customer') : t('label_supplier');
@@ -2257,24 +2271,25 @@ function renderPartiesSection() {
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} ${typeLabel(state.partyTypeFilter)}</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
-          <div style="display:grid;grid-template-columns:1.4fr 0.9fr 1fr 1fr 0.8fr 0.7fr 0.6fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;min-width:750px;">
-            ${[t('col_name'),t('col_number'),t('col_phone'),t('col_address'),t('col_balance'),'النوع',''].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
+          <div style="display:grid;grid-template-columns:1.2fr 0.8fr 0.9fr 1fr 0.8fr 0.7fr 0.6fr 0.6fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;min-width:820px;">
+            ${[t('col_name'),t('col_number'),t('col_phone'),t('col_address'),t('col_balance'),'النوع','الفئة',''].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
-          ${list.map((p, i) => `
-            <div style="display:grid;grid-template-columns:1.4fr 0.9fr 1fr 1fr 0.8fr 0.7fr 0.6fr;background:${i % 2 ? '#F4F1EA' : '#FFFDF6'};font-size:12.5px;align-items:center;min-width:750px;">
+          ${list.map((p, i) => { const tier = state.partyTypeFilter === 'customer' ? customerTier(state.customerTotalPurchases?.[p.id] || 0) : null; return `
+            <div style="display:grid;grid-template-columns:1.2fr 0.8fr 0.9fr 1fr 0.8fr 0.7fr 0.6fr 0.6fr;background:${i % 2 ? '#F4F1EA' : '#FFFDF6'};font-size:12.5px;align-items:center;min-width:820px;">
               <div style="padding:7px 8px;">${escapeHtml(p.name)}${!p.active ? ` <span style="color:#C0392B;">${t('party_inactive')}</span>` : ''}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.code || '—')}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(p.phone || '—')}</div>
               <div style="padding:7px 8px;">${escapeHtml(p.address || '—')}</div>
               <div style="padding:7px 8px;color:${Number(p.balance) > 0 ? '#C0392B' : '#1F2421'};">${Number(p.balance).toFixed(2)}</div>
               <div style="padding:7px 8px;">${p.is_deferred ? `<span style="background:#FAEEDA;color:#BA7517;padding:2px 8px;border-radius:10px;font-size:10.5px;white-space:nowrap;">آجل</span>` : `<span style="background:#E1F5EE;color:#0F6E56;padding:2px 8px;border-radius:10px;font-size:10.5px;white-space:nowrap;">نقدي</span>`}</div>
+              <div style="padding:7px 8px;">${tier ? `<span title="إجمالي المشتريات: ${fmt(state.customerTotalPurchases?.[p.id]||0)}" style="background:${tier.bg};color:${tier.color};padding:2px 8px;border-radius:10px;font-size:10px;white-space:nowrap;display:inline-flex;align-items:center;gap:3px;"><i class="ti ${tier.icon}" style="font-size:11px;"></i> ${tier.label}</span>` : '—'}</div>
               <div style="padding:4px 6px;display:flex;gap:4px;">
                 <button data-edit-party="${p.id}" style="border:1px solid #A9A48C;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:pointer;">✎</button>
                 ${Number(p.balance) !== 0
                   ? `<button disabled title="ما يمكن الحذف — عنده رصيد ${fmt(p.balance)} (يعني له معاملات مسجّلة)" style="border:1px solid #DEDACB;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:not-allowed;color:#C7C4B4;">✕</button>`
                   : `<button data-del-party="${p.id}" style="border:1px solid #A9A48C;background:#F4F1EA;border-radius:3px;width:24px;height:24px;cursor:pointer;color:#C0392B;">✕</button>`}
               </div>
-            </div>`).join('')}
+            </div>`; }).join('')}
           ${list.length === 0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">${t('no_results')}</div>` : ''}
         </div>
       </div>
@@ -9882,7 +9897,7 @@ function bindAppEvents() {
       state.activeSection = target;
       if (target === 'المبيعات') { await loadParties(); await loadSalesInvoices(); await loadCompany(); await loadWarehouses(); }
       else if (target === 'المشتريات') { await loadParties(); await loadPurchases(); await loadWarehouses(); }
-      else if (target === 'العملاء والموردين') { await loadParties(); }
+      else if (target === 'العملاء والموردين') { await loadParties(); await loadCustomerTotalPurchases(); }
       render();
     };
   });
@@ -10685,6 +10700,15 @@ function bindAppEvents() {
         const f = state.purchaseForm;
         if (f.invoice_type === 'آجل' && !f.supplier_id) { alert('اختر المورد — إلزامي لفاتورة آجل'); return; }
         if (f.lines.length === 0) { alert('أضف صنف واحد على الأقل'); return; }
+        if (!state.editingPurchaseId) {
+          const { data: dupCheck2 } = await sb.from('purchase_invoices').select('id').eq('invoice_number', f.invoice_number).limit(1);
+          if (dupCheck2 && dupCheck2.length > 0) {
+            f.invoice_number = nextDocNumber(state.purchases, 'invoice_number', 'P', 4);
+            showToast(`⚠️ رقم الفاتورة كان مستخدم من قبل (احتمال إنشاء متزامن) — تم تحديثه تلقائياً لـ ${f.invoice_number}`, 'error');
+            render();
+            return;
+          }
+        }
         setBtnLoading(document.getElementById('purchase-save'), true, 'جاري الحفظ');
         const t = calcPurchaseTotals(f);
         const headerPayload = {
@@ -11316,6 +11340,16 @@ function bindAppEvents() {
         const f = state.salesForm;
         if (f.invoice_type === 'آجل' && !f.customer_id) { alert('اختر العميل — إلزامي لفاتورة آجل'); return; }
         if (f.lines.length === 0) { alert('أضف صنف واحد على الأقل'); return; }
+        // تأكيد فردية رقم الفاتورة قبل الحفظ — يمنع تكرار نادر بسبب إنشاء متزامن من أكثر من مستخدم
+        if (!state.editingSalesId) {
+          const { data: dupCheck } = await sb.from('sales_invoices').select('id').eq('invoice_number', f.invoice_number).limit(1);
+          if (dupCheck && dupCheck.length > 0) {
+            f.invoice_number = nextDocNumber(state.salesInvoices, 'invoice_number', 'S', 4);
+            showToast(`⚠️ رقم الفاتورة كان مستخدم من قبل (احتمال إنشاء متزامن) — تم تحديثه تلقائياً لـ ${f.invoice_number}`, 'error');
+            render();
+            return;
+          }
+        }
         // التحقق من الحد الائتماني للعميل قبل حفظ فاتورة آجلة
         if (f.invoice_type === 'آجل' && f.customer_id) {
           const customer = state.parties.find(p => p.id === f.customer_id);
