@@ -10354,7 +10354,20 @@ function bindAppEvents() {
     document.querySelectorAll('[data-del-party]').forEach(btn => {
       btn.onclick = async () => {
         if (!confirm('تأكيد الحذف؟')) return;
-        const { error } = await sb.from('parties').delete().eq('id', btn.dataset.delParty);
+        const partyId = btn.dataset.delParty;
+        // تحقق صريح قبل الحذف — نفحص وجود أي معاملات مرتبطة بغض النظر عن قيود قاعدة البيانات
+        const checks = await Promise.all([
+          sb.from('sales_invoices').select('id', { count: 'exact', head: true }).eq('customer_id', partyId),
+          sb.from('purchase_invoices').select('id', { count: 'exact', head: true }).eq('supplier_id', partyId),
+          sb.from('receipt_vouchers').select('id', { count: 'exact', head: true }).eq('customer_id', partyId),
+          sb.from('payment_vouchers').select('id', { count: 'exact', head: true }).eq('supplier_id', partyId),
+        ]);
+        const totalLinked = checks.reduce((sum, r) => sum + (r.count || 0), 0);
+        if (totalLinked > 0) {
+          showToast(`ما تقدر تحذف — مرتبط بـ ${totalLinked} معاملة (فواتير/سندات) بالنظام`, 'error');
+          return;
+        }
+        const { error } = await sb.from('parties').delete().eq('id', partyId);
         if (error) {
           showToast('ما تقدر تحذف هذا العميل/المورد — مرتبط بفواتير أو سندات سابقة بالنظام', 'error');
           return;
@@ -12232,7 +12245,18 @@ function bindAppEvents() {
   document.querySelectorAll('[data-del]').forEach(btn => {
     btn.onclick = async () => {
       if (!confirm('تأكيد حذف الصنف؟')) return;
-      const { error } = await sb.from('items').delete().eq('id', btn.dataset.del);
+      const itemId = btn.dataset.del;
+      // تحقق صريح قبل الحذف — نفحص وجود أي حركات مرتبطة بغض النظر عن قيود قاعدة البيانات
+      const checks = await Promise.all([
+        sb.from('sales_invoice_items').select('id', { count: 'exact', head: true }).eq('item_id', itemId),
+        sb.from('purchase_invoice_items').select('id', { count: 'exact', head: true }).eq('item_id', itemId),
+      ]);
+      const totalLinked = checks.reduce((sum, r) => sum + (r.count || 0), 0);
+      if (totalLinked > 0) {
+        showToast(`ما تقدر تحذف — مرتبط بـ ${totalLinked} حركة فاتورة بالنظام`, 'error');
+        return;
+      }
+      const { error } = await sb.from('items').delete().eq('id', itemId);
       if (error) {
         showToast('ما تقدر تحذف هذا الصنف — مرتبط بفواتير أو حركات سابقة بالنظام', 'error');
         return;
