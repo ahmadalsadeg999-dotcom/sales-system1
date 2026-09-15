@@ -4438,7 +4438,7 @@ function renderQuickOpenModal() {
 }
 
 // ---------- إعدادات تنسيق ملصقات الباركود (محفوظة بجهاز المستخدم) ----------
-const LABEL_FORMAT_DEFAULT = { showName: false, showPrice: false, showCodeText: true, widthMm: 40, heightMm: 25 };
+const LABEL_FORMAT_DEFAULT = { showName: false, showPrice: false, showCodeText: true, showLocation: false, showLogo: false, codeType: 'barcode', widthMm: 40, heightMm: 25 };
 function getLabelFormat() {
   try {
     const saved = JSON.parse(localStorage.getItem('barcodeLabelFormat') || 'null');
@@ -4953,6 +4953,15 @@ function renderBarcodeLabelsModal() {
           <label style="font-size:12px;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="lf-show-name" ${fmt_.showName?'checked':''} /> اسم الصنف</label>
           <label style="font-size:12px;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="lf-show-price" ${fmt_.showPrice?'checked':''} /> السعر</label>
           <label style="font-size:12px;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="lf-show-code-text" ${fmt_.showCodeText?'checked':''} /> رقم الباركود نصياً</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="lf-show-location" ${fmt_.showLocation?'checked':''} /> موقع الصنف بالمستودع</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="lf-show-logo" ${fmt_.showLogo?'checked':''} /> شعار الشركة</label>
+        </div>
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px;color:#5F5E5A;margin-bottom:5px;">نوع الرمز</div>
+          <div style="display:flex;gap:14px;">
+            <label style="font-size:12px;display:flex;align-items:center;gap:5px;"><input type="radio" name="lf-code-type" id="lf-code-barcode" ${fmt_.codeType!=='qr'?'checked':''} /> باركود عادي</label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:5px;"><input type="radio" name="lf-code-type" id="lf-code-qr" ${fmt_.codeType==='qr'?'checked':''} /> رمز QR</label>
+          </div>
         </div>
         <div style="display:flex;gap:14px;align-items:end;">
           <div>${partyField('العرض (مم)', `<input id="lf-width" class="input mono" style="max-width:80px;" value="${fmt_.widthMm}" />`)}</div>
@@ -4961,7 +4970,13 @@ function renderBarcodeLabelsModal() {
         </div>
       </div>` : ''}
       <div class="no-print" style="padding:14px;">
-        <input id="bl-search" class="input" placeholder="ابحث بالاسم، الرقم، أو الباركود..." value="${escapeHtml(state.labelSearchQuery)}" style="margin-bottom:10px;" />
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <input id="bl-search" class="input" placeholder="ابحث بالاسم، الرقم، أو الباركود..." value="${escapeHtml(state.labelSearchQuery)}" style="flex:1;" />
+          <select id="bl-category-select" class="input" style="max-width:180px;">
+            <option value="">اختر فئة للتحديد الجماعي...</option>
+            ${[...new Set(state.items.map(it => it.category).filter(Boolean))].map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
+          </select>
+        </div>
         <div style="max-height:340px;overflow-y:auto;border:1px solid #A9A48C;border-radius:6px;">
           <table style="width:100%;border-collapse:collapse;">
             <thead><tr>${['','اسم الصنف','الباركود/الرقم','السعر','عدد النسخ'].map(h => `<th style="padding:6px 8px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;text-align:right;">${h}</th>`).join('')}</tr></thead>
@@ -14894,6 +14909,15 @@ function bindAppEvents() {
   if (state.showBarcodeLabels) {
     document.getElementById('bl-close').onclick = () => { state.showBarcodeLabels = false; render(); };
     document.getElementById('bl-search').oninput = (ev) => { state.labelSearchQuery = ev.target.value; render(); };
+    if (document.getElementById('bl-category-select')) {
+      document.getElementById('bl-category-select').onchange = (ev) => {
+        const cat = ev.target.value;
+        if (!cat) return;
+        state.items.filter(it => it.category === cat).forEach(it => { state.labelSelections[it.id] = state.labelSelections[it.id] || 1; });
+        showToast(`تم تحديد كل أصناف فئة "${cat}"`);
+        render();
+      };
+    }
     document.querySelectorAll('[data-label-check]').forEach(cb => {
       cb.onchange = (ev) => {
         const id = cb.dataset.labelCheck;
@@ -14918,6 +14942,9 @@ function bindAppEvents() {
           showName: document.getElementById('lf-show-name').checked,
           showPrice: document.getElementById('lf-show-price').checked,
           showCodeText: document.getElementById('lf-show-code-text').checked,
+          showLocation: document.getElementById('lf-show-location').checked,
+          showLogo: document.getElementById('lf-show-logo').checked,
+          codeType: document.getElementById('lf-code-qr').checked ? 'qr' : 'barcode',
           widthMm: Math.max(15, Number(document.getElementById('lf-width').value) || LABEL_FORMAT_DEFAULT.widthMm),
           heightMm: Math.max(10, Number(document.getElementById('lf-height').value) || LABEL_FORMAT_DEFAULT.heightMm),
         };
@@ -14933,19 +14960,25 @@ function bindAppEvents() {
         const selectedItems = Object.entries(state.labelSelections).filter(([id,qty]) => qty > 0).map(([id,qty]) => ({ item: state.items.find(it=>it.id===id), qty }));
         let labelsHtml = '';
         let barcodeJobs = [];
+        let qrJobs = [];
         let counter = 0;
         selectedItems.forEach(({item, qty}) => {
           const code = item.barcode || item.sku;
+          const locationText = [item.location1, item.location2, item.location3, item.location4].filter(Boolean).join(' / ');
           for (let i = 0; i < qty; i++) {
             counter++;
             const svgId = `label-barcode-${counter}`;
+            const canvasId = `label-qr-${counter}`;
             labelsHtml += `
             <div style="display:inline-block;width:${labelFmt.widthMm}mm;height:${labelFmt.heightMm}mm;box-sizing:border-box;padding:2mm;border:1px dashed #999;margin:1mm;text-align:center;vertical-align:top;overflow:hidden;">
+              ${labelFmt.showLogo && state.company?.logo_url ? `<img src="${escapeHtml(state.company.logo_url)}" style="height:8mm;margin-bottom:1mm;" />` : ''}
               ${labelFmt.showName ? `<div style="font-size:8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.name)}</div>` : ''}
-              <svg id="${svgId}"></svg>
+              ${labelFmt.codeType === 'qr' ? `<canvas id="${canvasId}"></canvas>` : `<svg id="${svgId}"></svg>`}
               ${labelFmt.showPrice ? `<div style="font-size:9px;font-weight:700;">${fmt(item.price)} ﷼</div>` : ''}
+              ${labelFmt.showLocation && locationText ? `<div style="font-size:7px;color:#5F5E5A;">📍 ${escapeHtml(locationText)}</div>` : ''}
             </div>`;
-            barcodeJobs.push({ svgId, code });
+            if (labelFmt.codeType === 'qr') qrJobs.push({ canvasId, code });
+            else barcodeJobs.push({ svgId, code });
           }
         });
         let printHost = document.getElementById('bl-print-host');
@@ -14958,7 +14991,14 @@ function bindAppEvents() {
         barcodeJobs.forEach(({svgId, code}) => {
           try { JsBarcode(`#${svgId}`, code, { width:1.2, height:labelFmt.heightMm*2, fontSize:9, margin:1, displayValue: labelFmt.showCodeText }); } catch(e) {}
         });
-        setTimeout(() => { window.print(); }, 250);
+        const qrSizePx = Math.round(labelFmt.heightMm * 3.2);
+        Promise.all(qrJobs.map(({canvasId, code}) => {
+          const el = document.getElementById(canvasId);
+          return el ? QRCode.toCanvas(el, code, { width: qrSizePx, margin: 1 }).catch(() => {}) : Promise.resolve();
+        })).then(() => {
+          setTimeout(() => { window.print(); }, 150);
+        });
+        if (qrJobs.length === 0) setTimeout(() => { window.print(); }, 250);
       };
     }
   }
