@@ -9689,6 +9689,38 @@ function showToast(message, type) {
 const _nativeAlert = window.alert.bind(window);
 window.alert = function(message) { showToast(String(message)); };
 
+// نقحرة صوتية للأسماء العربية (عميل/مورد) — تحويل حروف بدون إنترنت، للأسماء والأعلام فقط
+const ARABIC_TRANSLITERATION_MAP = {
+  'ا':'a','أ':'a','إ':'i','آ':'aa','ب':'b','ت':'t','ث':'th','ج':'j','ح':'h','خ':'kh',
+  'د':'d','ذ':'th','ر':'r','ز':'z','س':'s','ش':'sh','ص':'s','ض':'d','ط':'t','ظ':'z',
+  'ع':'a','غ':'gh','ف':'f','ق':'q','ك':'k','ل':'l','م':'m','ن':'n','ه':'h','و':'w',
+  'ي':'y','ى':'a','ة':'a','ء':'','ؤ':'o','ئ':'e','ّ':'','ً':'','ٌ':'','ٍ':'','َ':'','ُ':'','ِ':'','ْ':'',
+};
+function transliterateArabicName(text) {
+  if (!text) return '';
+  let result = '';
+  for (const ch of text) {
+    if (ARABIC_TRANSLITERATION_MAP.hasOwnProperty(ch)) result += ARABIC_TRANSLITERATION_MAP[ch];
+    else result += ch; // نُبقي المسافات، الأرقام، الحروف الإنجليزية كما هي
+  }
+  // نكبّر أول حرف كل كلمة (شكل أسماء أعلام مقبول)
+  return result.replace(/\s+/g, ' ').trim().split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1) : '').join(' ');
+}
+
+// ترجمة معنى حقيقية للأصناف — عبر خدمة ترجمة مجانية بدون مفتاح API (تحتاج إنترنت)
+async function translateToEnglish(text) {
+  if (!text || !text.trim()) return '';
+  try {
+    const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=ar&tl=en&dt=t&q=${encodeURIComponent(text)}`);
+    if (!res.ok) throw new Error('فشل الاتصال بخدمة الترجمة');
+    const data = await res.json();
+    return data[0].map(part => part[0]).join('');
+  } catch (e) {
+    console.error('فشلت الترجمة التلقائية:', e);
+    return null; // نرجع null عشان الواجهة تعرف إن الترجمة فشلت وما تمسح شي موجود
+  }
+}
+
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -12574,6 +12606,14 @@ function bindAppEvents() {
     document.getElementById('party-cancel').onclick = () => { state.showPartyForm = false; render(); };
     document.getElementById('party-exit').onclick = () => { state.showPartyForm = false; render(); };
     document.getElementById('party-print').onclick = () => { window.print(); };
+    if (document.getElementById('p-name')) {
+      document.getElementById('p-name').onblur = (ev) => {
+        const enField = document.getElementById('p-name_en');
+        if (enField && !enField.value.trim() && ev.target.value.trim()) {
+          enField.value = transliterateArabicName(ev.target.value.trim());
+        }
+      };
+    }
     if (state.editingPartyId) {
       document.getElementById('party-next').onclick = () => {
         const list = filteredParties();
@@ -15797,6 +15837,22 @@ function bindAppEvents() {
     document.getElementById('form-cancel').onclick = () => { state.showForm = false; render(); };
     document.getElementById('form-exit').onclick = () => { state.showForm = false; render(); };
     document.getElementById('form-print').onclick = () => { window.print(); };
+    if (document.getElementById('f-name')) {
+      document.getElementById('f-name').onblur = async (ev) => {
+        const enField = document.getElementById('f-name_en');
+        const arabicName = ev.target.value.trim();
+        if (!enField || enField.value.trim() || !arabicName) return;
+        enField.placeholder = 'جاري الترجمة التلقائية...';
+        const translated = await translateToEnglish(arabicName);
+        const stillEmpty = enField && !enField.value.trim();
+        if (translated && stillEmpty) {
+          enField.value = translated;
+          enField.placeholder = '';
+        } else if (stillEmpty) {
+          enField.placeholder = 'تعذّرت الترجمة التلقائية — اكتبه يدوياً';
+        }
+      };
+    }
     if (state.editingId) {
       document.getElementById('form-next').onclick = () => {
         const idx = state.items.findIndex(it => it.id === state.editingId);
