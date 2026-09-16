@@ -31,7 +31,7 @@
   [data-open-item], [data-open-pr], [data-open-purchase], [data-open-pv], [data-open-quote], [data-open-rep], [data-open-rv], [data-open-sales], [data-open-sc], [data-open-sr], [data-open-tr], [data-open-wh], [data-pick-item] { transition: background-color 0.15s ease; }
   [data-open-item]:hover, [data-open-pr]:hover, [data-open-purchase]:hover, [data-open-pv]:hover, [data-open-quote]:hover, [data-open-rep]:hover, [data-open-rv]:hover, [data-open-sales]:hover, [data-open-sc]:hover, [data-open-sr]:hover, [data-open-tr]:hover, [data-open-wh]:hover, [data-pick-item]:hover { background-color: #DCEBFB !important; }
   .panel { background:#F4F5F7; padding:22px; flex:1; display:flex; flex-direction:column; }
-  .input { border:1px solid #C7C4B4; background:#fff; border-radius:6px; padding:8px 10px; font-size:14px; width:100%; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+  .input { border:1px solid #D8D5C8; background:#fff; border-radius:8px; padding:9px 12px; font-size:14px; width:100%; transition: border-color 0.15s ease, box-shadow 0.15s ease; box-shadow: 0 1px 2px rgba(27,51,82,0.04); }
   .input:focus { border-color:#2C4A6E; box-shadow: 0 0 0 3px rgba(44,74,110,0.12); }
   .input.err { border-color:#C0392B; }
   .btn { display:flex; flex-direction:row; align-items:center; justify-content:center; gap:6px; background:linear-gradient(180deg,#F9F7F1,#E4E0D2); border:1px solid #B8B3A0; border-radius:10px; padding:0 16px; height:38px; cursor:pointer; min-width:58px; font-size:12px; color:#3A3826; transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.07); white-space:nowrap; }
@@ -587,14 +587,14 @@ const TRANSLATIONS = {
     mj_date: 'تاريخ السند', mj_desc: 'بيان السند (عام)', mj_row: 'ر.م', mj_account: 'رقم / اسم الحساب',
     mj_line_desc: 'البيان', mj_ref: 'رقم المرجع', mj_add_line: '+ إضافة سطر', mj_sum_debit: 'مجموع مدين',
     mj_sum_credit: 'مجموع دائن', mj_balanced: '✓ متوازن', mj_diff: 'الفرق', mj_save: 'حفظ واعتماد', mj_new_voucher: 'سند جديد',
-    is_title: 'قائمة الدخل (الأرباح والخسائر)', is_from: 'من تاريخ', is_to: 'إلى تاريخ',
+    is_title: 'قائمة الدخل', is_from: 'من تاريخ', is_to: 'إلى تاريخ',
     is_revenues: 'الإيرادات', is_expenses: 'المصروفات', is_net_profit: 'صافي الربح', is_net_loss: 'صافي الخسارة',
     is_no_data: 'اضغط "عرض" لحساب قائمة الدخل', is_no_revenue: 'لا توجد إيرادات بالفترة', is_no_expense: 'لا توجد مصروفات بالفترة',
     bs_title: 'قائمة المركز المالي (الميزانية)', bs_as_of: 'كما بتاريخ', bs_assets: 'الأصول', bs_liabilities: 'الالتزامات',
     bs_equity: 'حقوق الملكية', bs_total_assets: 'إجمالي الأصول', bs_total_liab: 'إجمالي الالتزامات', bs_total_equity: 'إجمالي حقوق الملكية',
     bs_balanced: '✓ الميزانية متوازنة (الأصول = الالتزامات + حقوق الملكية)', bs_unbalanced: '⚠ الميزانية غير متوازنة — راجع القيود',
     bs_no_data: 'اضغط "عرض" لحساب الميزانية',
-    is_full_title: 'قائمة الدخل (حساب المتاجرة والأرباح والخسائر)', is_detail_view: 'عرض تفصيلي (كل حساب لحاله)',
+    is_full_title: 'قائمة الدخل', is_detail_view: 'عرض تفصيلي (كل حساب لحاله)',
     is_period_from: 'عن الفترة من', is_period_to: 'إلى', is_beginning: 'البداية', is_today: 'اليوم',
     is_trading_section: 'قسم المتاجرة', is_net_sales: 'صافي المبيعات', is_cogs: 'تكلفة البضاعة المباعة',
     is_gross_profit: 'مجمل الربح', is_opex_section: 'المصروفات التشغيلية والإدارية', is_no_opex: 'لا توجد مصروفات تشغيلية بالفترة',
@@ -714,14 +714,14 @@ const TRANSLATIONS = {
     mj_date: 'Voucher Date', mj_desc: 'Voucher Description (general)', mj_row: 'No.', mj_account: 'Account No. / Name',
     mj_line_desc: 'Description', mj_ref: 'Reference No.', mj_add_line: '+ Add Line', mj_sum_debit: 'Total Debit',
     mj_sum_credit: 'Total Credit', mj_balanced: '✓ Balanced', mj_diff: 'Difference', mj_save: 'Save & Post', mj_new_voucher: 'New Voucher',
-    is_title: 'Income Statement (Profit & Loss)', is_from: 'From Date', is_to: 'To Date',
+    is_title: 'Income Statement', is_from: 'From Date', is_to: 'To Date',
     is_revenues: 'Revenues', is_expenses: 'Expenses', is_net_profit: 'Net Profit', is_net_loss: 'Net Loss',
     is_no_data: 'Click "View" to calculate the income statement', is_no_revenue: 'No revenue for this period', is_no_expense: 'No expenses for this period',
     bs_title: 'Balance Sheet', bs_as_of: 'As Of', bs_assets: 'Assets', bs_liabilities: 'Liabilities',
     bs_equity: 'Equity', bs_total_assets: 'Total Assets', bs_total_liab: 'Total Liabilities', bs_total_equity: 'Total Equity',
     bs_balanced: '✓ Balance sheet is balanced (Assets = Liabilities + Equity)', bs_unbalanced: '⚠ Balance sheet is unbalanced — review entries',
     bs_no_data: 'Click "View" to calculate the balance sheet',
-    is_full_title: 'Income Statement (Trading, Profit & Loss)', is_detail_view: 'Detailed view (per account)',
+    is_full_title: 'Income Statement', is_detail_view: 'Detailed view (per account)',
     is_period_from: 'For the period from', is_period_to: 'to', is_beginning: 'Beginning', is_today: 'Today',
     is_trading_section: 'Trading Section', is_net_sales: 'Net Sales', is_cogs: 'Cost of Goods Sold',
     is_gross_profit: 'Gross Profit', is_opex_section: 'Operating & Administrative Expenses', is_no_opex: 'No operating expenses for this period',
@@ -951,7 +951,7 @@ function filteredParties() {
 
 const emptyPartyForm = () => ({
   party_type: 'customer', name:'', name_en:'', rep_number:'', account_number:'',
-  code:'', phone:'', mobile:'', fax:'', email:'', address:'',
+  code:'', phone:'', mobile:'', fax:'', email:'', address:'', documents: [],
   manager_name:'', tax_number:'', commercial_register:'', shipper_name:'', shipping_address:'',
   last_transaction_date:'', transaction_type:'',
   building_number:'', unit_number:'', street_name:'', district_name:'', city_name:'', postal_code:'', additional_number:'', country:'المملكة العربية السعودية',
@@ -981,7 +981,7 @@ function filteredPurchases() {
 }
 
 function newPurchaseForm() {
-  return { invoice_number: '', invoice_type: 'نقدي', price_mode: 'قبل الضريبة', default_tax: '15', no_tax: false, supplier_id: '', walkin_supplier_name: '', supplier_ref: '', order_number: '', warehouse_id: defaultWarehouseId(), invoice_date: new Date().toISOString().slice(0,10), discount: '0', paid_amount: '0', notes: '', lines: [], approved: false, currency: 'ريال سعودي', exchange_rate: '1' };
+  return { invoice_number: '', invoice_type: 'نقدي', price_mode: 'قبل الضريبة', default_tax: '15', no_tax: false, supplier_id: '', walkin_supplier_name: '', supplier_ref: '', order_number: '', warehouse_id: defaultWarehouseId(), invoice_date: new Date().toISOString().slice(0,10), discount: '0', paid_amount: '0', notes: '', lines: [], approved: false, currency: 'ريال سعودي', exchange_rate: '1', additional_expenses: [] };
 }
 
 async function openPurchaseById(id) {
@@ -993,7 +993,7 @@ async function openPurchaseById(id) {
     supplier_id: inv.supplier_id, walkin_supplier_name: inv.walkin_supplier_name || '',
     supplier_ref: inv.supplier_ref || '', order_number: inv.order_number || '', warehouse_id: inv.warehouse_id || defaultWarehouseId(), invoice_date: inv.invoice_date,
     discount: String(inv.discount || 0), paid_amount: String(inv.paid_amount || 0), notes: inv.notes || '',
-    approved: !!inv.approved,
+    approved: !!inv.approved, additional_expenses: Array.isArray(inv.additional_expenses) ? inv.additional_expenses : [],
     lines: (lineRows || []).map(l => ({
       item_id: l.item_id, item_name: l.items?.name || '', sku: l.items?.sku || '', unit: l.items?.unit || '',
       quantity: Number(l.quantity), unit_cost: Number(l.unit_cost), tax_percent: Number(l.tax_percent || 15),
@@ -2117,7 +2117,7 @@ const SUBMENUS = {
     { label: 'كشف حساب', target: '__account_statement__' },
     { label: 'ميزان المراجعة', target: '__trial_balance__' },
     { divider: true },
-    { label: 'قائمة الدخل (الأرباح والخسائر)', target: '__income_statement__' },
+    { label: 'قائمة الدخل', target: '__income_statement__' },
     { label: 'قائمة المركز المالي (الميزانية)', target: '__balance_sheet__' },
     { divider: true },
     { label: 'الأصول الثابتة والإهلاك', target: '__fixed_assets__' },
@@ -2338,8 +2338,34 @@ function renderPartiesSection() {
       ${state.showPartyForm ? renderPartyFormModal() : ''}`;
 }
 
+// خريطة كلمات مفتاحية لاختيار أيقونة مناسبة تلقائياً حسب اسم الحقل (بدون ما نغيّر كل استدعاء بالنظام)
+const FIELD_ICON_MAP = [
+  { keywords:['جوال','هاتف','موبايل','فاكس'], icon:'ti-phone' },
+  { keywords:['بريد','إيميل','ايميل'], icon:'ti-mail' },
+  { keywords:['تاريخ'], icon:'ti-calendar' },
+  { keywords:['عنوان'], icon:'ti-map-pin' },
+  { keywords:['ضريبي','ضريبة','سجل تجاري'], icon:'ti-receipt' },
+  { keywords:['ملاحظ'], icon:'ti-note' },
+  { keywords:['اسم'], icon:'ti-user' },
+  { keywords:['رقم الحساب','آيبان','iban'], icon:'ti-building-bank' },
+  { keywords:['رابط','موقع'], icon:'ti-link' },
+];
+function getFieldIcon(label) {
+  const found = FIELD_ICON_MAP.find(m => m.keywords.some(k => label.includes(k)));
+  return found ? found.icon : null;
+}
+// عنوان قسم فرعي حديث (أيقونة + خط فاصل ناعم) — يُستخدم داخل نماذج الإدخال الطويلة
+function sectionHeader(text, icon) {
+  return `<div style="grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#2C4A6E;border-top:1px solid #E4E2DA;margin-top:6px;padding-top:10px;">
+    <i class="ti ${icon}" style="font-size:13px;"></i>${text}
+  </div>`;
+}
 function partyField(label, inputHtml) {
-  return `<div style="display:flex;align-items:center;gap:8px;"><label style="font-size:12.5px;color:#3A3826;min-width:100px;">${label}</label><div style="flex:1;">${inputHtml}</div></div>`;
+  const icon = getFieldIcon(label);
+  return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+    <label style="font-size:12.5px;color:#3A3826;min-width:100px;display:flex;align-items:center;gap:5px;justify-content:flex-end;">${icon ? `<i class="ti ${icon}" style="font-size:13px;color:#8B8A7A;"></i>` : ''}${label}</label>
+    <div style="flex:1;">${inputHtml}</div>
+  </div>`;
 }
 
 function renderPartyFormModal() {
@@ -2372,7 +2398,7 @@ function renderPartyFormModal() {
       </div>
 
       <div class="no-print" style="display:flex;gap:2px;padding:10px 16px 0;border-bottom:1px solid #A9A48C;flex-wrap:wrap;margin-top:8px;">
-        ${tabs.map(t => `<button data-party-tab="${t}" style="padding:6px 16px;font-size:12.5px;cursor:pointer;background:${tab===t?'#E8E4DA':'#DDD8C4'};border:1px solid #A9A48C;border-bottom:${tab===t?'1px solid #E8E4DA':'1px solid #A9A48C'};border-radius:4px 4px 0 0;margin-bottom:-1px;font-weight:${tab===t?'500':'400'};">${t}</button>`).join('')}
+        ${tabs.map(t => `<button data-party-tab="${t}" style="padding:8px 18px;font-size:12.5px;cursor:pointer;background:${tab===t?'linear-gradient(135deg,#2C4A6E,#3D6389)':'#F4F5F7'};color:${tab===t?'#fff':'#5F5E5A'};border:1px solid ${tab===t?'transparent':'#E4E2DA'};border-radius:8px 8px 0 0;margin-bottom:-1px;font-weight:${tab===t?'600':'400'};box-shadow:${tab===t?'0 -2px 8px rgba(27,51,82,0.18)':'none'};transition:all 0.15s ease;">${t}</button>`).join('')}
       </div>
       <div style="padding:16px;min-height:220px;">
         ${renderPartyTabContent()}
@@ -2394,23 +2420,23 @@ function renderPartyTabContent() {
   const tab = state.partyActiveTab || 'معلومات عامة';
   if (tab === 'معلومات عامة') {
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:#5F5E5A;">معلومات الاتصال</div>
+      ${sectionHeader('معلومات الاتصال', 'ti-address-book')}
       ${partyField('المدير المسؤول', `<input id="p-manager_name" class="input" value="${escapeHtml(f.manager_name)}" />`)}
       ${partyField('رقم الجوال', `<input id="p-mobile" class="input" value="${escapeHtml(f.mobile)}" dir="ltr" />`)}
       ${partyField('رقم الهاتف', `<input id="p-phone" class="input" value="${escapeHtml(f.phone)}" dir="ltr" />`)}
       ${partyField('رقم الفاكس', `<input id="p-fax" class="input" value="${escapeHtml(f.fax)}" dir="ltr" />`)}
       ${partyField('البريد الإلكتروني', `<input id="p-email" class="input" value="${escapeHtml(f.email)}" dir="ltr" />`)}
 
-      <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:#5F5E5A;border-top:1px solid #DEDACB;margin-top:4px;padding-top:8px;">معلومات قانونية</div>
+      ${sectionHeader('معلومات قانونية', 'ti-file-certificate')}
       ${partyField('الرقم الضريبي', `<input id="p-tax_number" class="input" value="${escapeHtml(f.tax_number)}" />`)}
       ${partyField('السجل التجاري', `<input id="p-commercial_register" class="input" value="${escapeHtml(f.commercial_register)}" />`)}
 
-      <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:#5F5E5A;border-top:1px solid #DEDACB;margin-top:4px;padding-top:8px;">العنوان والشحن</div>
+      ${sectionHeader('العنوان والشحن', 'ti-truck-delivery')}
       <div style="grid-column:1/-1;">${partyField('العنوان', `<input id="p-address" class="input" value="${escapeHtml(f.address)}" />`)}</div>
       ${partyField('اسم الشاحن', `<input id="p-shipper_name" class="input" value="${escapeHtml(f.shipper_name)}" />`)}
       <div style="grid-column:1/-1;">${partyField('عنوان الشحن', `<input id="p-shipping_address" class="input" value="${escapeHtml(f.shipping_address)}" />`)}</div>
 
-      <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:#5F5E5A;border-top:1px solid #DEDACB;margin-top:4px;padding-top:8px;">آخر حركة</div>
+      ${sectionHeader('آخر حركة', 'ti-history')}
       ${partyField('آخر تاريخ حركة', `<input id="p-last_transaction_date" type="date" class="input" value="${escapeHtml(f.last_transaction_date)}" />`)}
       ${partyField('نوع الحركة', `<input id="p-transaction_type" class="input" value="${escapeHtml(f.transaction_type)}" />`)}
 
@@ -2449,6 +2475,25 @@ function renderPartyTabContent() {
       ${partyField('الرصيد الافتتاحي', `<input id="p-opening_balance" class="input" value="${escapeHtml(f.opening_balance)}" />`)}
       ${partyField('تاريخ الرصيد الافتتاحي', `<input id="p-opening_balance_date" type="date" class="input" value="${escapeHtml(f.opening_balance_date)}" />`)}
       ${partyField('الرصيد الحالي', `<input id="p-balance" class="input" value="${escapeHtml(f.balance)}" />`)}
+    </div>`;
+  }
+  if (tab === 'المستندات') {
+    const docs = f.documents || [];
+    return `
+    <div>
+      <div style="font-size:11.5px;color:#5F5E5A;margin-bottom:12px;">أضف روابط لمستندات هذا العميل/المورد (صورة الهوية، السجل التجاري، عقد...) — تُخزَّن كرابط (مثلاً من Google Drive)، مو رفع ملف مباشر.</div>
+      <div style="border:1px solid #E4E2DA;border-radius:8px;overflow:hidden;margin-bottom:12px;">
+        <div style="display:grid;grid-template-columns:1fr 1.4fr 0.3fr;background:#F4F5F7;padding:7px 10px;font-size:11px;color:#5F5E5A;">
+          <div>اسم المستند</div><div>الرابط</div><div></div>
+        </div>
+        ${docs.map((doc, idx) => `
+          <div style="display:grid;grid-template-columns:1fr 1.4fr 0.3fr;padding:6px 10px;border-top:1px solid #F0EEE5;align-items:center;gap:6px;">
+            <input data-doc-name="${idx}" class="input" style="padding:5px 8px;" value="${escapeHtml(doc.name||'')}" placeholder="مثلاً: صورة الهوية" />
+            <input data-doc-url="${idx}" class="input" style="padding:5px 8px;" value="${escapeHtml(doc.url||'')}" dir="ltr" placeholder="https://..." />
+            <button data-doc-remove="${idx}" style="border:1px solid #F5D5D0;background:#FCEBEB;color:#C0392B;border-radius:6px;width:26px;height:26px;cursor:pointer;">✕</button>
+          </div>`).join('') || `<div style="padding:14px;text-align:center;font-size:11.5px;color:#8B8A7A;">ما فيه مستندات مضافة بعد</div>`}
+      </div>
+      <button id="p-doc-add" class="btn" style="padding:7px 14px;font-size:12px;">+ إضافة مستند</button>
     </div>`;
   }
   return `<div style="text-align:center;padding:40px 16px;color:#5F5E5A;">
@@ -2903,11 +2948,37 @@ function renderPurchaseFormModal() {
       </div>
 
       <div class="no-print" style="display:flex;gap:2px;padding:10px 16px 0;border-bottom:1px solid #A9A48C;flex-wrap:wrap;margin-top:8px;">
-        ${['معلومات الفاتورة','معلومات أضافية','المصاريف الاضافية'].map(t2 => `<button data-purchase-tab="${t2}" style="padding:6px 16px;font-size:12.5px;cursor:pointer;background:${ptab===t2?'#E8E4DA':'#DDD8C4'};border:1px solid #A9A48C;border-bottom:${ptab===t2?'1px solid #E8E4DA':'1px solid #A9A48C'};border-radius:4px 4px 0 0;margin-bottom:-1px;font-weight:${ptab===t2?'500':'400'};">${t2}</button>`).join('')}
+        ${['معلومات الفاتورة','معلومات أضافية','المصاريف الاضافية'].map(t2 => `<button data-purchase-tab="${t2}" style="padding:8px 18px;font-size:12.5px;cursor:pointer;background:${ptab===t2?'linear-gradient(135deg,#2C4A6E,#3D6389)':'#F4F5F7'};color:${ptab===t2?'#fff':'#5F5E5A'};border:1px solid ${ptab===t2?'transparent':'#E4E2DA'};border-radius:8px 8px 0 0;margin-bottom:-1px;font-weight:${ptab===t2?'600':'400'};box-shadow:${ptab===t2?'0 -2px 8px rgba(27,51,82,0.18)':'none'};transition:all 0.15s ease;">${t2}</button>`).join('')}
       </div>
 
       <div style="padding:14px 16px;">
-        ${ptab !== 'معلومات الفاتورة' ? `<div style="text-align:center;padding:40px 16px;color:#5F5E5A;font-size:13px;">تبويب "${ptab}" قيد الإنشاء</div>` : `
+        ${ptab === 'المصاريف الاضافية' ? `
+        <div class="no-print">
+          <div style="font-size:12px;color:#5F5E5A;margin-bottom:12px;">مصاريف إضافية على هذي الفاتورة (شحن، جمارك، تخليص...) — تُضاف لتكلفة الأصناف تلقائياً بالتناسب مع قيمة كل صنف بالفاتورة.</div>
+          <div style="border:1px solid #E4E2DA;border-radius:8px;overflow:hidden;margin-bottom:12px;">
+            <div style="display:grid;grid-template-columns:1fr 0.6fr 0.3fr;background:#F4F5F7;padding:7px 10px;font-size:11px;color:#5F5E5A;">
+              <div>الوصف</div><div>المبلغ</div><div></div>
+            </div>
+            ${f.additional_expenses.map((exp, idx) => `
+              <div style="display:grid;grid-template-columns:1fr 0.6fr 0.3fr;padding:6px 10px;border-top:1px solid #F0EEE5;align-items:center;gap:6px;">
+                <input data-exp-desc="${idx}" class="input" style="padding:5px 8px;" value="${escapeHtml(exp.description||'')}" placeholder="مثلاً: شحن بحري" />
+                <input data-exp-amount="${idx}" class="input mono" style="padding:5px 8px;" value="${exp.amount||0}" />
+                <button data-exp-remove="${idx}" style="border:1px solid #F5D5D0;background:#FCEBEB;color:#C0392B;border-radius:6px;width:26px;height:26px;cursor:pointer;">✕</button>
+              </div>`).join('') || `<div style="padding:14px;text-align:center;font-size:11.5px;color:#8B8A7A;">ما فيه مصاريف مضافة بعد</div>`}
+          </div>
+          <button id="pi-exp-add" class="btn" style="padding:7px 14px;font-size:12px;">+ إضافة مصروف</button>
+          <div style="margin-top:14px;background:#F4F5F7;border-radius:8px;padding:10px 14px;font-size:12.5px;display:flex;justify-content:space-between;">
+            <span>إجمالي المصاريف الإضافية</span><span class="mono" style="font-weight:700;">${fmt(f.additional_expenses.reduce((s,e)=>s+Number(e.amount||0),0))}</span>
+          </div>
+        </div>
+        ` : ptab === 'معلومات أضافية' ? `
+        <div class="no-print" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          ${partyField('طريقة الشحن', `<input id="pi-shipping-method" class="input" value="${escapeHtml(f.shipping_method||'')}" placeholder="بري / بحري / جوي" />`)}
+          ${partyField('رقم التتبع', `<input id="pi-tracking-number" class="input" value="${escapeHtml(f.tracking_number||'')}" dir="ltr" />`)}
+          ${partyField('تاريخ التسليم المتوقع', `<input id="pi-expected-delivery" type="date" class="input" value="${escapeHtml(f.expected_delivery||'')}" />`)}
+          ${partyField('رقم البيان الجمركي', `<input id="pi-customs-number" class="input" value="${escapeHtml(f.customs_number||'')}" dir="ltr" />`)}
+        </div>
+        ` : `
         ${f.approved ? '' : `
         <div class="no-print" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;padding:10px;background:#F4F1EA;border:1px solid #A9A48C;border-radius:4px;flex-wrap:wrap;">
           <div style="display:flex;align-items:center;gap:8px;">
@@ -2977,11 +3048,11 @@ function renderPurchaseFormModal() {
             <div style="display:flex;justify-content:space-between;font-size:13.5px;font-weight:500;color:${tot.due>0?'#C0392B':'#0F6E56'};"><span>${t('totals_due')}</span><span class="mono">${fmt(tot.due)}</span></div>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;background:#F4F1EA;border:1px solid #A9A48C;border-radius:4px;padding:10px;">
-            <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">مصاريف إضافية (قيد الإنشاء)</div>
+            <div style="font-size:11px;color:#5F5E5A;margin-bottom:4px;">مصاريف إضافية</div>
             <div style="display:flex;justify-content:space-between;font-size:12.5px;"><span>المجموع/البيع</span><span class="mono">${fmt(tot.grandTotal)}</span></div>
-            <div style="display:flex;justify-content:space-between;font-size:12.5px;"><span>أجمالي المصاريف</span><span class="mono">0.00</span></div>
-            <div style="display:flex;justify-content:space-between;font-size:12.5px;"><span>م/ض المصاريف</span><span class="mono">0.00</span></div>
-            <div style="display:flex;justify-content:space-between;font-size:13.5px;font-weight:500;border-top:1px solid #A9A48C;padding-top:6px;"><span>المجموع/مصاريف</span><span class="mono">${fmt(tot.grandTotal)}</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;"><span>أجمالي المصاريف</span><span class="mono">${fmt(f.additional_expenses.reduce((s,e)=>s+Number(e.amount||0),0))}</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;"><span>م/ض المصاريف</span><span class="mono">${f.lines.length ? fmt(f.additional_expenses.reduce((s,e)=>s+Number(e.amount||0),0) / f.lines.length) : '0.00'}</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:13.5px;font-weight:500;border-top:1px solid #A9A48C;padding-top:6px;"><span>المجموع/مصاريف</span><span class="mono">${fmt(tot.grandTotal + f.additional_expenses.reduce((s,e)=>s+Number(e.amount||0),0))}</span></div>
           </div>
         </div>
 
@@ -3171,7 +3242,7 @@ const REPORTS_HUB_CATEGORIES = [
   { key:'accounting', label:'المحاسبة', icon:'ti-calculator', reports: [
     { label:'الأستاذ العام', target:'__general_ledger__', desc:'كل الحركات المحاسبية مرتّبة حسب الحساب' },
     { label:'ميزان المراجعة', target:'__trial_balance__', desc:'أرصدة كل الحسابات بلمحة واحدة' },
-    { label:'قائمة الدخل (الأرباح والخسائر)', target:'__income_statement__', desc:'الإيرادات والمصاريف وصافي الربح لفترة معيّنة' },
+    { label:'قائمة الدخل', target:'__income_statement__', desc:'الإيرادات والمصاريف وصافي الربح لفترة معيّنة' },
     { label:'قائمة المركز المالي (الميزانية)', target:'__balance_sheet__', desc:'الأصول والخصوم وحقوق الملكية بتاريخ معيّن' },
     { label:'كشف الإقرار الضريبي', target:'__vat_report__', desc:'ضريبة المخرجات والمدخلات لتقديمها للهيئة' },
     { label:'كشف الأرباح والخسائر', target:'__profit_report__', desc:'تفصيل الربح لكل فاتورة بيع' },
@@ -6149,7 +6220,7 @@ function renderIncomeStatementModal() {
           <div style="text-align:center;font-weight:700;font-size:14px;margin:8px 0;">${escapeHtml(state.company?.name_ar||'')} — ${t('is_full_title')}</div>
           <div style="text-align:center;font-size:11px;color:#5F5E5A;margin-bottom:10px;">${t('is_period_from')} ${escapeHtml(state.incomeStatementFrom||t('is_beginning'))} ${t('is_period_to')} ${escapeHtml(state.incomeStatementTo||t('is_today'))}</div>
         </div>
-        ${d ? renderIncomeStatementOdooStyle(d) : `<div style="text-align:center;padding:24px;color:#6E6D5F;font-size:12.5px;">${t('is_no_data')}</div>`}
+        ${d ? renderIncomeStatementDebitCreditTable(d) : `<div style="text-align:center;padding:24px;color:#6E6D5F;font-size:12.5px;">${t('is_no_data')}</div>`}
         ${d ? `
         <div style="display:flex;justify-content:space-between;margin-top:40px;padding:0 10px;">
           <div style="text-align:center;width:45%;">
@@ -6167,84 +6238,55 @@ function renderIncomeStatementModal() {
   </div>`;
 }
 
-function renderIncomeStatementOdooStyle(d) {
-  const totalRevenue = d.netSales + d.totalOtherRevenue;
-  const pct = (v) => totalRevenue > 0 ? Math.round(Math.abs(v)/totalRevenue*100) + '%' : '—';
-  const sectionHeader = (icon, label, amount, bg, color) => `
-    <div style="display:flex;align-items:center;padding:10px 14px;background:${bg};font-weight:700;font-size:13px;border-top:1px solid #DEDACB;">
-      <i class="ti ${icon}" style="font-size:16px;margin-left:8px;color:${color};"></i>
-      <span style="flex:1;color:${color};">${label}</span><span style="width:100px;text-align:left;color:${color};" class="mono">${fmt(amount)}</span><span style="width:50px;text-align:left;color:${color};font-size:11px;">${pct(amount)}</span>
-    </div>`;
-  const detailRow = (label, amount) => `
-    <div style="padding:7px 14px 7px 42px;display:flex;align-items:center;font-size:12px;border-bottom:1px solid #EDEAE0;">
-      <span style="flex:1;color:#5F5E5A;">${escapeHtml(label)}</span><span style="width:100px;text-align:left;" class="mono">${fmt(amount)}</span><span style="width:50px;text-align:left;color:#8B8A7A;font-size:10.5px;">${pct(amount)}</span>
-    </div>`;
-  const revenueRows = [...d.salesRows, ...(d.salesReturnsRows.length ? [{name:'يُخصم: مردودات مبيعات', amount:-d.salesReturnsRows.reduce((s,r)=>s+r.amount,0)}] : []), ...d.otherRevenueRows];
-  const costRows = [...d.cogsRows, ...(d.purchaseReturnsRows.length ? [{name:'يُخصم: مردودات مشتريات', amount:-d.purchaseReturnsRows.reduce((s,r)=>s+r.amount,0)}] : [])];
-  const opexRows = [...d.operatingRows, ...d.adminRows, ...d.otherExpenseRows];
-  const totalOpex = d.totalOperating + d.totalOtherExpense;
+// عرض جدولي: الحساب / مدين / دائن — مع إجمالي مدين، إجمالي دائن، والأرباح بالأسفل
+// عرض جدولي تقليدي: البيان على اليمين، ثم دائن، ثم مدين — كل حساب بصف واحد بعمود مبلغه الصحيح فقط
+function renderIncomeStatementDebitCreditTable(d) {
+  const debitRows = [
+    ...d.cogsRows.map(r => ({ name: r.name, amount: r.amount })),
+    ...d.operatingRows.map(r => ({ name: r.name, amount: r.amount })),
+    ...d.adminRows.map(r => ({ name: r.name, amount: r.amount })),
+    ...d.otherExpenseRows.map(r => ({ name: r.name, amount: r.amount })),
+  ];
+  const creditRows = [
+    ...d.salesRows.map(r => ({ name: r.name, amount: r.amount })),
+    ...d.otherRevenueRows.map(r => ({ name: r.name, amount: r.amount })),
+  ];
+  if (d.salesReturnsRows.length) creditRows.push({ name: 'يُخصم: مردودات مبيعات', amount: -d.salesReturnsRows.reduce((s,r)=>s+r.amount,0) });
+  if (d.purchaseReturnsRows.length) debitRows.push({ name: 'يُخصم: مردودات مشتريات', amount: -d.purchaseReturnsRows.reduce((s,r)=>s+r.amount,0) });
+
+  const totalDebit = debitRows.reduce((s,r) => s + r.amount, 0);
+  const totalCredit = creditRows.reduce((s,r) => s + r.amount, 0);
+  const profit = totalCredit - totalDebit;
+  // كل حسابات الدائن أول (الإيرادات)، ثم كل حسابات المدين (المصاريف) — صف واحد لكل حساب، بعمود واحد بس مملوء
+  const allRows = [
+    ...creditRows.map(r => ({ name: r.name, debit: null, credit: r.amount })),
+    ...debitRows.map(r => ({ name: r.name, debit: r.amount, credit: null })),
+  ];
+
   return `
-  <div style="display:flex;padding:6px 14px;font-size:10px;color:#8B8A7A;">
-    <span style="flex:1;">البند</span><span style="width:100px;text-align:left;">المبلغ</span><span style="width:50px;text-align:left;">النسبة</span>
-  </div>
-  <div style="border:1px solid #DEDACB;border-radius:8px;overflow:hidden;">
-    ${sectionHeader('ti-trending-up', 'الإيرادات', totalRevenue, '#E1F5EE', '#0F6E56')}
-    ${revenueRows.map(r => detailRow(r.name, r.amount)).join('')}
-
-    ${sectionHeader('ti-package', 'تكلفة المبيعات', d.netCogs, '#FCEBEB', '#C0392B')}
-    ${costRows.map(r => detailRow(r.name, r.amount)).join('')}
-
-    <div style="display:flex;align-items:center;padding:10px 14px;font-weight:700;font-size:13px;border-top:2px solid #A9A48C;">
-      <i class="ti ti-report-money" style="font-size:16px;margin-left:8px;color:#5F5E5A;"></i>
-      <span style="flex:1;">إجمالي الربح</span><span style="width:100px;text-align:left;" class="mono">${fmt(d.grossProfit)}</span><span style="width:50px;text-align:left;color:#8B8A7A;font-size:11px;">${pct(d.grossProfit)}</span>
+  <div style="border:1px solid #1B3352;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
+    <div style="display:grid;grid-template-columns:2.2fr 1fr 1fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:12px;font-weight:600;">
+      <div style="padding:9px 12px;border-left:1px solid rgba(255,255,255,0.35);">البيان</div>
+      <div style="padding:9px 12px;text-align:center;border-left:1px solid rgba(255,255,255,0.35);">دائن</div>
+      <div style="padding:9px 12px;text-align:center;">مدين</div>
     </div>
-
-    ${opexRows.length > 0 ? `
-    ${sectionHeader('ti-receipt', 'المصاريف', totalOpex, '#FAEEDA', '#BA7517')}
-    ${opexRows.map(r => detailRow(r.name, r.amount)).join('')}` : ''}
-
-    <div style="display:flex;align-items:center;padding:14px;background:${d.netIncome>=0?'#0F6E56':'#C0392B'};font-weight:700;font-size:14px;border-top:1px solid #DEDACB;">
-      <i class="ti ${d.netIncome>=0?'ti-circle-check':'ti-alert-circle'}" style="font-size:18px;margin-left:8px;color:#fff;"></i>
-      <span style="flex:1;color:#fff;">${d.netIncome>=0?'صافي الربح':'صافي الخسارة'}</span><span style="width:100px;text-align:left;color:#fff;" class="mono">${fmt(Math.abs(d.netIncome))}</span><span style="width:50px;text-align:left;color:#fff;font-size:11px;">${pct(d.netIncome)}</span>
+    ${allRows.map((r,i) => `
+      <div style="display:grid;grid-template-columns:2.2fr 1fr 1fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12px;">
+        <div style="padding:7px 12px;border-left:1px solid #E4E2DA;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.name)}</div>
+        <div style="padding:7px 12px;text-align:center;border-left:1px solid #E4E2DA;border-bottom:1px solid #E4E2DA;" class="mono">${r.credit !== null ? fmt(r.credit) : ''}</div>
+        <div style="padding:7px 12px;text-align:center;border-bottom:1px solid #E4E2DA;" class="mono">${r.debit !== null ? fmt(r.debit) : ''}</div>
+      </div>`).join('')}
+    <div style="display:grid;grid-template-columns:2.2fr 1fr 1fr;background:#F4F1EA;font-weight:700;font-size:12.5px;border-top:2px solid #1B3352;">
+      <div style="padding:9px 12px;border-left:1px solid #1B3352;">الإجمالي</div>
+      <div style="padding:9px 12px;text-align:center;border-left:1px solid #1B3352;color:#0F6E56;" class="mono">${fmt(totalCredit)}</div>
+      <div style="padding:9px 12px;text-align:center;color:#C0392B;" class="mono">${fmt(totalDebit)}</div>
     </div>
   </div>
-  <div class="no-print" style="font-size:11px;color:#5F5E5A;margin-top:8px;">${t('is_inventory_ref')}: <b class="mono">${fmt(d.inventoryValue)}</b></div>`;
-}
-
-function renderIncomeStatementTForm(d) {
-  const totalExpenseSide = d.netCogs + d.totalOperating + d.totalOtherExpense;
-  const totalRevenueSide = d.netSales + d.totalOtherRevenue;
-  const isProfit = d.netIncome >= 0;
-  const row = (label, amount, opts) => {
-    opts = opts || {};
-    return `<div style="display:flex;justify-content:space-between;padding:${opts.bold?'7px':'5px'} 10px;font-size:${opts.bold?'12px':'11px'};${opts.bold?'font-weight:700;background:#F4F1EA;':'border-bottom:1px solid #eee;'}"><span>${label}</span><span class="mono">${fmt(amount)}</span></div>`;
-  };
-  const expenseRows = [
-    ...d.cogsRows.map(r => row(r.name, r.amount)),
-    d.purchaseReturnsRows.length ? row('يُخصم: مردودات مشتريات', -d.purchaseReturnsRows.reduce((s,r)=>s+r.amount,0)) : '',
-    ...d.operatingRows.map(r => row(r.name, r.amount)),
-    ...d.adminRows.map(r => row(r.name, r.amount)),
-    ...d.otherExpenseRows.map(r => row(r.name, r.amount)),
-  ].filter(Boolean).join('');
-  const revenueRows = [
-    ...d.salesRows.map(r => row(r.name, r.amount)),
-    d.salesReturnsRows.length ? row('يُخصم: مردودات مبيعات', -d.salesReturnsRows.reduce((s,r)=>s+r.amount,0)) : '',
-    ...d.otherRevenueRows.map(r => row(r.name, r.amount)),
-  ].filter(Boolean).join('');
-  const balancedTotal = isProfit ? totalRevenueSide : totalExpenseSide;
-  return `
-  <div style="border:2px solid #000;">
-    <div style="background:#FDF3E2;font-weight:700;font-size:12.5px;padding:8px;text-align:center;border-bottom:2px solid #000;">مدين — المصاريف</div>
-    ${expenseRows}
-    ${isProfit ? row('صافي الربح (يُرحّل لحق الملكية)', d.netIncome, { bold:true }) : ''}
-    <div style="display:flex;justify-content:space-between;padding:8px 10px;font-weight:700;font-size:12.5px;background:#1B3352;color:#fff;border-top:2px solid #000;border-bottom:4px double #000;"><span>إجمالي المصاريف</span><span class="mono">${fmt(balancedTotal)}</span></div>
-
-    <div style="background:#E1F5EE;font-weight:700;font-size:12.5px;padding:8px;text-align:center;border-bottom:2px solid #000;">دائن — الإيرادات</div>
-    ${revenueRows}
-    ${!isProfit ? row('صافي الخسارة', -d.netIncome, { bold:true }) : ''}
-    <div style="display:flex;justify-content:space-between;padding:8px 10px;font-weight:700;font-size:12.5px;background:#1B3352;color:#fff;border-top:2px solid #000;"><span>إجمالي الإيرادات</span><span class="mono">${fmt(balancedTotal)}</span></div>
-  </div>
-  <div class="no-print" style="font-size:11px;color:#5F5E5A;margin-top:8px;">${t('is_inventory_ref')}: <b class="mono">${fmt(d.inventoryValue)}</b></div>`;
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px;">
+    <div style="background:#FCEBEB;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:10.5px;color:#5F5E5A;">إجمالي مدين</div><div class="mono" style="font-size:15px;font-weight:700;color:#C0392B;">${fmt(totalDebit)}</div></div>
+    <div style="background:#E1F5EE;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:10.5px;color:#5F5E5A;">إجمالي دائن</div><div class="mono" style="font-size:15px;font-weight:700;color:#0F6E56;">${fmt(totalCredit)}</div></div>
+    <div style="background:${profit>=0?'#FFF8E1':'#FCEBEB'};border-radius:10px;padding:12px;text-align:center;"><div style="font-size:10.5px;color:#5F5E5A;">${profit>=0?'الأرباح':'الخسائر'}</div><div class="mono" style="font-size:15px;font-weight:700;color:${profit>=0?'#B7950B':'#C0392B'};">${fmt(Math.abs(profit))}</div></div>
+  </div>`;
 }
 
 function renderBalanceSheetModal() {
@@ -7892,8 +7934,8 @@ function renderFormModal() {
         ${e.sku ? `<span class="err-text" style="margin:0;">مطلوب وفريد</span>` : ''}
       </div>
       <div style="display:flex;gap:2px;padding:10px 16px 0;border-bottom:1px solid #A9A48C;flex-wrap:wrap;">
-        ${tabs.map(t => `<button data-tab="${t}" style="padding:6px 16px;font-size:12.5px;cursor:pointer;background:${state.activeTab===t?'#E8E4DA':'#DDD8C4'};border:1px solid #A9A48C;border-bottom:${state.activeTab===t?'1px solid #E8E4DA':'1px solid #A9A48C'};border-radius:4px 4px 0 0;margin-bottom:-1px;font-weight:${state.activeTab===t?'500':'400'};">${t}</button>`).join('')}
-        ${['التجميع','احصائيات','العلاقات','توافق السيارات','صور'].map(t => `<button data-tab="${t}" style="padding:6px 16px;font-size:12.5px;cursor:pointer;background:${state.activeTab===t?'#E8E4DA':'#DDD8C4'};border:1px solid #A9A48C;border-bottom:${state.activeTab===t?'1px solid #E8E4DA':'1px solid #A9A48C'};border-radius:4px 4px 0 0;margin-bottom:-1px;font-weight:${state.activeTab===t?'500':'400'};" ${state.editingId ? '' : 'disabled title="احفظ الصنف أول"'}>${t}</button>`).join('')}
+        ${tabs.map(t => `<button data-tab="${t}" style="padding:8px 18px;font-size:12.5px;cursor:pointer;background:${state.activeTab===t?'linear-gradient(135deg,#2C4A6E,#3D6389)':'#F4F5F7'};color:${state.activeTab===t?'#fff':'#5F5E5A'};border:1px solid ${state.activeTab===t?'transparent':'#E4E2DA'};border-radius:8px 8px 0 0;margin-bottom:-1px;font-weight:${state.activeTab===t?'600':'400'};box-shadow:${state.activeTab===t?'0 -2px 8px rgba(27,51,82,0.18)':'none'};transition:all 0.15s ease;">${t}</button>`).join('')}
+        ${['التجميع','احصائيات','العلاقات','توافق السيارات','صور'].map(t => `<button data-tab="${t}" style="padding:8px 18px;font-size:12.5px;cursor:pointer;background:${state.activeTab===t?'linear-gradient(135deg,#2C4A6E,#3D6389)':'#F4F5F7'};color:${state.activeTab===t?'#fff':'#5F5E5A'};border:1px solid ${state.activeTab===t?'transparent':'#E4E2DA'};border-radius:8px 8px 0 0;margin-bottom:-1px;font-weight:${state.activeTab===t?'600':'400'};box-shadow:${state.activeTab===t?'0 -2px 8px rgba(27,51,82,0.18)':'none'};transition:all 0.15s ease;" ${state.editingId ? '' : 'disabled title="احفظ الصنف أول"'}>${t}</button>`).join('')}
       </div>
       <div style="padding:18px;min-height:180px;max-height:52vh;overflow-y:auto;">
         ${renderTabContent()}
@@ -7932,13 +7974,13 @@ function renderTabContent() {
       <div style="grid-column:1/-1;">${field('اسم الصنف (إنجليزي)', `<input id="f-name_en" class="input" value="${escapeHtml(f.name_en)}" dir="ltr" />`)}</div>
       <div style="grid-column:1/-1;">${field('اسم الصنف تفصيلياً', `<textarea id="f-detailed_name" class="input" rows="2">${escapeHtml(f.detailed_name)}</textarea>`)}</div>
 
-      <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:#5F5E5A;border-top:1px solid #DEDACB;margin-top:4px;padding-top:8px;">التصنيف</div>
+      ${sectionHeader('التصنيف', 'ti-category')}
       ${field('الفئة', `<input id="f-category" class="input" value="${escapeHtml(f.category)}" />`)}
       ${field('الماركة', `<input id="f-brand" class="input" value="${escapeHtml(f.brand)}" />`)}
       ${field('الموديل', `<input id="f-model" class="input" value="${escapeHtml(f.model)}" />`)}
       ${field('النوع', `<input id="f-item_type" class="input" value="${escapeHtml(f.item_type)}" />`)}
 
-      <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:#5F5E5A;border-top:1px solid #DEDACB;margin-top:4px;padding-top:8px;">المواصفات الفنية</div>
+      ${sectionHeader('المواصفات الفنية', 'ti-settings')}
       ${field('الوحدة', `<select id="f-unit" class="input">${UNITS.map(u=>`<option ${f.unit===u?'selected':''}>${u}</option>`).join('')}</select>`)}
       ${field('المقاس', `<input id="f-size" class="input" value="${escapeHtml(f.size)}" />`)}
       ${field('الحجم', `<input id="f-volume" class="input" value="${escapeHtml(f.volume)}" />`)}
@@ -7947,7 +7989,7 @@ function renderTabContent() {
       ${field('الاستخدام', `<input id="f-usage_type" class="input" value="${escapeHtml(f.usage_type)}" />`)}
       <div style="grid-column:1/-1;">${field('المواصفات', `<input id="f-specs" class="input" value="${escapeHtml(f.specs)}" />`)}</div>
 
-      <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:#5F5E5A;border-top:1px solid #DEDACB;margin-top:4px;padding-top:8px;">الحالة والموقع بالمستودع</div>
+      ${sectionHeader('الحالة والموقع بالمستودع', 'ti-map-pin')}
       ${field('الحالة', `<select id="f-active" class="input"><option value="true" ${f.active?'selected':''}>فعال</option><option value="false" ${!f.active?'selected':''}>غير فعال</option></select>`)}
       ${field('الموقع 1', `<input id="f-location1" class="input" value="${escapeHtml(f.location1)}" />`)}
       ${field('الموقع 2', `<input id="f-location2" class="input" value="${escapeHtml(f.location2)}" />`)}
@@ -7969,7 +8011,7 @@ function renderTabContent() {
         <option value="percent_on_cost" ${f.pricing_method==='percent_on_cost'?'selected':''}>نسبة على التكلفة</option>
         <option value="amount_on_cost" ${f.pricing_method==='amount_on_cost'?'selected':''}>مبلغ على التكلفة</option>
       </select>`)}
-      <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:#5F5E5A;border-top:1px solid #DEDACB;margin-top:4px;padding-top:8px;">التكلفة</div>
+      ${sectionHeader('التكلفة', 'ti-currency-dollar')}
       ${field('التكلفة الافتتاحية', `<input id="f-opening_cost" class="input" value="${escapeHtml(f.opening_cost)}" />`)}
       ${field('التكلفة الأجنبية', `<input id="f-foreign_cost" class="input" value="${escapeHtml(f.foreign_cost)}" />`)}
       ${field('التكلفة الحالية', `<input id="f-cost" class="input ${e.cost?'err':''}" value="${escapeHtml(f.cost)}" />`)}
@@ -8399,7 +8441,7 @@ function renderDesignerPanelModal() {
         <div style="margin-top:14px;"><button id="dp-unlock-btn" class="btn primary" style="padding:8px 20px;">دخول</button></div>
       </div>` : `
       <div class="no-print" style="display:flex;gap:2px;padding:10px 16px 0;border-bottom:1px solid #A9A48C;">
-        ${tabs.map(t => `<button data-dp-tab="${t}" style="padding:6px 16px;font-size:12.5px;cursor:pointer;background:${state.designerActiveTab===t?'#E8E4DA':'#DDD8C4'};border:1px solid #A9A48C;border-bottom:${state.designerActiveTab===t?'1px solid #E8E4DA':'1px solid #A9A48C'};border-radius:4px 4px 0 0;margin-bottom:-1px;font-weight:${state.designerActiveTab===t?'500':'400'};">${t}</button>`).join('')}
+        ${tabs.map(t => `<button data-dp-tab="${t}" style="padding:8px 18px;font-size:12.5px;cursor:pointer;background:${state.designerActiveTab===t?'linear-gradient(135deg,#2C4A6E,#3D6389)':'#F4F5F7'};color:${state.designerActiveTab===t?'#fff':'#5F5E5A'};border:1px solid ${state.designerActiveTab===t?'transparent':'#E4E2DA'};border-radius:8px 8px 0 0;margin-bottom:-1px;font-weight:${state.designerActiveTab===t?'600':'400'};box-shadow:${state.designerActiveTab===t?'0 -2px 8px rgba(27,51,82,0.18)':'none'};transition:all 0.15s ease;">${t}</button>`).join('')}
       </div>
       <div style="padding:16px;">
         ${state.designerActiveTab === 'عام' ? `
@@ -9734,7 +9776,7 @@ function openPartyById(id) {
   const p = state.parties.find(x => x.id === id);
   if (!p) return;
   state.partyForm = { ...emptyPartyForm(), ...p, balance: String(p.balance ?? '0'), opening_balance: String(p.opening_balance ?? '0'),
-    last_transaction_date: p.last_transaction_date || '', opening_balance_date: p.opening_balance_date || '' };
+    last_transaction_date: p.last_transaction_date || '', opening_balance_date: p.opening_balance_date || '', documents: Array.isArray(p.documents) ? p.documents : [] };
   state.partyFormErrors = {};
   state.editingPartyId = p.id;
   state.partyActiveTab = 'معلومات عامة';
@@ -10790,6 +10832,41 @@ function bindAppEvents() {
     document.querySelectorAll('[data-purchase-tab]').forEach(btn => {
       btn.onclick = () => { state.purchaseActiveTab = btn.dataset.purchaseTab; render(); };
     });
+    if (document.getElementById('pi-exp-add')) {
+      document.getElementById('pi-exp-add').onclick = () => {
+        state.purchaseForm.additional_expenses.push({ description: '', amount: 0 });
+        render();
+      };
+    }
+    document.querySelectorAll('[data-exp-desc]').forEach(inp => {
+      inp.oninput = (ev) => {
+        const idx = parseInt(inp.dataset.expDesc, 10);
+        state.purchaseForm.additional_expenses[idx].description = ev.target.value;
+      };
+    });
+    document.querySelectorAll('[data-exp-amount]').forEach(inp => {
+      inp.oninput = (ev) => {
+        const idx = parseInt(inp.dataset.expAmount, 10);
+        state.purchaseForm.additional_expenses[idx].amount = Number(ev.target.value) || 0;
+        const pos = ev.target.selectionStart;
+        render();
+        const el = document.querySelector(`[data-exp-amount="${idx}"]`);
+        if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+      };
+    });
+    document.querySelectorAll('[data-exp-remove]').forEach(btn => {
+      btn.onclick = () => {
+        const idx = parseInt(btn.dataset.expRemove, 10);
+        state.purchaseForm.additional_expenses.splice(idx, 1);
+        render();
+      };
+    });
+    if (document.getElementById('pi-shipping-method')) {
+      document.getElementById('pi-shipping-method').oninput = (ev) => { state.purchaseForm.shipping_method = ev.target.value; };
+      document.getElementById('pi-tracking-number').oninput = (ev) => { state.purchaseForm.tracking_number = ev.target.value; };
+      document.getElementById('pi-expected-delivery').onchange = (ev) => { state.purchaseForm.expected_delivery = ev.target.value; };
+      document.getElementById('pi-customs-number').oninput = (ev) => { state.purchaseForm.customs_number = ev.target.value; };
+    }
     const bindVal = (id, key, isNum) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -10965,6 +11042,7 @@ function bindAppEvents() {
           supplier_ref: f.supplier_ref || null, order_number: f.order_number || null,
           invoice_date: f.invoice_date, discount: t.discount, paid_amount: t.paid,
           notes: f.notes || null, total: t.grandTotal, subtotal: t.subtotal, tax_total: t.taxTotal, no_tax: !!f.no_tax, warehouse_id: f.warehouse_id || null, payment_method: f.payment_method || null,
+          additional_expenses: f.additional_expenses || [],
         };
         const lineRows = f.lines.map(l => {
           const sub = l.quantity * l.unit_cost;
@@ -12562,6 +12640,34 @@ function bindAppEvents() {
     document.querySelectorAll('[data-party-tab]').forEach(btn => {
       btn.onclick = () => { readPartyFormFromDom(); state.partyActiveTab = btn.dataset.partyTab; render(); };
     });
+    if (document.getElementById('p-doc-add')) {
+      document.getElementById('p-doc-add').onclick = () => {
+        readPartyFormFromDom();
+        if (!state.partyForm.documents) state.partyForm.documents = [];
+        state.partyForm.documents.push({ name: '', url: '' });
+        render();
+      };
+    }
+    document.querySelectorAll('[data-doc-name]').forEach(inp => {
+      inp.oninput = (ev) => {
+        const idx = parseInt(inp.dataset.docName, 10);
+        state.partyForm.documents[idx].name = ev.target.value;
+      };
+    });
+    document.querySelectorAll('[data-doc-url]').forEach(inp => {
+      inp.oninput = (ev) => {
+        const idx = parseInt(inp.dataset.docUrl, 10);
+        state.partyForm.documents[idx].url = ev.target.value;
+      };
+    });
+    document.querySelectorAll('[data-doc-remove]').forEach(btn => {
+      btn.onclick = () => {
+        readPartyFormFromDom();
+        const idx = parseInt(btn.dataset.docRemove, 10);
+        state.partyForm.documents.splice(idx, 1);
+        render();
+      };
+    });
     document.getElementById('party-save').onclick = async () => {
       readPartyFormFromDom();
       const f = state.partyForm;
@@ -12588,6 +12694,7 @@ function bindAppEvents() {
         discount_percent: num(f.discount_percent) || 0, currency: txt(f.currency), price_level: txt(f.price_level),
         auto_show_discount: !!f.auto_show_discount, auto_show_item_discount: !!f.auto_show_item_discount,
         vat_applicable: f.vat_applicable !== false, is_individual: !!f.is_individual, whatsapp_enabled: !!f.whatsapp_enabled,
+        documents: f.documents || [],
       };
       if (state.editingPartyId) {
         const { error } = await sb.from('parties').update(payload).eq('id', state.editingPartyId);
