@@ -2939,7 +2939,7 @@ function renderPurchaseFormModal() {
         ` : ''}
       </div>
 
-      <div class="no-print" style="padding:14px 16px 0;font-size:11px;font-weight:600;color:#5F5E5A;border-top:1px solid #EDEAE0;margin-top:10px;padding-top:10px;">بيانات المورد</div>
+      <div class="no-print" style="padding:0 16px;">${sectionHeader('بيانات المورد', 'ti-truck')}</div>
       <div class="no-print" style="padding:6px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         ${f.invoice_type === 'نقدي'
           ? partyField(t('inv_supplier_walkin'), `<input id="pi-walkin-name" class="input" placeholder="اختياري — اكتب الاسم أو اتركه فاضي" value="${escapeHtml(f.walkin_supplier_name||'')}" ${f.approved?'disabled':''} />`)
@@ -3600,7 +3600,7 @@ function renderSalesFormModal() {
         <div>${partyField('', `<label style="font-size:12.5px;"><input id="si-no-tax" type="checkbox" ${f.no_tax?'checked':''} ${f.approved?'disabled':''} /> ${t('inv_no_tax')}</label>`)}</div>
       </div>
 
-      <div class="no-print" style="padding:14px 16px 0;font-size:11px;font-weight:600;color:#5F5E5A;border-top:1px solid #EDEAE0;margin-top:10px;padding-top:10px;">بيانات العميل</div>
+      <div class="no-print" style="padding:0 16px;">${sectionHeader('بيانات العميل', 'ti-user')}</div>
       <div class="no-print" style="padding:6px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         ${f.invoice_type === 'نقدي' && f.cash_customer_mode !== 'registered'
           ? partyField(t('inv_customer_walkin'), `<div style="display:flex;gap:6px;align-items:center;"><input id="si-walkin-name" class="input" placeholder="اختياري — اكتب الاسم أو اتركه فاضي" value="${escapeHtml(f.walkin_customer_name||'')}" ${f.approved?'disabled':''} />${!f.approved?`<button type="button" id="si-cash-mode-toggle" data-mode="registered" class="btn" style="padding:6px 10px;font-size:10.5px;white-space:nowrap;" title="${t('cash_mode_registered')}"><i class="ti ti-user-search" style="font-size:14px;"></i></button>`:''}</div>`)
@@ -7007,7 +7007,7 @@ function renderEmployeeFormBox() {
         ${partyField('تاريخ انتهاء الإقامة', `<input id="emp-f-id-expiry" type="date" class="input" value="${escapeHtml(f.id_expiry_date)}" />`)}
       </div>
 
-      <div style="font-size:10.5px;font-weight:600;color:#5F5E5A;margin:12px 0 6px;border-top:1px dashed #DEDACB;padding-top:10px;">بيانات وظيفية</div>
+      ${sectionHeader('بيانات وظيفية', 'ti-briefcase')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         ${partyField('المسمّى الوظيفي', `<input id="emp-f-job" class="input" value="${escapeHtml(f.job_title)}" />`)}
         ${partyField('القسم/الفرع', `<input id="emp-f-dept" class="input" value="${escapeHtml(f.department)}" />`)}
@@ -7017,7 +7017,7 @@ function renderEmployeeFormBox() {
         ${partyField('نوع العقد', `<select id="emp-f-contract" class="input"><option ${f.contract_type==='دوام كامل'?'selected':''}>دوام كامل</option><option ${f.contract_type==='مؤقت'?'selected':''}>مؤقت</option></select>`)}
       </div>
 
-      <div style="font-size:10.5px;font-weight:600;color:#5F5E5A;margin:12px 0 6px;border-top:1px dashed #DEDACB;padding-top:10px;">بيانات مالية أساسية</div>
+      ${sectionHeader('بيانات مالية أساسية', 'ti-currency-dollar')}
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
         ${partyField('الراتب الأساسي *', `<input id="emp-f-salary" class="input mono" value="${escapeHtml(f.basic_salary)}" />`)}
         ${partyField('بدل سكن', `<input id="emp-f-housing" class="input mono" value="${escapeHtml(f.housing_allowance)}" />`)}
@@ -7025,7 +7025,7 @@ function renderEmployeeFormBox() {
       </div>
       ${partyField('رقم الآيبان', `<input id="emp-f-iban" class="input mono" dir="ltr" value="${escapeHtml(f.iban)}" />`)}
 
-      <div style="font-size:10.5px;font-weight:600;color:#5F5E5A;margin:12px 0 6px;border-top:1px dashed #DEDACB;padding-top:10px;">الحالة</div>
+      ${sectionHeader('الحالة', 'ti-circle-check')}
       ${partyField('حالة الموظف', `<select id="emp-f-status" class="input"><option ${f.status==='نشط'?'selected':''}>نشط</option><option ${f.status==='متوقف'?'selected':''}>متوقف</option></select>`)}
       ${partyField('ملاحظات', `<textarea id="emp-f-notes" class="input" rows="2">${escapeHtml(f.notes)}</textarea>`)}
 
@@ -7194,7 +7194,7 @@ function renderReportDesignerModal() {
         </div>
 
         ${src ? `
-        <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:8px;border-top:1px solid #EDEAE0;padding-top:10px;">2) اختر الأعمدة</div>
+        ${sectionHeader('2) اختر الأعمدة', 'ti-columns')}
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           ${src.columns.map(c => `
             <label style="display:flex;align-items:center;gap:5px;font-size:12px;background:#fff;border:1px solid #DEDACB;border-radius:14px;padding:4px 10px;cursor:pointer;">
@@ -7203,7 +7203,7 @@ function renderReportDesignerModal() {
           <button id="rd-select-all" style="border:none;background:none;color:#2C4A6E;font-size:11.5px;cursor:pointer;text-decoration:underline;">تحديد الكل</button>
         </div>
         ${src.dateField ? `
-        <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:8px;border-top:1px solid #EDEAE0;padding-top:10px;">3) الفترة (اختياري)</div>
+        ${sectionHeader('3) الفترة (اختياري)', 'ti-calendar')}
         <div style="display:flex;gap:10px;align-items:end;margin-bottom:14px;flex-wrap:wrap;">
           <div>${partyField('من تاريخ', `<input id="rd-from" type="date" class="input" value="${escapeHtml(state.rdFrom)}" />`)}</div>
           <div>${partyField('إلى تاريخ', `<input id="rd-to" type="date" class="input" value="${escapeHtml(state.rdTo)}" />`)}</div>
