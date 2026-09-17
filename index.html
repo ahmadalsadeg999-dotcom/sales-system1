@@ -8274,6 +8274,18 @@ async function checkFiscalPeriodAllowed(dateStr) {
   return false;
 }
 
+// يستدعي دالة الخادم (Edge Function) لإدارة المستخدمين — إنشاء أو حذف، بدون التأثير على جلسة المدير
+async function callUserManagementFunction(payload) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/manage-users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.session.access_token}`, 'apikey': SUPABASE_KEY },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'فشل الاتصال بدالة الخادم');
+  return data;
+}
+
 async function sha256Hex(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -15754,10 +15766,15 @@ function bindAppEvents() {
     });
     document.querySelectorAll('[data-del-user]').forEach(btn => {
       btn.onclick = async () => {
-        if (!confirm('هذا يوقف وصول المستخدم للنظام (الحساب نفسه يبقى بـ Supabase). متابعة؟')) return;
-        { const { error: delUErr } = await sb.from('profiles').delete().eq('id', btn.dataset.delUser); if (delUErr) { showToast('فشل حذف المستخدم', 'error'); return; } }
-        await loadUsers();
-        render();
+        if (!confirm('هذا يحذف حساب المستخدم نهائياً (حساب الدخول والصلاحيات معاً) — ما يمكن التراجع. متابعة؟')) return;
+        try {
+          await callUserManagementFunction({ action: 'delete', userId: btn.dataset.delUser });
+          await loadUsers();
+          showToast('تم حذف المستخدم نهائياً');
+          render();
+        } catch (ex) {
+          showToast('فشل حذف المستخدم: ' + (ex?.message || String(ex)), 'error');
+        }
       };
     });
     document.querySelectorAll('[data-role-for]').forEach(sel => {
@@ -15810,42 +15827,12 @@ function bindAppEvents() {
         if (!password || password.length < 6) { setErr('كلمة المرور 6 أحرف على الأقل'); return; }
         state.addUserBusy = true; render();
         try {
-          // نحفظ جلسة المدير الحالية عشان نرجّعها بعد الإنشاء (signUp يبدّل الجلسة تلقائياً لغير كذا)
-          const adminSession = { access_token: state.session.access_token, refresh_token: state.session.refresh_token };
-          const email = `${username.toLowerCase()}@retailapp-users.com`;
-          const { data, error } = await sb.auth.signUp({ email, password });
-          if (error) {
-            state.addUserBusy = false; render();
-            setErr(error.message.includes('already') ? 'اسم المستخدم هذا مستخدم بالفعل' : 'خطأ بإنشاء الحساب: ' + error.message);
-            return;
-          }
-          if (!data.user) {
-            state.addUserBusy = false; render();
-            setErr('خطأ غير متوقع: ما رجعت بيانات المستخدم الجديد من نظام المصادقة');
-            return;
-          }
-          // نستخدم upsert بدل update — لو ما فيه صف profiles جاهز لهذا المستخدم الجديد (غياب تريغر تلقائي)، ننشئه بدل ما نحاول تحديث صف غير موجود (يفشل بصمت)
-          const { error: newProfileErr } = await sb.from('profiles').upsert({
-            id: data.user.id,
-            role, display_name: displayName || username,
-            can_approve: canApproveChk, can_manage_company: canCompanyChk, can_manage_backup: canBackupChk,
-            is_support: isSupportChk,
+          // ننشئ المستخدم عبر دالة خادم (Edge Function) بدل signUp من المتصفح —
+          // هذا يتجنّب نهائياً مشكلة تعارض جلسة المدير ومشكلة حد إرسال الإيميلات
+          await callUserManagementFunction({
+            action: 'create', username, password, displayName, role,
+            canApprove: canApproveChk, canCompany: canCompanyChk, canBackup: canBackupChk, isSupport: isSupportChk,
           });
-          // نرجّع جلسة المدير — بعد محاولة إنشاء الحساب والملف الشخصي، عشان لو صار خطأ بالاسترجاع نفسه نشوفه بوضوح
-          const { error: restoreErr } = await sb.auth.setSession(adminSession);
-          if (restoreErr) {
-            state.addUserBusy = false; render();
-            setErr('⚠️ تم إنشاء المستخدم، لكن صار خطأ باسترجاع جلستك — سجّل دخول من جديد: ' + restoreErr.message);
-            return;
-          }
-          state.session = (await sb.auth.getSession()).data.session;
-          if (newProfileErr) {
-            state.addUserBusy = false;
-            await loadUsers();
-            render();
-            setErr('تم إنشاء حساب الدخول، لكن فشل حفظ الصلاحيات: ' + newProfileErr.message + ' — عدّلها يدوياً من قائمة المستخدمين بعد ما يظهر');
-            return;
-          }
           logActivity('إنشاء مستخدم جديد', username);
           await loadUsers();
           state.showAddUserForm = false;
