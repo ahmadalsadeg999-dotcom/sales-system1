@@ -15801,24 +15801,29 @@ function bindAppEvents() {
         const canCompanyChk = document.getElementById('add-user-perm-company').checked;
         const canBackupChk = document.getElementById('add-user-perm-backup').checked;
         const isSupportChk = document.getElementById('add-user-is-support').checked;
-        const errEl = document.getElementById('add-user-error');
-        errEl.textContent = '';
-        if (!username) { errEl.textContent = 'اكتب اسم المستخدم'; return; }
-        if (!password || password.length < 6) { errEl.textContent = 'كلمة المرور 6 أحرف على الأقل'; return; }
+        // مهم: ما نلتقط عنصر رسالة الخطأ بمتغيّر ثابت — أي render() بمنتصف العملية يعيد بناء الصفحة
+        // ويخلّي أي عنصر ملتقط قبلها "ميت" (منفصل عن الصفحة الفعلية)، فرسالة الخطأ ما تظهر أبداً.
+        // بدل كذا، نجيب العنصر من جديد بكل مرة نبي نكتب فيها رسالة، عن طريق هذي الدالة المساعدة.
+        const setErr = (msg) => { const el = document.getElementById('add-user-error'); if (el) el.textContent = msg; };
+        setErr('');
+        if (!username) { setErr('اكتب اسم المستخدم'); return; }
+        if (!password || password.length < 6) { setErr('كلمة المرور 6 أحرف على الأقل'); return; }
         state.addUserBusy = true; render();
-        // نحفظ جلسة المدير الحالية عشان نرجّعها بعد الإنشاء (signUp يبدّل الجلسة تلقائياً لغير كذا)
-        const adminSession = { access_token: state.session.access_token, refresh_token: state.session.refresh_token };
-        const email = `${username.toLowerCase()}@retailapp-users.com`;
-        const { data, error } = await sb.auth.signUp({ email, password });
-        // نرجّع جلسة المدير فوراً بغض النظر عن النتيجة
-        await sb.auth.setSession(adminSession);
-        state.session = (await sb.auth.getSession()).data.session;
-        if (error) {
-          errEl.textContent = error.message.includes('already') ? 'اسم المستخدم هذا مستخدم بالفعل' : 'خطأ: ' + error.message;
-          state.addUserBusy = false; render();
-          return;
-        }
-        if (data.user) {
+        try {
+          // نحفظ جلسة المدير الحالية عشان نرجّعها بعد الإنشاء (signUp يبدّل الجلسة تلقائياً لغير كذا)
+          const adminSession = { access_token: state.session.access_token, refresh_token: state.session.refresh_token };
+          const email = `${username.toLowerCase()}@retailapp-users.com`;
+          const { data, error } = await sb.auth.signUp({ email, password });
+          if (error) {
+            state.addUserBusy = false; render();
+            setErr(error.message.includes('already') ? 'اسم المستخدم هذا مستخدم بالفعل' : 'خطأ بإنشاء الحساب: ' + error.message);
+            return;
+          }
+          if (!data.user) {
+            state.addUserBusy = false; render();
+            setErr('خطأ غير متوقع: ما رجعت بيانات المستخدم الجديد من نظام المصادقة');
+            return;
+          }
           // نستخدم upsert بدل update — لو ما فيه صف profiles جاهز لهذا المستخدم الجديد (غياب تريغر تلقائي)، ننشئه بدل ما نحاول تحديث صف غير موجود (يفشل بصمت)
           const { error: newProfileErr } = await sb.from('profiles').upsert({
             id: data.user.id,
@@ -15826,14 +15831,33 @@ function bindAppEvents() {
             can_approve: canApproveChk, can_manage_company: canCompanyChk, can_manage_backup: canBackupChk,
             is_support: isSupportChk,
           });
-          if (newProfileErr) { showToast('تم إنشاء الحساب لكن فشل حفظ الصلاحيات — عدّلها يدوياً من قائمة المستخدمين', 'error'); }
+          // نرجّع جلسة المدير — بعد محاولة إنشاء الحساب والملف الشخصي، عشان لو صار خطأ بالاسترجاع نفسه نشوفه بوضوح
+          const { error: restoreErr } = await sb.auth.setSession(adminSession);
+          if (restoreErr) {
+            state.addUserBusy = false; render();
+            setErr('⚠️ تم إنشاء المستخدم، لكن صار خطأ باسترجاع جلستك — سجّل دخول من جديد: ' + restoreErr.message);
+            return;
+          }
+          state.session = (await sb.auth.getSession()).data.session;
+          if (newProfileErr) {
+            state.addUserBusy = false;
+            await loadUsers();
+            render();
+            setErr('تم إنشاء حساب الدخول، لكن فشل حفظ الصلاحيات: ' + newProfileErr.message + ' — عدّلها يدوياً من قائمة المستخدمين بعد ما يظهر');
+            return;
+          }
+          logActivity('إنشاء مستخدم جديد', username);
+          await loadUsers();
+          state.showAddUserForm = false;
+          state.addUserBusy = false;
+          render();
+          showToast('تم إنشاء المستخدم بنجاح');
+        } catch (ex) {
+          // أي خطأ غير متوقع بأي خطوة بالعملية يظهر هنا بدل ما يفشل بصمت
+          state.addUserBusy = false;
+          render();
+          setErr('خطأ غير متوقع: ' + (ex?.message || String(ex)));
         }
-        logActivity('إنشاء مستخدم جديد', username);
-        await loadUsers();
-        state.showAddUserForm = false;
-        state.addUserBusy = false;
-        showToast('تم إنشاء المستخدم بنجاح');
-        render();
       };
     }
   }
