@@ -3476,7 +3476,7 @@ function renderSalesFormModal() {
   const invoiceProfit = profitBeforeDiscount - (Number(f.discount)||0);
   return `
   <div id="sales-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
-    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:900px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:820px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${t('title_sales_invoice')}</span><button id="sales-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       ${f.approved ? `<div class="no-print" style="margin:8px 16px 0;display:flex;align-items:center;justify-content:center;gap:10px;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">
         <span>معتمدة</span>
@@ -3559,85 +3559,93 @@ function renderSalesFormModal() {
         </div>
       </div>
 
-      <div class="no-print" style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;position:relative;">
-        <label style="font-size:12.5px;color:#3A3826;">رقم الفاتورة</label>
-        <button id="si-number-jump-btn" type="button" class="input mono" style="max-width:140px;background:#EDEAE0;color:#5F5E5A;cursor:${state.salesInvoices.length?'pointer':'default'};display:flex;align-items:center;justify-content:space-between;gap:6px;">
-          <span>${escapeHtml(f.invoice_number || t('auto_generated'))}</span>
-          ${state.salesInvoices.length ? `<i class="ti ti-chevron-down" style="font-size:13px;"></i>` : ''}
-        </button>
-        ${state.showSalesJumpList ? `
-        <div id="si-jump-panel" style="position:absolute;top:100%;right:16px;margin-top:4px;background:#fff;border:1px solid #1B3352;border-radius:8px;box-shadow:0 12px 30px rgba(0,0,0,0.25);width:300px;max-height:320px;overflow:hidden;display:flex;flex-direction:column;z-index:15;">
-          <div style="padding:8px;border-bottom:1px solid #E4E2DA;">
-            <input id="si-jump-search" class="input" style="font-size:12px;" placeholder="بحث برقم الفاتورة أو اسم العميل..." value="${escapeHtml(state.salesJumpQuery)}" autofocus />
-          </div>
-          <div style="overflow-y:auto;flex:1;">
-            ${state.salesInvoices.filter(inv => {
-              const q = state.salesJumpQuery.trim().toLowerCase();
-              if (!q) return true;
-              return (inv.invoice_number||'').toLowerCase().includes(q) || (inv.parties?.name||inv.walkin_customer_name||'').toLowerCase().includes(q);
-            }).slice(0, 50).map(inv => `
-              <div data-jump-sales="${inv.id}" style="padding:8px 12px;border-bottom:1px solid #F0EEE6;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;${inv.id===state.editingSalesId?'background:#E6F1FB;':''}" onmouseover="this.style.background='#F4F1EA'" onmouseout="this.style.background='${inv.id===state.editingSalesId?'#E6F1FB':'#fff'}'">
-                <div>
-                  <div style="font-size:12px;font-weight:600;color:#1B3352;" class="mono">${escapeHtml(inv.invoice_number)}</div>
-                  <div style="font-size:11px;color:#5F5E5A;">${escapeHtml(inv.parties?.name || inv.walkin_customer_name || 'زبون نقدي')}</div>
-                </div>
-                <div style="text-align:left;">
-                  <div style="font-size:10.5px;color:#8B8A7A;" class="mono">${escapeHtml(inv.invoice_date)}</div>
-                  <div style="font-size:10.5px;padding:1px 6px;border-radius:8px;background:${inv.approved?'#E1F5EE':'#FAEEDA'};color:${inv.approved?'#0F6E56':'#BA7517'};display:inline-block;">${inv.approved?t('status_approved'):t('status_draft')}</div>
-                </div>
-              </div>`).join('') || `<div style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد نتائج</div>`}
-          </div>
-        </div>` : ''}
+      <div class="no-print" style="margin:12px 16px 0;padding:12px 14px;background:#F9F9F7;border:1px solid #E4E2DA;border-radius:12px;">
+        <div style="display:flex;align-items:center;gap:6px;color:#2C4A6E;font-size:11px;font-weight:700;margin-bottom:10px;">
+          <i class="ti ti-file-invoice" style="font-size:13px;"></i>بيانات الفاتورة
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;position:relative;margin-bottom:10px;">
+          <label style="font-size:12.5px;color:#3A3826;min-width:100px;text-align:left;">رقم الفاتورة</label>
+          <button id="si-number-jump-btn" type="button" class="input mono" style="max-width:140px;background:#EDEAE0;color:#5F5E5A;cursor:${state.salesInvoices.length?'pointer':'default'};display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span>${escapeHtml(f.invoice_number || t('auto_generated'))}</span>
+            ${state.salesInvoices.length ? `<i class="ti ti-chevron-down" style="font-size:13px;"></i>` : ''}
+          </button>
+          ${state.showSalesJumpList ? `
+          <div id="si-jump-panel" style="position:absolute;top:100%;right:0;margin-top:4px;background:#fff;border:1px solid #1B3352;border-radius:8px;box-shadow:0 12px 30px rgba(0,0,0,0.25);width:300px;max-height:320px;overflow:hidden;display:flex;flex-direction:column;z-index:15;">
+            <div style="padding:8px;border-bottom:1px solid #E4E2DA;">
+              <input id="si-jump-search" class="input" style="font-size:12px;" placeholder="بحث برقم الفاتورة أو اسم العميل..." value="${escapeHtml(state.salesJumpQuery)}" autofocus />
+            </div>
+            <div style="overflow-y:auto;flex:1;">
+              ${state.salesInvoices.filter(inv => {
+                const q = state.salesJumpQuery.trim().toLowerCase();
+                if (!q) return true;
+                return (inv.invoice_number||'').toLowerCase().includes(q) || (inv.parties?.name||inv.walkin_customer_name||'').toLowerCase().includes(q);
+              }).slice(0, 50).map(inv => `
+                <div data-jump-sales="${inv.id}" style="padding:8px 12px;border-bottom:1px solid #F0EEE6;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;${inv.id===state.editingSalesId?'background:#E6F1FB;':''}" onmouseover="this.style.background='#F4F1EA'" onmouseout="this.style.background='${inv.id===state.editingSalesId?'#E6F1FB':'#fff'}'">
+                  <div>
+                    <div style="font-size:12px;font-weight:600;color:#1B3352;" class="mono">${escapeHtml(inv.invoice_number)}</div>
+                    <div style="font-size:11px;color:#5F5E5A;">${escapeHtml(inv.parties?.name || inv.walkin_customer_name || 'زبون نقدي')}</div>
+                  </div>
+                  <div style="text-align:left;">
+                    <div style="font-size:10.5px;color:#8B8A7A;" class="mono">${escapeHtml(inv.invoice_date)}</div>
+                    <div style="font-size:10.5px;padding:1px 6px;border-radius:8px;background:${inv.approved?'#E1F5EE':'#FAEEDA'};color:${inv.approved?'#0F6E56':'#BA7517'};display:inline-block;">${inv.approved?t('status_approved'):t('status_draft')}</div>
+                  </div>
+                </div>`).join('') || `<div style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد نتائج</div>`}
+            </div>
+          </div>` : ''}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+          ${partyField(t('inv_type'), `<select id="si-type" class="input" ${f.approved?'disabled':''}><option value="نقدي" ${f.invoice_type==='نقدي'?'selected':''}>${t('inv_cash')}</option><option value="آجل" ${f.invoice_type==='آجل'?'selected':''}>${t('inv_credit')}</option></select>`)}
+          ${partyField(t('inv_date'), `<input id="si-date" type="date" class="input" value="${escapeHtml(f.invoice_date)}" ${f.approved?'disabled':''} />`)}
+          ${partyField(t('inv_warehouse'), `<select id="si-warehouse" class="input" ${f.approved?'disabled':''}>${state.warehouses.map(w => `<option value="${w.id}" ${f.warehouse_id===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>`)}
+          ${partyField(t('inv_order_number'), `<input id="si-order-number" class="input" value="${escapeHtml(f.order_number)}" ${f.approved?'disabled':''} />`)}
+          ${f.invoice_type === 'نقدي' ? partyField(t('inv_payment_method'), `<select id="si-payment-method" class="input" ${f.approved?'disabled':''}><option value="">—</option>${activePaymentMethods().map(m => `<option value="${escapeHtml(m.name)}" ${f.payment_method===m.name?'selected':''}>${escapeHtml(m.name)}</option>`).join('')}</select>`) : ''}
+          <div>${partyField('', `<label style="font-size:12.5px;"><input id="si-no-tax" type="checkbox" ${f.no_tax?'checked':''} ${f.approved?'disabled':''} /> ${t('inv_no_tax')}</label>`)}</div>
+        </div>
       </div>
 
-      <div class="no-print" style="padding:10px 16px 0;font-size:11px;font-weight:600;color:#5F5E5A;">بيانات الفاتورة</div>
-      <div class="no-print" style="padding:6px 16px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-        ${partyField(t('inv_type'), `<select id="si-type" class="input" ${f.approved?'disabled':''}><option value="نقدي" ${f.invoice_type==='نقدي'?'selected':''}>${t('inv_cash')}</option><option value="آجل" ${f.invoice_type==='آجل'?'selected':''}>${t('inv_credit')}</option></select>`)}
-        ${partyField(t('inv_date'), `<input id="si-date" type="date" class="input" value="${escapeHtml(f.invoice_date)}" ${f.approved?'disabled':''} />`)}
-        ${partyField(t('inv_warehouse'), `<select id="si-warehouse" class="input" ${f.approved?'disabled':''}>${state.warehouses.map(w => `<option value="${w.id}" ${f.warehouse_id===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>`)}
-        ${partyField(t('inv_order_number'), `<input id="si-order-number" class="input" value="${escapeHtml(f.order_number)}" ${f.approved?'disabled':''} />`)}
-        ${f.invoice_type === 'نقدي' ? partyField(t('inv_payment_method'), `<select id="si-payment-method" class="input" ${f.approved?'disabled':''}><option value="">—</option>${activePaymentMethods().map(m => `<option value="${escapeHtml(m.name)}" ${f.payment_method===m.name?'selected':''}>${escapeHtml(m.name)}</option>`).join('')}</select>`) : ''}
-        <div>${partyField('', `<label style="font-size:12.5px;"><input id="si-no-tax" type="checkbox" ${f.no_tax?'checked':''} ${f.approved?'disabled':''} /> ${t('inv_no_tax')}</label>`)}</div>
-      </div>
-
-      <div class="no-print" style="padding:0 16px;">${sectionHeader('بيانات العميل', 'ti-user')}</div>
-      <div class="no-print" style="padding:6px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="no-print" style="margin:10px 16px 0;padding:12px 14px;background:#F9F9F7;border:1px solid #E4E2DA;border-radius:12px;">
+        <div style="display:flex;align-items:center;gap:6px;color:#2C4A6E;font-size:11px;font-weight:700;margin-bottom:10px;">
+          <i class="ti ti-user" style="font-size:13px;"></i>بيانات العميل
+        </div>
+      <div class="no-print" style="padding:2px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         ${f.invoice_type === 'نقدي' && f.cash_customer_mode !== 'registered'
           ? partyField(t('inv_customer_walkin'), `<div style="display:flex;gap:6px;align-items:center;"><input id="si-walkin-name" class="input" placeholder="اختياري — اكتب الاسم أو اتركه فاضي" value="${escapeHtml(f.walkin_customer_name||'')}" ${f.approved?'disabled':''} />${!f.approved?`<button type="button" id="si-cash-mode-toggle" data-mode="registered" class="btn" style="padding:6px 10px;font-size:10.5px;white-space:nowrap;" title="${t('cash_mode_registered')}"><i class="ti ti-user-search" style="font-size:14px;"></i></button>`:''}</div>`)
           : f.invoice_type === 'نقدي'
           ? partyField(t('inv_customer'), `<div style="display:flex;gap:6px;align-items:center;">${partyPickerButton('si-customer','customer',f.customer_id,f.approved)}${!f.approved?`<button type="button" id="si-cash-mode-toggle" data-mode="walkin" class="btn" style="padding:6px 10px;font-size:10.5px;white-space:nowrap;" title="${t('cash_mode_walkin')}"><i class="ti ti-user-x" style="font-size:14px;"></i></button>`:''}</div>`)
           : partyField(t('inv_customer'), partyPickerButton('si-customer','customer',f.customer_id,f.approved))}
         ${partyField(t('inv_customer_ref'), `<input id="si-customer-ref" class="input" value="${escapeHtml(f.customer_ref)}" ${f.approved?'disabled':''} />`)}
-      </div>
-      ${(!f.customer_id && !f.no_tax) ? `
-      <div class="no-print" style="padding:6px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        ${(!f.customer_id && !f.no_tax) ? `
         ${partyField(t('walkin_tax_number'), `<input id="si-walkin-tax" class="input mono" value="${escapeHtml(f.walkin_customer_tax_number||'')}" ${f.approved?'disabled':''} />`)}
         ${partyField(t('walkin_address'), `<input id="si-walkin-address" class="input" value="${escapeHtml(f.walkin_customer_address||'')}" ${f.approved?'disabled':''} />`)}
-      </div>` : ''}
+        ` : ''}
+      </div>
+      </div>
 
       ${!f.approved ? `
-      <div class="no-print" style="padding:8px 16px 0;display:flex;gap:8px;align-items:center;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;margin:10px 16px 0;padding:8px 12px;">
-        <label style="font-size:12px;color:#0F6E56;white-space:nowrap;">استيراد من عرض سعر:</label>
-        <input id="si-quote-number" class="input" style="max-width:140px;" placeholder="رقم العرض مثل Q-0001" />
-        <button id="si-import-quote" class="btn" style="padding:6px 12px;font-size:12px;">جلب وتحويل</button>
+      <div class="no-print" style="margin:12px 16px 0;padding:8px 12px;background:#F4F5F7;border:1px solid #E4E2DA;border-radius:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11.5px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <i class="ti ti-file-import" style="font-size:14px;color:#0F6E56;"></i>
+          <span style="color:#3A3826;white-space:nowrap;">استيراد من عرض سعر:</span>
+          <input id="si-quote-number" class="input" style="max-width:120px;padding:5px 8px;" placeholder="Q-0001" />
+          <button id="si-import-quote" class="btn" style="padding:5px 10px;font-size:11px;">جلب وتحويل</button>
+        </div>
         <span id="si-import-status" style="font-size:11px;color:#5F5E5A;"></span>
+        <div style="flex:1;"></div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <i class="ti ti-percentage" style="font-size:14px;color:#8B8A7A;"></i>
+          <label><input type="radio" name="si-price-mode" value="قبل الضريبة" ${f.price_mode!=='شامل الضريبة'?'checked':''} /> قبل الضريبة</label>
+          <label><input type="radio" name="si-price-mode" value="شامل الضريبة" ${f.price_mode==='شامل الضريبة'?'checked':''} /> شامل الضريبة</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="color:#3A3826;white-space:nowrap;">ضريبة افتراضية:</span>
+          <input id="si-default-tax" class="input" style="max-width:55px;padding:5px 6px;" value="${f.no_tax?'0':escapeHtml(f.default_tax)}" ${f.no_tax?'disabled':''} />
+          <button id="si-apply-tax-all" class="btn" style="padding:5px 10px;font-size:11px;" ${f.no_tax?'disabled':''}>تطبيق على الكل</button>
+        </div>
       </div>` : ''}
 
-      <div style="padding:14px 16px;">
+      <div style="padding:12px 16px;">
         ${!f.approved ? `
         <div class="no-print">
-        <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;padding:10px;background:#F4F1EA;border:1px solid #A9A48C;border-radius:4px;flex-wrap:wrap;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <label style="font-size:12px;color:#3A3826;white-space:nowrap;">السعر المُدخل:</label>
-            <label style="font-size:12px;"><input type="radio" name="si-price-mode" value="قبل الضريبة" ${f.price_mode!=='شامل الضريبة'?'checked':''} /> قبل الضريبة</label>
-            <label style="font-size:12px;"><input type="radio" name="si-price-mode" value="شامل الضريبة" ${f.price_mode==='شامل الضريبة'?'checked':''} /> شامل الضريبة</label>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <label style="font-size:12px;color:#3A3826;white-space:nowrap;">نسبة الضريبة الافتراضية:</label>
-            <input id="si-default-tax" class="input" style="max-width:60px;padding:5px 6px;" value="${f.no_tax?'0':escapeHtml(f.default_tax)}" ${f.no_tax?'disabled':''} />
-            <button id="si-apply-tax-all" class="btn" style="padding:5px 10px;font-size:11px;" ${f.no_tax?'disabled':''}>تطبيق على الكل</button>
-          </div>
-        </div>
         <div id="si-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
         <div id="si-last-prices" style="display:none;margin-bottom:8px;padding:6px 12px;background:#FDFBF3;border:1px solid #DEDACB;border-radius:4px;font-size:11.5px;color:#3A3826;"></div>
         <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
@@ -15811,11 +15819,13 @@ function bindAppEvents() {
           return;
         }
         if (data.user) {
-          const { error: newProfileErr } = await sb.from('profiles').update({
+          // نستخدم upsert بدل update — لو ما فيه صف profiles جاهز لهذا المستخدم الجديد (غياب تريغر تلقائي)، ننشئه بدل ما نحاول تحديث صف غير موجود (يفشل بصمت)
+          const { error: newProfileErr } = await sb.from('profiles').upsert({
+            id: data.user.id,
             role, display_name: displayName || username,
             can_approve: canApproveChk, can_manage_company: canCompanyChk, can_manage_backup: canBackupChk,
             is_support: isSupportChk,
-          }).eq('id', data.user.id);
+          });
           if (newProfileErr) { showToast('تم إنشاء الحساب لكن فشل حفظ الصلاحيات — عدّلها يدوياً من قائمة المستخدمين', 'error'); }
         }
         logActivity('إنشاء مستخدم جديد', username);
