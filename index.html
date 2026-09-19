@@ -243,6 +243,9 @@ let state = {
   showPaymentMethodsSettings: false,
   editingPmId: null,
   showFiscalLock: false, fiscalLockDateInput: '',
+  showPermMatrix: false, permMatrixMode: 'role', permMatrixTargetId: '', permScreens: [], permRoles: [],
+  myPermissions: {}, permMatrixTab: 'screens',
+  permMatrixData: {}, permMatrixDirty: false, showNewRoleBox: false, newRoleName: '',
   showSupplierPriceCompare: false, spcSelectedItemId: '', spcQuery: '', spcResults: [],
   showPerformanceReport: false, perfReportFrom: '', perfReportTo: '', perfReportData: null,
   showDesignerPanel: false,
@@ -1996,12 +1999,41 @@ async function loadProfile() {
   if (!state.session) return;
   const { data } = await sb.from('profiles').select('*').eq('id', state.session.user.id).single();
   state.profile = data || null;
+  await loadMyPermissions();
 }
 
 // ينشئ مستخدم جديد بدون ما يأثر على جلسة المدير الحالية (يستخدم عميل مؤقت منفصل)
 async function loadUsers() {
   const { data, error } = await sb.from('profiles').select('*').order('created_at', { ascending: true });
   if (!error) state.users = data || [];
+}
+
+// يحمّل كل الشاشات المسجّلة ومجموعات الصلاحيات (لمصفوفة الصلاحيات المتقدمة)
+async function loadPermMatrixLists() {
+  const { data: screens } = await sb.from('permission_screens').select('*').order('sort_order', { ascending: true });
+  state.permScreens = screens || [];
+  const { data: roles } = await sb.from('permission_roles').select('*').order('role_name', { ascending: true });
+  state.permRoles = roles || [];
+}
+
+// يحمّل صلاحيات هدف معيّن (مجموعة أو مستخدم) لكل الشاشات، ويبنيها بشكل جاهز للعرض بالمصفوفة
+async function loadPermMatrixData(mode, targetId) {
+  state.permMatrixData = {};
+  if (!targetId) return;
+  const table = mode === 'role' ? 'role_permissions' : 'user_permissions';
+  const idField = mode === 'role' ? 'role_id' : 'user_id';
+  const { data } = await sb.from(table).select('*').eq(idField, targetId);
+  const map = {};
+  (data || []).forEach(row => { map[row.screen_id] = row; });
+  // حد الخصم الأقصى مخزّن بمكان منفصل تماماً (مجموعات: permission_roles، مستخدم: profiles) — مو بنفس جدول صلاحيات الشاشات
+  if (mode === 'role') {
+    const role = state.permRoles.find(r => r.id === targetId);
+    map['__general__'] = { max_discount_percent: role?.max_discount_percent ?? null };
+  } else {
+    const user = state.users.find(u => u.id === targetId);
+    map['__general__'] = { max_discount_percent: user?.max_discount_percent ?? null };
+  }
+  state.permMatrixData = map;
 }
 
 // ينشئ مستخدم جديد بدون ما يأثر على جلسة المدير الحالية (يستخدم عميل مؤقت منفصل) — غير مستخدمة حالياً بالواجهة، متاحة لو احتجناها لاحقاً
@@ -2028,6 +2060,55 @@ function canManageCompany() {
 }
 function canManageBackup() {
   return isAdmin() || (state.profile && state.profile.can_manage_backup);
+}
+function canViewHR() {
+  return isAdmin() || (state.profile && state.profile.can_view_hr);
+}
+function canViewReports() {
+  return isAdmin() || (state.profile && state.profile.can_view_reports);
+}
+function canManageInventory() {
+  return isAdmin() || (state.profile && state.profile.can_manage_inventory);
+}
+function canManageParties() {
+  return isAdmin() || (state.profile && state.profile.can_manage_parties);
+}
+function canManageUsers() {
+  return isAdmin() || (state.profile && state.profile.can_manage_users);
+}
+
+// يحمّل صلاحيات المستخدم الحالي الفعلية لكل الشاشات (دمج صلاحية مجموعته + أي استثناء خاص فيه) — تُحفظ بالذاكرة عشان الفحص يصير فوري بدون استعلام لكل زر
+async function loadMyPermissions() {
+  state.myPermissions = {};
+  if (isAdmin()) return; // المدير عنده كل الصلاحيات دايماً، ما يحتاج نحمّل شي
+  if (!state.profile?.role_id) return; // ما انربط بمجموعة بعد — يبقى بدون صلاحيات مفصّلة (يعتمد على النظام القديم البسيط)
+  const { data: screens } = await sb.from('permission_screens').select('id, screen_key');
+  const { data: rolePerms } = await sb.from('role_permissions').select('*').eq('role_id', state.profile.role_id);
+  const { data: userPerms } = await sb.from('user_permissions').select('*').eq('user_id', state.session.user.id);
+  const screenIdToKey = {};
+  (screens || []).forEach(s => { screenIdToKey[s.id] = s.screen_key; });
+  const merged = {};
+  (rolePerms || []).forEach(rp => { const key = screenIdToKey[rp.screen_id]; if (key) merged[key] = { ...rp }; });
+  // صلاحيات المستخدم الخاصة تتغلّب على صلاحية المجموعة، عمود عمود (NULL يعني "بدون استثناء هنا")
+  (userPerms || []).forEach(up => {
+    const key = screenIdToKey[up.screen_id];
+    if (!key) return;
+    if (!merged[key]) merged[key] = {};
+    ['can_read','can_add','can_edit','can_delete','can_print','can_approve'].forEach(k => {
+      if (up[k] !== null && up[k] !== undefined) merged[key][k] = up[k];
+    });
+  });
+  state.myPermissions = merged;
+}
+
+// يتحقق هل المستخدم الحالي يقدر يسوي إجراء معيّن (read/add/edit/delete/print/approve) بشاشة معيّنة
+// المدير دايماً true. لو الشاشة مو مسجّلة بجدول permission_screens أصلاً، أو ما فيه مجموعة مربوطة، نسمح افتراضياً
+// (عشان ما نكسر شاشات قديمة لسه ما ربطناها بالنظام الجديد) — الحظر الصريح يصير بس لو فيه صف صلاحيات فعلي يمنعها
+function hasPerm(screenKey, action) {
+  if (isAdmin()) return true;
+  const perms = state.myPermissions?.[screenKey];
+  if (!perms) return true; // ما فيه صف صلاحيات مسجّل لهذي الشاشة لهذا المستخدم — نسمح افتراضياً (توافق مع الشاشات القديمة)
+  return !!perms[action];
 }
 
 // ---------- MAIN APP ----------
@@ -2150,6 +2231,7 @@ const SUBMENUS = {
   'المبيعات': SALES_SUBMENU,
   'النظام': [
     { label: 'المستخدمون والصلاحيات', target: '__users__' },
+    { label: 'مصفوفة الصلاحيات المتقدمة', target: '__perm_matrix__' },
     { label: 'بيانات الشركة', target: '__company__' },
     { label: 'إعدادات طرق الدفع', target: '__payment_methods__' },
     { divider: true },
@@ -2164,7 +2246,12 @@ const SUBMENUS = {
 function renderApp() {
   const items = filteredItems();
   const lowStock = state.items.filter(it => Number(it.qty) <= Number(it.reorder_at || 0)).length;
-  const MENU = ['الرئيسية','الاصناف','المستودعات','المبيعات','المشتريات','الطلبيات','العملاء والموردين','شؤون الموظفين','المحاسبة','تقارير عامة','النظام','المساعدة','خروج'].filter(m => (m !== 'النظام' || isAdmin() || canManageCompany() || canManageBackup()) && (m !== 'المحاسبة' || isAdmin() || canApprove()));
+  const MENU = ['الرئيسية','الاصناف','المستودعات','المبيعات','المشتريات','الطلبيات','العملاء والموردين','شؤون الموظفين','المحاسبة','تقارير عامة','النظام','المساعدة','خروج'].filter(m =>
+    (m !== 'النظام' || isAdmin() || canManageCompany() || canManageBackup() || canManageUsers())
+    && (m !== 'المحاسبة' || isAdmin() || canApprove())
+    && (m !== 'شؤون الموظفين' || isAdmin() || canViewHR())
+    && (m !== 'تقارير عامة' || isAdmin() || canViewReports())
+  );
   return `
   <div style="width:100%;margin:0;padding:0;min-height:100vh;display:flex;flex-direction:column;">
     ${state.licenseWarningDays !== null ? `
@@ -2197,7 +2284,8 @@ function renderApp() {
             ${state.openDropdown===m ? `
             <div class="dropdown-menu" style="position:absolute;top:100%;right:0;background:#fff;border:1px solid #A9A48C;border-radius:0 0 4px 4px;box-shadow:0 6px 16px rgba(0,0,0,0.25);min-width:220px;z-index:20;padding:4px 0;">
               ${(m==='النظام' ? SUBMENUS[m].filter(item =>
-                  item.target === '__users__' ? isAdmin()
+                  item.target === '__users__' ? (isAdmin() || canManageUsers())
+                  : item.target === '__perm_matrix__' ? isAdmin()
                   : item.target === '__company__' || item.target === '__payment_methods__' ? canManageCompany()
                   : item.target === '__maintenance__' ? canManageBackup()
                   : item.target === '__designer_panel__' ? isAdmin()
@@ -2271,6 +2359,7 @@ function renderApp() {
   ${state.itemPickerOpen ? renderItemPickerModal() : ''}
   ${state.showDesignerPanel ? renderDesignerPanelModal() : ''}
   ${state.showFiscalLock ? renderFiscalLockModal() : ''}
+  ${state.showPermMatrix ? renderPermMatrixModal() : ''}
   ${state.showVatReport ? renderVatReportModal() : ''}
   ${state.showSalesChart ? renderSalesChartModal() : ''}
   ${state.showProfitReport ? renderProfitReportModal() : ''}
@@ -2309,7 +2398,7 @@ function renderPartiesSection() {
           <div style="flex:1;min-width:220px;">
             <input id="party-search" class="input" placeholder="${t('party_search_ph')}" value="${escapeHtml(state.partyQuery)}" />
           </div>
-          <button id="new-party-btn" class="btn primary" style="padding:8px 14px;">+ ${typeLabel(state.partyTypeFilter)} ${t('party_new')}</button>
+          ${hasPerm('parties','can_add') ? `<button id="new-party-btn" class="btn primary" style="padding:8px 14px;">+ ${typeLabel(state.partyTypeFilter)} ${t('party_new')}</button>` : ''}
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} ${typeLabel(state.partyTypeFilter)}</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
@@ -2509,7 +2598,7 @@ function renderQuotationsSection() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="quote-search" class="input" placeholder="بحث برقم العرض أو اسم العميل..." value="${escapeHtml(state.quotationQuery)}" /></div>
           <button id="quote-filters-toggle" class="btn" style="padding:8px 14px;"><i class="ti ti-filter" style="font-size:14px;color:#2C4A6E;"></i> فلاتر متقدمة</button>
-          <button id="new-quote-btn" class="btn primary" style="padding:8px 14px;">+ عرض سعر جديد</button>
+          ${hasPerm('quotation','can_add') ? `<button id="new-quote-btn" class="btn primary" style="padding:8px 14px;">+ عرض سعر جديد</button>` : ''}
         </div>
         ${state.showQuoteFilters ? `
         <div style="background:#F4F5F7;border:1px solid #E4E2DA;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
@@ -2684,8 +2773,8 @@ function renderQuoteFormModal() {
         ${iconBtn('quote-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('quote-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.quotations.length===0)}
         ${iconBtn('quote-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.quotations.length===0)}
-        ${iconBtn('quote-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.quote_number)}
-        ${iconBtn('quote-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.quote_number)}
+        ${iconBtn('quote-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.quote_number || !hasPerm('quotation','can_print'))}
+        ${hasPerm('quotation','can_print') ? iconBtn('quote-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.quote_number) : ''}
         ${f.status!=='محول لفاتورة' ? iconBtn('quote-save', 'ti-device-floppy', '#2C4A6E', 'حفظ') : ''}
         ${(f.status!=='محول لفاتورة' && f.quote_number) ? iconBtn('quote-convert', 'ti-arrow-forward', '#0F6E56', 'تحويل لفاتورة بيع') : ''}
       </div>
@@ -2703,7 +2792,7 @@ function renderPurchasesSection() {
             <input id="purchase-search" class="input" placeholder="بحث برقم الفاتورة أو اسم المورد..." value="${escapeHtml(state.purchaseQuery)}" />
           </div>
           <button id="purchase-filters-toggle" class="btn" style="padding:8px 14px;"><i class="ti ti-filter" style="font-size:14px;color:#2C4A6E;"></i> فلاتر متقدمة</button>
-          <button id="new-purchase-btn" class="btn primary" style="padding:8px 14px;">+ فاتورة شراء جديدة</button>
+          ${hasPerm('purchase_invoice','can_add') ? `<button id="new-purchase-btn" class="btn primary" style="padding:8px 14px;">+ فاتورة شراء جديدة</button>` : ''}
           <button id="print-purchases-list" class="btn" style="padding:8px 14px;"><i class="ti ti-printer" style="font-size:14px;"></i> طباعة القائمة</button>
         </div>
         ${state.showPurchaseFilters ? `
@@ -3112,11 +3201,11 @@ function renderPurchaseFormModal() {
         ${iconBtn('purchase-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('purchase-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.purchases.length===0)}
         ${iconBtn('purchase-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.purchases.length===0)}
-        ${iconBtn('purchase-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingPurchaseId)}
-        ${iconBtn('purchase-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingPurchaseId)}
+        ${iconBtn('purchase-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingPurchaseId || !hasPerm('purchase_invoice','can_print'))}
+        ${hasPerm('purchase_invoice','can_print') ? iconBtn('purchase-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingPurchaseId) : ''}
         ${f.approved ? '' : iconBtn('purchase-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('purchase-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
-        ${(!f.approved && state.editingPurchaseId && canApprove()) ? iconBtn('purchase-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
+        ${(!f.approved && state.editingPurchaseId && (canApprove() || hasPerm('purchase_invoice','can_approve'))) ? iconBtn('purchase-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
         ${(f.approved && state.editingPurchaseId && isAdmin()) ? iconBtn('purchase-unlock', 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
       </div>
     </div>
@@ -3422,7 +3511,7 @@ function renderSalesSection() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="sales-search" class="input" placeholder="بحث برقم الفاتورة أو اسم العميل..." value="${escapeHtml(state.salesQuery)}" /></div>
           <button id="sales-filters-toggle" class="btn" style="padding:8px 14px;"><i class="ti ti-filter" style="font-size:14px;color:#2C4A6E;"></i> فلاتر متقدمة</button>
-          <button id="new-sales-btn" class="btn primary" style="padding:8px 14px;">+ فاتورة بيع جديدة</button>
+          ${hasPerm('sales_invoice','can_add') ? `<button id="new-sales-btn" class="btn primary" style="padding:8px 14px;">+ فاتورة بيع جديدة</button>` : ''}
         </div>
         ${state.showSalesFilters ? `
         <div style="background:#F4F5F7;border:1px solid #E4E2DA;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
@@ -3743,11 +3832,11 @@ function renderSalesFormModal() {
         ${iconBtn('sales-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('sales-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.salesInvoices.length===0)}
         ${iconBtn('sales-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.salesInvoices.length===0)}
-        ${iconBtn('sales-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingSalesId)}
-        ${iconBtn('sales-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingSalesId)}
+        ${iconBtn('sales-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingSalesId || !hasPerm('sales_invoice','can_print'))}
+        ${hasPerm('sales_invoice','can_print') ? iconBtn('sales-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingSalesId) : ''}
         ${f.approved ? '' : iconBtn('sales-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('sales-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
-        ${(!f.approved && state.editingSalesId && canApprove()) ? iconBtn('sales-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
+        ${(!f.approved && state.editingSalesId && (canApprove() || hasPerm('sales_invoice','can_approve'))) ? iconBtn('sales-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
         ${(f.approved && state.editingSalesId && isAdmin()) ? iconBtn('sales-unlock', 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
       </div>
     </div>
@@ -3762,7 +3851,7 @@ function renderSalesReturnsSection() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="sr-search" class="input" placeholder="بحث برقم السند أو اسم العميل..." value="${escapeHtml(state.salesReturnQuery)}" /></div>
           <button id="sr-filters-toggle" class="btn" style="padding:8px 14px;"><i class="ti ti-filter" style="font-size:14px;color:#2C4A6E;"></i> فلاتر متقدمة</button>
-          <button id="new-sr-btn" class="btn primary" style="padding:8px 14px;">+ سند مردود بيع جديد</button>
+          ${hasPerm('sales_return','can_add') ? `<button id="new-sr-btn" class="btn primary" style="padding:8px 14px;">+ سند مردود بيع جديد</button>` : ''}
         </div>
         ${state.showSrFilters ? `
         <div style="background:#F4F5F7;border:1px solid #E4E2DA;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
@@ -3902,11 +3991,11 @@ function renderSalesReturnFormModal() {
         ${iconBtn('sr-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('sr-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.salesReturns.length===0)}
         ${iconBtn('sr-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.salesReturns.length===0)}
-        ${iconBtn('sr-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingSalesReturnId)}
-        ${iconBtn('sr-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingSalesReturnId)}
+        ${iconBtn('sr-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingSalesReturnId || !hasPerm('sales_return','can_print'))}
+        ${hasPerm('sales_return','can_print') ? iconBtn('sr-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingSalesReturnId) : ''}
         ${f.approved ? '' : iconBtn('sr-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('sr-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
-        ${(!f.approved && state.editingSalesReturnId && canApprove()) ? iconBtn('sr-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
+        ${(!f.approved && state.editingSalesReturnId && (canApprove() || hasPerm('sales_return','can_approve'))) ? iconBtn('sr-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
       </div>
     </div>
   </div>`;
@@ -3920,7 +4009,7 @@ function renderPurchaseReturnsSection() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="pr-search" class="input" placeholder="بحث برقم السند أو اسم المورد..." value="${escapeHtml(state.purchaseReturnQuery)}" /></div>
           <button id="pr-filters-toggle" class="btn" style="padding:8px 14px;"><i class="ti ti-filter" style="font-size:14px;color:#2C4A6E;"></i> فلاتر متقدمة</button>
-          <button id="new-pr-btn" class="btn primary" style="padding:8px 14px;">+ سند مردود شراء جديد</button>
+          ${hasPerm('purchase_return','can_add') ? `<button id="new-pr-btn" class="btn primary" style="padding:8px 14px;">+ سند مردود شراء جديد</button>` : ''}
         </div>
         ${state.showPrFilters ? `
         <div style="background:#F4F5F7;border:1px solid #E4E2DA;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
@@ -4060,11 +4149,11 @@ function renderPurchaseReturnFormModal() {
         ${iconBtn('pr-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('pr-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.purchaseReturns.length===0)}
         ${iconBtn('pr-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), state.purchaseReturns.length===0)}
-        ${iconBtn('pr-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingPurchaseReturnId)}
-        ${iconBtn('pr-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingPurchaseReturnId)}
+        ${iconBtn('pr-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingPurchaseReturnId || !hasPerm('purchase_return','can_print'))}
+        ${hasPerm('purchase_return','can_print') ? iconBtn('pr-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !state.editingPurchaseReturnId) : ''}
         ${f.approved ? '' : iconBtn('pr-cancel', 'ti-x', '#C0392B', 'الغاء')}
         ${f.approved ? '' : iconBtn('pr-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
-        ${(!f.approved && state.editingPurchaseReturnId && canApprove()) ? iconBtn('pr-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
+        ${(!f.approved && state.editingPurchaseReturnId && (canApprove() || hasPerm('purchase_return','can_approve'))) ? iconBtn('pr-approve', 'ti-lock', '#0F6E56', 'ترحيل') : ''}
       </div>
     </div>
   </div>`;
@@ -5288,7 +5377,7 @@ function renderReceiptVouchersSection() {
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="rv-search" class="input" placeholder="بحث برقم السند أو اسم العميل..." value="${escapeHtml(state.receiptVoucherQuery||'')}" /></div>
-          <button id="new-rv-btn" class="btn primary" style="padding:8px 14px;">+ سند قبض جديد</button>
+          ${hasPerm('receipt_voucher','can_add') ? `<button id="new-rv-btn" class="btn primary" style="padding:8px 14px;">+ سند قبض جديد</button>` : ''}
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند قبض</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
@@ -5316,7 +5405,7 @@ function renderSettlementVouchersSection() {
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="stv-search" class="input" placeholder="بحث برقم السند أو اسم الطرف..." value="${escapeHtml(state.settlementVoucherQuery||'')}" /></div>
-          <button id="new-stv-btn" class="btn primary" style="padding:8px 14px;">+ سند تسوية جديد</button>
+          ${hasPerm('settlement_voucher','can_add') ? `<button id="new-stv-btn" class="btn primary" style="padding:8px 14px;">+ سند تسوية جديد</button>` : ''}
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند تسوية</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
@@ -5344,7 +5433,7 @@ function renderPaymentVouchersSection() {
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:220px;"><input id="pv-search" class="input" placeholder="بحث برقم السند أو اسم المورد..." value="${escapeHtml(state.paymentVoucherQuery||'')}" /></div>
-          <button id="new-pv-btn" class="btn primary" style="padding:8px 14px;">+ سند صرف جديد</button>
+          ${hasPerm('payment_voucher','can_add') ? `<button id="new-pv-btn" class="btn primary" style="padding:8px 14px;">+ سند صرف جديد</button>` : ''}
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند صرف</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
@@ -5471,10 +5560,10 @@ function renderVoucherFormModal(kind) {
         ${iconBtn(`${prefix}-cancel`, 'ti-x', '#C0392B', 'الغاء')}
         ${iconBtn(`${prefix}-next`, 'ti-player-track-next', '#27AE60', 'التالي', (isReceipt?state.receiptVouchers:state.paymentVouchers).length===0)}
         ${iconBtn(`${prefix}-prev`, 'ti-player-track-prev', '#2E86C1', 'السابق', (isReceipt?state.receiptVouchers:state.paymentVouchers).length===0)}
-        ${iconBtn(`${prefix}-print`, 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number)}
-        ${iconBtn(`${prefix}-pdf`, 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number)}
+        ${iconBtn(`${prefix}-print`, 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number || !hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_print'))}
+        ${hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_print') ? iconBtn(`${prefix}-pdf`, 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number) : ''}
         ${f.approved ? '' : iconBtn(`${prefix}-save`, 'ti-device-floppy', '#2C4A6E', 'حفظ')}
-        ${(!f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && canApprove()) ? iconBtn(`${prefix}-approve`, 'ti-lock', '#0F6E56', 'ترحيل') : ''}
+        ${(!f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && (canApprove() || hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_approve'))) ? iconBtn(`${prefix}-approve`, 'ti-lock', '#0F6E56', 'ترحيل') : ''}
         ${(f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && isAdmin()) ? iconBtn(`${prefix}-unlock`, 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
       </div>
     </div>
@@ -5937,7 +6026,7 @@ function renderItemsSection(items, lowStock) {
           <div style="flex:1;min-width:220px;">
             <input id="search-input" class="input" placeholder="${t('items_search_ph')}" value="${escapeHtml(state.query)}" />
           </div>
-          <button id="new-item-btn" class="btn primary" style="padding:8px 14px;">${t('items_new_btn')}</button>
+          ${hasPerm('items','can_add') ? `<button id="new-item-btn" class="btn primary" style="padding:8px 14px;">${t('items_new_btn')}</button>` : ''}
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${state.items.length} ${t('items_count')}${lowStock > 0 ? ` · ${lowStock} ${t('items_needs_reorder')}` : ''}</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
@@ -5957,7 +6046,7 @@ function renderItemsSection(items, lowStock) {
               <div style="padding:7px 8px;">${Number(item.price).toFixed(2)}</div>
               <div style="padding:4px 6px;display:flex;gap:4px;">
                 <button data-edit="${item.id}" style="border:1px solid #E4E2DA;background:#F0F6FC;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#2C4A6E;box-shadow:0 1px 2px rgba(27,51,82,0.08);transition:transform 0.1s ease;">✎</button>
-                <button data-del="${item.id}" style="border:1px solid #F5D5D0;background:#FCEBEB;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#C0392B;box-shadow:0 1px 2px rgba(192,57,43,0.08);transition:transform 0.1s ease;">✕</button>
+                ${hasPerm('items','can_delete') ? `<button data-del="${item.id}" style="border:1px solid #F5D5D0;background:#FCEBEB;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#C0392B;box-shadow:0 1px 2px rgba(192,57,43,0.08);transition:transform 0.1s ease;">✕</button>` : ''}
               </div>
             </div>`;
           }).join('')}
@@ -7301,12 +7390,12 @@ function renderSettlementVoucherModal() {
       </div>
       <div style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;flex-wrap:wrap;">
         ${iconBtn('stv-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
-        ${iconBtn('stv-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number)}
-        ${iconBtn('stv-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number)}
+        ${iconBtn('stv-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number || !hasPerm('settlement_voucher','can_print'))}
+        ${hasPerm('settlement_voucher','can_print') ? iconBtn('stv-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number) : ''}
         ${iconBtn('stv-next', 'ti-player-track-next', '#27AE60', t('btn_next'), sortedVouchers.length===0)}
         ${iconBtn('stv-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), sortedVouchers.length===0)}
         ${!state.editingSettlementVoucherId ? iconBtn('stv-save', 'ti-device-floppy', '#1E5AC0', t('btn_save')) : ''}
-        ${(state.editingSettlementVoucherId && !f.approved && canApprove()) ? iconBtn('stv-approve', 'ti-lock', '#0F6E56', t('btn_approve')) : ''}
+        ${(state.editingSettlementVoucherId && !f.approved && (canApprove() || hasPerm('settlement_voucher','can_approve'))) ? iconBtn('stv-approve', 'ti-lock', '#0F6E56', t('btn_approve')) : ''}
         ${(state.editingSettlementVoucherId && f.approved && isAdmin()) ? iconBtn('stv-unlock', 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
       </div>
     </div>
@@ -7372,12 +7461,12 @@ function renderCashDisbursementModal() {
       </div>
       <div style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;flex-wrap:wrap;">
         ${iconBtn('cdv-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
-        ${iconBtn('cdv-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number)}
-        ${iconBtn('cdv-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number)}
+        ${iconBtn('cdv-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number || !hasPerm('cash_disbursement','can_print'))}
+        ${hasPerm('cash_disbursement','can_print') ? iconBtn('cdv-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number) : ''}
         ${iconBtn('cdv-next', 'ti-player-track-next', '#27AE60', t('btn_next'), sortedVouchers.length===0)}
         ${iconBtn('cdv-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), sortedVouchers.length===0)}
-        ${!state.editingCashDisbursementId ? iconBtn('cdv-save', 'ti-device-floppy', '#1E5AC0', t('btn_save')) : ''}
-        ${(state.editingCashDisbursementId && !f.approved && canApprove()) ? iconBtn('cdv-approve', 'ti-lock', '#0F6E56', t('btn_approve')) : ''}
+        ${(!state.editingCashDisbursementId && hasPerm('cash_disbursement','can_add')) ? iconBtn('cdv-save', 'ti-device-floppy', '#1E5AC0', t('btn_save')) : ''}
+        ${(state.editingCashDisbursementId && !f.approved && (canApprove() || hasPerm('cash_disbursement','can_approve'))) ? iconBtn('cdv-approve', 'ti-lock', '#0F6E56', t('btn_approve')) : ''}
       </div>
     </div>
   </div>`;
@@ -7861,6 +7950,11 @@ function renderUsersModal() {
             <label><input id="add-user-perm-approve" type="checkbox" /> اعتماد الفواتير والسندات</label>
             <label><input id="add-user-perm-company" type="checkbox" /> بيانات الشركة وطرق الدفع</label>
             <label><input id="add-user-perm-backup" type="checkbox" /> النسخ الاحتياطية والصيانة</label>
+            <label><input id="add-user-perm-hr" type="checkbox" /> شؤون الموظفين والرواتب</label>
+            <label><input id="add-user-perm-reports" type="checkbox" /> التقارير العامة</label>
+            <label><input id="add-user-perm-inventory" type="checkbox" /> إدارة الأصناف والمخزون</label>
+            <label><input id="add-user-perm-parties" type="checkbox" /> إدارة العملاء والموردين</label>
+            <label><input id="add-user-perm-users" type="checkbox" /> إدارة المستخدمين (إضافة/حذف)</label>
           </div>
           <div style="padding:8px 10px;background:#E6F1FB;border:1px solid #2C4A6E;border-radius:4px;margin-bottom:10px;">
             <label style="font-size:12px;color:#1B3352;display:flex;align-items:center;gap:6px;">
@@ -8442,6 +8536,102 @@ function renderFiscalLockModal() {
           ${closedUntil ? `<button id="fl-clear" class="btn" style="padding:9px 18px;">فتح الإقفال بالكامل</button>` : ''}
         </div>
       </div>
+    </div>
+  </div>`;
+}
+
+function renderPermMatrixModal() {
+  const target = state.permMatrixMode === 'role'
+    ? state.permRoles.find(r => r.id === state.permMatrixTargetId)
+    : state.users.find(u => u.id === state.permMatrixTargetId);
+  const permTypes = [
+    { key: 'can_read', label: 'قراءة' }, { key: 'can_add', label: 'إضافة' }, { key: 'can_edit', label: 'تعديل' },
+    { key: 'can_delete', label: 'إلغاء' }, { key: 'can_print', label: 'طباعة' }, { key: 'can_approve', label: 'اعتماد' },
+  ];
+  const tabs = [
+    { key: 'screens', label: 'الشاشات', group: 'main' },
+    { key: 'extra', label: 'الشاشات الإضافية', group: 'extra' },
+    { key: 'reports', label: 'التقارير', group: 'report' },
+    { key: 'other', label: 'أخرى', group: 'other' },
+    { key: 'discounts', label: 'الخصومات', group: null },
+    { key: 'helper', label: 'الشاشة المساعدة', group: 'helper' },
+  ];
+  const activeTab = tabs.find(t => t.key === state.permMatrixTab) || tabs[0];
+  const tabScreens = activeTab.group ? state.permScreens.filter(s => (s.screen_group||'main') === activeTab.group) : [];
+  const generalRow = state.permMatrixData['__general__'] || {};
+  // ألوان مطابقة لتصميم "سنمار" الكلاسيكي (أزرق متدرّج + بيج/ذهبي + تبويبات حمراء)
+  const C = { blueDark:'#0a3d91', blueMid:'#1a5fc4', blueLight:'#5f9bea', bgApp:'#d6d3ce', bgPanel:'#ece9e2', bgHeader:'#eadfb4', bgHeader2:'#f4ecd0', rowA:'#ffffff', rowB:'#f7f3e6', border:'#8a8a83', tabActive:'#b40000' };
+
+  return `
+  <div id="perm-matrix-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;font-family:Tahoma,'Segoe UI',Arial,sans-serif;">
+    <div style="width:100%;max-width:920px;max-height:92vh;overflow-y:auto;background:${C.bgApp};border:1px solid #2b2b2b;border-radius:3px;box-shadow:6px 6px 18px rgba(0,0,0,0.45);" onclick="event.stopPropagation()">
+      <div style="background:linear-gradient(to bottom, ${C.blueLight}, ${C.blueMid} 40%, ${C.blueDark});color:#fff;display:flex;align-items:center;justify-content:space-between;padding:5px 10px;font-size:13px;font-weight:bold;">
+        <div style="display:flex;align-items:center;gap:8px;"><i class="ti ti-shield-lock"></i><span>الصلاحيات</span></div>
+        <button id="perm-matrix-close" style="width:20px;height:16px;background:#d9d6cf;border:1px solid #6b6b6b;border-radius:2px;cursor:pointer;color:#333;font-size:10px;">✕</button>
+      </div>
+      <div style="background:${C.bgPanel};padding:8px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid ${C.border};flex-wrap:wrap;gap:8px;">
+        <div style="font-weight:bold;color:#333;">نظام المبيعات المتكامل</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
+            <select id="perm-target-select-role" class="input" style="width:200px;padding:3px;font-size:12px;" ${state.permMatrixMode!=='role'?'disabled':''}>
+              ${state.permRoles.map(r => `<option value="${r.id}" ${r.id===state.permMatrixTargetId&&state.permMatrixMode==='role'?'selected':''}>${escapeHtml(r.role_name)}</option>`).join('')}
+            </select>
+            <label style="display:flex;align-items:center;gap:4px;font-weight:bold;color:#333;white-space:nowrap;cursor:pointer;"><input type="radio" name="perm-mode" id="perm-mode-role" ${state.permMatrixMode==='role'?'checked':''} /> المجموعات</label>
+            ${state.permMatrixMode === 'role' ? `<button id="perm-add-role-btn" style="border:1px solid ${C.border};background:${C.bgHeader2};border-radius:3px;padding:3px 8px;font-size:11px;cursor:pointer;">+ جديدة</button>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
+            <select id="perm-target-select-user" class="input" style="width:200px;padding:3px;font-size:12px;" ${state.permMatrixMode!=='user'?'disabled':''}>
+              ${state.users.map(u => `<option value="${u.id}" ${u.id===state.permMatrixTargetId&&state.permMatrixMode==='user'?'selected':''}>${escapeHtml(u.display_name || 'مستخدم (' + u.id.slice(0,8) + ')')}</option>`).join('')}
+            </select>
+            <label style="display:flex;align-items:center;gap:4px;font-weight:bold;color:#333;white-space:nowrap;cursor:pointer;"><input type="radio" name="perm-mode" id="perm-mode-user" ${state.permMatrixMode==='user'?'checked':''} /> المستخدمين</label>
+          </div>
+        </div>
+      </div>
+      ${state.showNewRoleBox ? `
+      <div style="background:${C.bgPanel};padding:8px 10px;display:flex;gap:8px;border-bottom:1px solid ${C.border};">
+        <input id="perm-new-role-name" class="input" placeholder="اسم المجموعة الجديدة" style="max-width:220px;" />
+        <button id="perm-save-new-role" style="border:1px solid ${C.border};background:${C.bgHeader2};border-radius:3px;padding:4px 12px;font-size:12px;cursor:pointer;font-weight:bold;">حفظ</button>
+      </div>` : ''}
+
+      ${!target ? `<div style="padding:30px;text-align:center;color:#555;background:${C.bgPanel};">${state.permMatrixMode==='role' ? 'أنشئ مجموعة أول' : 'ما فيه مستخدمين بعد'}</div>` : `
+      <div style="display:flex;background:${C.bgPanel};border-bottom:1px solid ${C.border};padding:0 6px;flex-wrap:wrap;">
+        ${tabs.map(t => `<button data-perm-tab="${t.key}" style="padding:6px 14px;font-size:12px;font-weight:bold;cursor:pointer;border:1px solid ${activeTab.key===t.key?C.border:'transparent'};border-bottom:none;margin-inline-start:2px;background:${activeTab.key===t.key?C.bgPanel:'#dedad0'};color:${activeTab.key===t.key?C.tabActive:'#333'};border-radius:3px 3px 0 0;position:relative;${activeTab.key===t.key?'top:1px;':''}">${t.label}</button>`).join('')}
+      </div>
+
+      ${activeTab.key === 'discounts' ? `
+      <div style="background:${C.bgPanel};padding:20px;">
+        <div style="font-size:12.5px;color:#333;margin-bottom:10px;">أقصى نسبة خصم يقدر ${state.permMatrixMode==='role'?'أي عضو بهذي المجموعة':'هذا المستخدم'} يطبّقها على أي فاتورة (بدون موافقة إضافية)</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input id="perm-max-discount" type="number" min="0" max="100" class="input" style="max-width:100px;" value="${generalRow.max_discount_percent ?? ''}" placeholder="بدون حد" />
+          <span style="font-size:13px;color:#5F5E5A;">%</span>
+        </div>
+      </div>
+      ` : tabScreens.length === 0 ? `
+      <div style="padding:30px;text-align:center;color:#555;background:${C.bgPanel};">ما فيه شاشات مسجّلة بهذا التصنيف بعد</div>
+      ` : `
+      <div style="background:${C.bgPanel};padding:8px;">
+        <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid ${C.border};">
+          <thead><tr>
+            <th style="background:linear-gradient(to bottom, ${C.bgHeader2}, ${C.bgHeader});border:1px solid ${C.border};padding:6px 4px;font-size:12px;font-weight:bold;text-align:right;padding-right:12px;">اسم الشاشة</th>
+            ${permTypes.map(p => `<th style="background:linear-gradient(to bottom, ${C.bgHeader2}, ${C.bgHeader});border:1px solid ${C.border};padding:6px 4px;font-size:12px;font-weight:bold;white-space:nowrap;">${p.label}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${tabScreens.map((s,i) => {
+              const row = state.permMatrixData[s.id] || {};
+              return `
+              <tr style="background:${i%2===0?C.rowA:C.rowB};">
+                <td style="border:1px solid #d8d5cc;padding:5px 4px;text-align:right;padding-right:12px;font-size:12.5px;">${escapeHtml(s.screen_name_ar)}</td>
+                ${permTypes.map(p => `<td style="border:1px solid #d8d5cc;padding:5px 4px;text-align:center;"><input type="checkbox" style="width:15px;height:15px;cursor:pointer;accent-color:#1a5fc4;" data-perm-cell="${s.id}::${p.key}" ${row[p.key]?'checked':''} /></td>`).join('')}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`}
+      <div style="display:flex;justify-content:center;align-items:center;gap:14px;padding:12px;background:${C.bgPanel};border-top:1px solid ${C.border};">
+        <span id="perm-matrix-dirty-note" style="font-size:11px;color:#8a2b2b;font-weight:bold;${state.permMatrixDirty?'':'display:none;'}">فيه تغييرات ما اتحفظت</span>
+        <button id="perm-matrix-close-2" style="display:flex;flex-direction:column;align-items:center;gap:3px;background:${C.bgPanel};border:1px solid #6b6b6b;border-radius:4px;padding:6px 18px;cursor:pointer;font-weight:bold;font-size:12px;color:#222;box-shadow:inset 0 1px 0 #fff;"><span style="font-size:18px;color:#b40000;">🚪</span>خروج</button>
+        <button id="perm-matrix-save" style="display:flex;flex-direction:column;align-items:center;gap:3px;background:${C.bgPanel};border:1px solid #6b6b6b;border-radius:4px;padding:6px 18px;cursor:pointer;font-weight:bold;font-size:12px;color:#222;box-shadow:inset 0 1px 0 #fff;"><span style="font-size:18px;">💾</span>حفظ</button>
+      </div>`}
     </div>
   </div>`;
 }
@@ -10300,6 +10490,7 @@ function bindAppEvents() {
         return;
       }
       if (target === '__cash_disbursement__') {
+        if (!hasPerm('cash_disbursement','can_read') && !hasPerm('cash_disbursement','can_add')) { showToast('ما عندك صلاحية الوصول لسند صرف الصندوق'); return; }
         await loadChartOfAccounts();
         await loadPaymentMethods();
         await loadCashDisbursementVouchers();
@@ -10455,7 +10646,19 @@ function bindAppEvents() {
         render();
         return;
       }
-      if (target === '__users__' && !isAdmin()) { showToast('هذا القسم للمدير فقط'); return; }
+      if (target === '__users__' && !isAdmin() && !canManageUsers()) { showToast('هذا القسم للمدير فقط'); return; }
+      if (target === '__perm_matrix__') {
+        if (!isAdmin()) { showToast('هذا القسم للمدير فقط'); return; }
+        await loadPermMatrixLists();
+        await loadUsers();
+        state.permMatrixMode = 'role';
+        state.permMatrixTargetId = state.permRoles[0]?.id || '';
+        await loadPermMatrixData('role', state.permMatrixTargetId);
+        state.permMatrixDirty = false;
+        state.showPermMatrix = true;
+        render();
+        return;
+      }
       if ((target === '__company__' || target === '__payment_methods__') && !canManageCompany()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
       if (target === '__maintenance__' && !canManageBackup()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
       if (target === '__designer_panel__' && !isAdmin()) { showToast('هذا القسم للمدير فقط'); return; }
@@ -10832,15 +11035,17 @@ function bindAppEvents() {
         render();
       };
     }
-    document.getElementById('new-purchase-btn').onclick = () => {
-      state.purchaseForm = newPurchaseForm();
-      state.purchaseForm.invoice_number = nextDocNumber(state.purchases, 'invoice_number', 'P', 4);
-      state.editingPurchaseId = null;
-      state.docJournalNumbers = [];
-      state.purchaseActiveTab = 'معلومات الفاتورة';
-      state.showPurchaseForm = true;
-      render();
-    };
+    if (document.getElementById('new-purchase-btn')) {
+      document.getElementById('new-purchase-btn').onclick = () => {
+        state.purchaseForm = newPurchaseForm();
+        state.purchaseForm.invoice_number = nextDocNumber(state.purchases, 'invoice_number', 'P', 4);
+        state.editingPurchaseId = null;
+        state.docJournalNumbers = [];
+        state.purchaseActiveTab = 'معلومات الفاتورة';
+        state.showPurchaseForm = true;
+        render();
+      };
+    }
     if (document.getElementById('print-purchases-list')) {
       document.getElementById('print-purchases-list').onclick = () => {
         const list = filteredPurchases();
@@ -11272,14 +11477,16 @@ function bindAppEvents() {
         render();
       };
     }
-    document.getElementById('new-quote-btn').onclick = () => {
-      state.quoteForm = newQuoteForm();
-      state.quoteForm.quote_number = nextDocNumber(state.quotations, 'quote_number', 'Q', 4);
-      state.editingQuoteId = null;
-      state.quoteActiveTab = 'معلومات العرض';
-      state.showQuoteForm = true;
-      render();
-    };
+    if (document.getElementById('new-quote-btn')) {
+      document.getElementById('new-quote-btn').onclick = () => {
+        state.quoteForm = newQuoteForm();
+        state.quoteForm.quote_number = nextDocNumber(state.quotations, 'quote_number', 'Q', 4);
+        state.editingQuoteId = null;
+        state.quoteActiveTab = 'معلومات العرض';
+        state.showQuoteForm = true;
+        render();
+      };
+    }
     document.querySelectorAll('[data-open-quote]').forEach(row => {
       row.onclick = () => { openQuoteById(row.dataset.openQuote); };
     });
@@ -11426,14 +11633,16 @@ function bindAppEvents() {
         render();
       };
     }
-    document.getElementById('new-sales-btn').onclick = () => {
-      state.salesForm = newSalesForm();
-      state.salesForm.invoice_number = nextDocNumber(state.salesInvoices, 'invoice_number', 'S', 4);
-      state.editingSalesId = null;
-      state.docJournalNumbers = [];
-      state.showSalesForm = true;
-      render();
-    };
+    if (document.getElementById('new-sales-btn')) {
+      document.getElementById('new-sales-btn').onclick = () => {
+        state.salesForm = newSalesForm();
+        state.salesForm.invoice_number = nextDocNumber(state.salesInvoices, 'invoice_number', 'S', 4);
+        state.editingSalesId = null;
+        state.docJournalNumbers = [];
+        state.showSalesForm = true;
+        render();
+      };
+    }
     document.querySelectorAll('[data-open-sales]').forEach(row => {
       row.onclick = () => { openSalesById(row.dataset.openSales); };
     });
@@ -11928,14 +12137,16 @@ function bindAppEvents() {
         render();
       };
     }
-    document.getElementById('new-sr-btn').onclick = () => {
-      state.salesReturnForm = newSalesReturnForm();
-      state.salesReturnForm.return_number = nextDocNumber(state.salesReturns, 'return_number', 'SR', 4);
-      state.editingSalesReturnId = null;
-      state.docJournalNumbers = [];
-      state.showSalesReturnForm = true;
-      render();
-    };
+    if (document.getElementById('new-sr-btn')) {
+      document.getElementById('new-sr-btn').onclick = () => {
+        state.salesReturnForm = newSalesReturnForm();
+        state.salesReturnForm.return_number = nextDocNumber(state.salesReturns, 'return_number', 'SR', 4);
+        state.editingSalesReturnId = null;
+        state.docJournalNumbers = [];
+        state.showSalesReturnForm = true;
+        render();
+      };
+    }
     document.querySelectorAll('[data-open-sr]').forEach(row => { row.onclick = () => { openSalesReturnById(row.dataset.openSr); }; });
   }
   if (state.showSalesReturnForm) {
@@ -12121,14 +12332,16 @@ function bindAppEvents() {
         render();
       };
     }
-    document.getElementById('new-pr-btn').onclick = () => {
-      state.purchaseReturnForm = newPurchaseReturnForm();
-      state.purchaseReturnForm.return_number = nextDocNumber(state.purchaseReturns, 'return_number', 'PR', 4);
-      state.editingPurchaseReturnId = null;
-      state.docJournalNumbers = [];
-      state.showPurchaseReturnForm = true;
-      render();
-    };
+    if (document.getElementById('new-pr-btn')) {
+      document.getElementById('new-pr-btn').onclick = () => {
+        state.purchaseReturnForm = newPurchaseReturnForm();
+        state.purchaseReturnForm.return_number = nextDocNumber(state.purchaseReturns, 'return_number', 'PR', 4);
+        state.editingPurchaseReturnId = null;
+        state.docJournalNumbers = [];
+        state.showPurchaseReturnForm = true;
+        render();
+      };
+    }
     document.querySelectorAll('[data-open-pr]').forEach(row => { row.onclick = () => { openPurchaseReturnById(row.dataset.openPr); }; });
   }
   if (state.showPurchaseReturnForm) {
@@ -12788,14 +13001,16 @@ function bindAppEvents() {
     document.getElementById('search-input').focus();
     document.getElementById('search-input').setSelectionRange(state.query.length, state.query.length);
   };
-  document.getElementById('new-item-btn').onclick = () => {
-    state.form = emptyForm();
-    state.formErrors = {};
-    state.editingId = null;
-    state.activeTab = 'عام';
-    state.showForm = true;
-    render();
-  };
+  if (document.getElementById('new-item-btn')) {
+    document.getElementById('new-item-btn').onclick = () => {
+      state.form = emptyForm();
+      state.formErrors = {};
+      state.editingId = null;
+      state.activeTab = 'عام';
+      state.showForm = true;
+      render();
+    };
+  }
   document.querySelectorAll('[data-edit]').forEach(btn => {
     btn.onclick = () => { openItemById(btn.dataset.edit); };
   });
@@ -13160,6 +13375,102 @@ function bindAppEvents() {
       const rows = state.profitReportRows.map(r => [r.invoice_number, r.customer, r.date, r.revenue, r.cogs, r.profit, r.margin.toFixed(1)]);
       exportFormattedAccountingSheet('كشف الأرباح والخسائر.xlsx', 'الأرباح والخسائر', headers, rows);
     };
+  }
+
+  if (state.showPermMatrix) {
+    document.getElementById('perm-matrix-close').onclick = () => { state.showPermMatrix = false; render(); };
+    document.querySelectorAll('[data-perm-tab]').forEach(btn => {
+      btn.onclick = () => { state.permMatrixTab = btn.dataset.permTab; render(); };
+    });
+    if (document.getElementById('perm-max-discount')) {
+      document.getElementById('perm-max-discount').oninput = (ev) => {
+        if (!state.permMatrixData['__general__']) state.permMatrixData['__general__'] = {};
+        state.permMatrixData['__general__'].max_discount_percent = ev.target.value === '' ? null : Number(ev.target.value);
+        state.permMatrixDirty = true;
+      };
+    }
+    document.getElementById('perm-mode-role').onchange = async () => {
+      state.permMatrixMode = 'role';
+      state.permMatrixTargetId = state.permRoles[0]?.id || '';
+      await loadPermMatrixData('role', state.permMatrixTargetId);
+      state.permMatrixDirty = false;
+      render();
+    };
+    document.getElementById('perm-mode-user').onchange = async () => {
+      state.permMatrixMode = 'user';
+      state.permMatrixTargetId = state.users[0]?.id || '';
+      await loadPermMatrixData('user', state.permMatrixTargetId);
+      state.permMatrixDirty = false;
+      render();
+    };
+    document.getElementById('perm-target-select-role').onchange = async (ev) => {
+      state.permMatrixTargetId = ev.target.value;
+      await loadPermMatrixData('role', state.permMatrixTargetId);
+      state.permMatrixDirty = false;
+      render();
+    };
+    document.getElementById('perm-target-select-user').onchange = async (ev) => {
+      state.permMatrixTargetId = ev.target.value;
+      await loadPermMatrixData('user', state.permMatrixTargetId);
+      state.permMatrixDirty = false;
+      render();
+    };
+    if (document.getElementById('perm-matrix-close-2')) {
+      document.getElementById('perm-matrix-close-2').onclick = () => { state.showPermMatrix = false; render(); };
+    }
+    if (document.getElementById('perm-add-role-btn')) {
+      document.getElementById('perm-add-role-btn').onclick = () => { state.showNewRoleBox = true; state.newRoleName = ''; render(); };
+    }
+    if (document.getElementById('perm-save-new-role')) {
+      document.getElementById('perm-save-new-role').onclick = async () => {
+        const name = document.getElementById('perm-new-role-name').value.trim();
+        if (!name) { showToast('اكتب اسم المجموعة', 'error'); return; }
+        const { error } = await sb.from('permission_roles').insert({ role_name: name });
+        if (error) { showToast('فشل إنشاء المجموعة — يمكن الاسم مكرر', 'error'); return; }
+        state.showNewRoleBox = false;
+        await loadPermMatrixLists();
+        state.permMatrixTargetId = state.permRoles.find(r => r.role_name === name)?.id || '';
+        await loadPermMatrixData('role', state.permMatrixTargetId);
+        showToast('تم إنشاء المجموعة');
+        render();
+      };
+    }
+    document.querySelectorAll('[data-perm-cell]').forEach(cb => {
+      cb.onchange = (ev) => {
+        const [screenId, permKey] = cb.dataset.permCell.split('::');
+        if (!state.permMatrixData[screenId]) state.permMatrixData[screenId] = {};
+        state.permMatrixData[screenId][permKey] = ev.target.checked;
+        state.permMatrixDirty = true;
+        const note = document.getElementById('perm-matrix-dirty-note');
+        if (note) note.style.display = '';
+      };
+    });
+    if (document.getElementById('perm-matrix-save')) {
+      document.getElementById('perm-matrix-save').onclick = async () => {
+        const table = state.permMatrixMode === 'role' ? 'role_permissions' : 'user_permissions';
+        const idField = state.permMatrixMode === 'role' ? 'role_id' : 'user_id';
+        const rows = state.permScreens.map(s => {
+          const d = state.permMatrixData[s.id] || {};
+          return { [idField]: state.permMatrixTargetId, screen_id: s.id, can_read: !!d.can_read, can_add: !!d.can_add, can_edit: !!d.can_edit, can_delete: !!d.can_delete, can_print: !!d.can_print, can_approve: !!d.can_approve };
+        });
+        const { error } = await sb.from(table).upsert(rows);
+        if (error) { showToast('فشل الحفظ: ' + error.message, 'error'); return; }
+        // حد الخصم الأقصى يُحفظ بمكان منفصل (مجموعات: permission_roles، مستخدم: profiles)
+        const discountValue = state.permMatrixData['__general__']?.max_discount_percent ?? null;
+        if (state.permMatrixMode === 'role') {
+          const { error: discErr } = await sb.from('permission_roles').update({ max_discount_percent: discountValue }).eq('id', state.permMatrixTargetId);
+          if (discErr) { showToast('فشل حفظ حد الخصم: ' + discErr.message, 'error'); return; }
+          await loadPermMatrixLists();
+        } else {
+          const { error: discErr } = await sb.from('profiles').update({ max_discount_percent: discountValue }).eq('id', state.permMatrixTargetId);
+          if (discErr) { showToast('فشل حفظ حد الخصم: ' + discErr.message, 'error'); return; }
+          await loadUsers();
+        }
+        state.permMatrixDirty = false;
+        showToast('تم حفظ الصلاحيات بنجاح');
+        render();
+      };
+    }
   }
 
   if (state.showFiscalLock) {
@@ -15817,6 +16128,11 @@ function bindAppEvents() {
         const canApproveChk = document.getElementById('add-user-perm-approve').checked;
         const canCompanyChk = document.getElementById('add-user-perm-company').checked;
         const canBackupChk = document.getElementById('add-user-perm-backup').checked;
+        const canHrChk = document.getElementById('add-user-perm-hr').checked;
+        const canReportsChk = document.getElementById('add-user-perm-reports').checked;
+        const canInventoryChk = document.getElementById('add-user-perm-inventory').checked;
+        const canPartiesChk = document.getElementById('add-user-perm-parties').checked;
+        const canUsersChk = document.getElementById('add-user-perm-users').checked;
         const isSupportChk = document.getElementById('add-user-is-support').checked;
         // مهم: ما نلتقط عنصر رسالة الخطأ بمتغيّر ثابت — أي render() بمنتصف العملية يعيد بناء الصفحة
         // ويخلّي أي عنصر ملتقط قبلها "ميت" (منفصل عن الصفحة الفعلية)، فرسالة الخطأ ما تظهر أبداً.
@@ -15832,6 +16148,7 @@ function bindAppEvents() {
           await callUserManagementFunction({
             action: 'create', username, password, displayName, role,
             canApprove: canApproveChk, canCompany: canCompanyChk, canBackup: canBackupChk, isSupport: isSupportChk,
+            canHr: canHrChk, canReports: canReportsChk, canInventory: canInventoryChk, canParties: canPartiesChk, canUsers: canUsersChk,
           });
           logActivity('إنشاء مستخدم جديد', username);
           await loadUsers();
