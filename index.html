@@ -249,6 +249,7 @@ let state = {
   showBulkImport: false, bulkImportRows: [], bulkImportBusy: false, bulkImportResult: null,
   showBarcodeScanner: false, barcodeScannerCallback: null, barcodeScannerError: '',
   showPrintSettings: false,
+  printSettingsDocType: 'sales_invoice', printSettingsWorking: {}, printSettingsHasOverride: false, showPrintPreview: false,
   showFooterPerType: false,
   permMatrixData: {}, permMatrixDirty: false, showNewRoleBox: false, newRoleName: '',
   showSupplierPriceCompare: false, spcSelectedItemId: '', spcQuery: '', spcResults: [],
@@ -2345,6 +2346,7 @@ function renderApp() {
   ${state.showBulkImport ? renderBulkImportModal() : ''}
   ${state.showBarcodeScanner ? renderBarcodeScannerModal() : ''}
   ${state.showPrintSettings ? renderPrintSettingsModal() : ''}
+  ${state.showPrintPreview ? renderPrintPreviewModal() : ''}
   ${state.showVatReport ? renderVatReportModal() : ''}
   ${state.showSalesChart ? renderSalesChartModal() : ''}
   ${state.showProfitReport ? renderProfitReportModal() : ''}
@@ -8628,12 +8630,105 @@ function printFooterFor(docType) {
   return perType || state.company?.print_footer_text || state.company?.footer_note || '';
 }
 
+// يحمّل إعدادات الطباعة الخاصة بنوع مستند معيّن (لو موجودة)، وإلا يرجّع الإعدادات العامة كافتراضي
+const PRINT_SETTING_KEYS = ['print_font','print_font_size','print_accent_color','print_paper_size','print_show_logo','print_show_qr','print_show_signatures','print_show_iban','print_footer_text','print_margin_mm','print_copies','print_orientation','print_qr_size','print_table_border','print_row_spacing','print_watermark_draft','print_header_height','print_footer_height','print_header_bg_color','print_footer_bg_color','print_table_header_bg','print_table_header_text','print_table_border_color','print_table_corner'];
+function loadPrintSettingsForType(docType) {
+  const overrides = (state.company?.print_settings_by_type || {})[docType];
+  state.printSettingsHasOverride = !!overrides;
+  const working = {};
+  PRINT_SETTING_KEYS.forEach(k => { working[k] = (overrides && overrides[k] !== undefined) ? overrides[k] : state.company?.[k]; });
+  state.printSettingsWorking = working;
+}
+
+// يقرأ كل حقول شاشة إعدادات الطباعة من الـDOM ويحدّث state.printSettingsWorking (تُستخدم قبل المعاينة أو الحفظ)
+function readPrintSettingsFromDom() {
+  const get = (id) => document.getElementById(id)?.value;
+  const getChecked = (id) => document.getElementById(id)?.checked;
+  state.printSettingsWorking = {
+    print_font: get('c-print_font') || 'IBM Plex Sans Arabic', print_font_size: Number(get('c-print_font_size')) || 11, print_accent_color: get('c-print_accent_color') || 'var(--print-accent)',
+    print_paper_size: get('c-print_paper_size') || 'a4', print_show_logo: getChecked('c-print_show_logo'), print_show_qr: getChecked('c-print_show_qr'), print_show_signatures: getChecked('c-print_show_signatures'), print_show_iban: getChecked('c-print_show_iban'), print_footer_text: get('c-print_footer_text') || null,
+    print_margin_mm: Number(get('c-print_margin_mm')) || 10, print_copies: Number(get('c-print_copies')) || 1,
+    signature_url: get('c-signature_url') || null,
+    print_orientation: get('c-print_orientation') || 'portrait', print_qr_size: Number(get('c-print_qr_size')) || 25,
+    print_table_border: get('c-print_table_border') || 'solid', print_row_spacing: get('c-print_row_spacing') || 'normal',
+    print_watermark_draft: getChecked('c-print_watermark_draft'),
+    print_header_height: Number(get('c-print_header_height')) || 25, print_footer_height: Number(get('c-print_footer_height')) || 20,
+    print_header_bg_color: get('c-print_header_bg_color') || '#ffffff', print_footer_bg_color: get('c-print_footer_bg_color') || '#ffffff',
+    print_table_header_bg: get('c-print_table_header_bg') || '#1B3352', print_table_header_text: get('c-print_table_header_text') || '#ffffff',
+    print_table_border_color: get('c-print_table_border_color') || '#C9C4B0', print_table_corner: get('c-print_table_corner') || 'square',
+    print_footer_by_type: {
+      sales_invoice: get('c-print-footer-sales_invoice') || '',
+      purchase_invoice: get('c-print-footer-purchase_invoice') || '',
+      quotation: get('c-print-footer-quotation') || '',
+      vouchers: get('c-print-footer-vouchers') || '',
+    },
+  };
+}
+
+// نافذة معاينة عامة — تعرض مستند تجريبي بنفس إعدادات الطباعة الحالية (غير المحفوظة بعد) للنوع المختار
+function renderPrintPreviewModal() {
+  const f = state.printSettingsWorking;
+  const docTypeLabels = { sales_invoice:'فاتورة بيع', purchase_invoice:'فاتورة شراء', quotation:'عرض سعر', sales_return:'مردود بيع', purchase_return:'مردود شراء', receipt_voucher:'سند قبض', payment_voucher:'سند صرف', settlement_voucher:'سند تسوية', account_statement:'كشف حساب', general_report:'تقرير عام' };
+  const borderStyle = f.print_table_border === 'none' ? 'none' : f.print_table_border === 'dashed' ? 'dashed' : 'solid';
+  const radius = f.print_table_corner === 'rounded' ? '10px' : '0px';
+  const rowPad = f.print_row_spacing === 'compact' ? '4px' : f.print_row_spacing === 'relaxed' ? '13px' : '8px';
+  return `
+  <div id="print-preview-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:25;">
+    <div style="background:#e9e9e9;border-radius:14px;width:100%;max-width:${f.print_orientation==='landscape'?'760px':'560px'};max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.4);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-eye"></i> معاينة — ${docTypeLabels[state.printSettingsDocType]||''}</span><button id="print-preview-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:20px;">
+        <div style="background:#fff;box-shadow:0 2px 10px rgba(0,0,0,0.15);padding:0;font-family:${f.print_font||'IBM Plex Sans Arabic'},sans-serif;font-size:${f.print_font_size||11}px;">
+          <div style="min-height:${f.print_header_height||25}mm;background:${f.print_header_bg_color||'#fff'};display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #eee;">
+            ${f.print_show_logo!==false ? `<div style="width:50px;height:50px;background:#ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#888;">شعار</div>` : '<div></div>'}
+            <div style="text-align:center;font-weight:700;font-size:15px;">${docTypeLabels[state.printSettingsDocType]||''} — عيّنة معاينة</div>
+            ${f.print_show_qr!==false ? `<div style="width:${f.print_qr_size||25}mm;height:${f.print_qr_size||25}mm;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:8px;color:#888;">QR</div>` : '<div></div>'}
+          </div>
+          <div style="padding:14px 16px;">
+            <table style="width:100%;border-collapse:collapse;border-radius:${radius};overflow:hidden;">
+              <thead><tr>
+                ${['م','الصنف','الكمية','السعر','المجموع'].map(h => `<th style="padding:${rowPad} 8px;background:${f.print_table_header_bg||'#1B3352'};color:${f.print_table_header_text||'#fff'};font-size:11px;border:1px ${borderStyle} ${f.print_table_border_color||'#C9C4B0'};">${h}</th>`).join('')}
+              </tr></thead>
+              <tbody>
+                ${[1,2].map(i => `<tr>${['0'+i,'صنف تجريبي '+i,'2','50.00','100.00'].map(c => `<td style="padding:${rowPad} 8px;font-size:11px;text-align:center;border:1px ${borderStyle} ${f.print_table_border_color||'#C9C4B0'};">${c}</td>`).join('')}</tr>`).join('')}
+              </tbody>
+            </table>
+            ${f.print_show_signatures!==false ? `<div style="display:flex;justify-content:space-between;margin-top:30px;padding-top:10px;"><div style="border-top:1px solid #999;padding-top:4px;font-size:10px;width:100px;text-align:center;">توقيع 1${f.signature_url?`<br/><img src="${escapeHtml(f.signature_url)}" style="height:30px;margin-top:3px;" />`:''}</div><div style="border-top:1px solid #999;padding-top:4px;font-size:10px;width:100px;text-align:center;">توقيع 2</div></div>` : ''}
+          </div>
+          <div style="min-height:${f.print_footer_height||20}mm;background:${f.print_footer_bg_color||'#fff'};border-top:1px solid #eee;display:flex;align-items:center;justify-content:center;font-size:10px;color:#777;">
+            ${f.print_footer_text || 'نص التذييل التجريبي'}
+          </div>
+        </div>
+        ${f.print_watermark_draft ? `<div style="text-align:center;margin-top:8px;font-size:10.5px;color:#C0392B;">✓ ستظهر علامة "مسودة" مائية على المستندات غير المعتمدة</div>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderPrintSettingsModal() {
-  const f = state.companyForm;
+  const f = state.printSettingsWorking || {};
+  const docTypes = [
+    { key: 'sales_invoice', label: 'فاتورة بيع' },
+    { key: 'purchase_invoice', label: 'فاتورة شراء' },
+    { key: 'quotation', label: 'عرض سعر' },
+    { key: 'sales_return', label: 'مردود بيع' },
+    { key: 'purchase_return', label: 'مردود شراء' },
+    { key: 'receipt_voucher', label: 'سند قبض' },
+    { key: 'payment_voucher', label: 'سند صرف' },
+    { key: 'settlement_voucher', label: 'سند تسوية' },
+    { key: 'account_statement', label: 'كشف حساب' },
+    { key: 'general_report', label: 'تقرير عام' },
+  ];
   return `
   <div id="print-settings-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
     <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
       <div class="win-title"><span><i class="ti ti-printer"></i> إعدادات الطباعة</span><button id="print-settings-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:14px 18px;background:#F4F1EA;border-bottom:1px solid #E4E2DA;display:flex;align-items:center;gap:10px;">
+        <label style="font-size:12.5px;font-weight:600;color:#2C4A6E;white-space:nowrap;">نوع المستند:</label>
+        <select id="print-settings-doctype" class="input" style="max-width:220px;">
+          ${docTypes.map(d => `<option value="${d.key}" ${state.printSettingsDocType===d.key?'selected':''}>${d.label}</option>`).join('')}
+        </select>
+        <span style="font-size:10.5px;color:#8B8A7A;">${state.printSettingsHasOverride ? '✓ عنده إعدادات خاصة' : 'يستخدم الإعدادات الافتراضية العامة'}</span>
+      </div>
       <div style="padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div style="grid-column:1/-1;border-top:1px solid #A9A48C;margin:4px 0;padding-top:8px;font-size:12.5px;font-weight:500;">شكل الطباعة</div>
         ${partyField('نوع الخط', `<select id="c-print_font" class="input">
@@ -8705,7 +8800,8 @@ function renderPrintSettingsModal() {
       </div>
       <div style="display:flex;gap:10px;padding:14px 18px 18px;justify-content:flex-end;border-top:1px solid #E4E2DA;">
         <button id="print-settings-cancel" class="btn" style="padding:8px 16px;">إلغاء</button>
-        <button id="print-settings-save" class="btn primary" style="padding:8px 16px;">حفظ إعدادات الطباعة</button>
+        <button id="print-settings-preview" class="btn" style="padding:8px 16px;"><i class="ti ti-eye" style="font-size:14px;"></i> معاينة</button>
+        <button id="print-settings-save" class="btn primary" style="padding:8px 16px;">حفظ إعدادات هذا النوع</button>
       </div>
     </div>
   </div>`;
@@ -10872,7 +10968,8 @@ function bindAppEvents() {
       if (target === '__print_settings__') {
         if (!canManageCompany()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
         await loadCompany();
-        state.companyForm = { ...state.companyForm, print_font: state.company?.print_font || 'IBM Plex Sans Arabic', print_font_size: state.company?.print_font_size || 11, print_accent_color: state.company?.print_accent_color || 'var(--print-accent)', print_paper_size: state.company?.print_paper_size || 'a4', print_show_logo: state.company?.print_show_logo !== false, print_show_qr: state.company?.print_show_qr !== false, print_show_signatures: state.company?.print_show_signatures !== false, print_show_iban: state.company?.print_show_iban !== false, print_footer_text: state.company?.print_footer_text || '', print_margin_mm: state.company?.print_margin_mm ?? 10, print_copies: state.company?.print_copies || 1, print_footer_by_type: state.company?.print_footer_by_type || {} };
+        state.printSettingsDocType = 'sales_invoice';
+        loadPrintSettingsForType('sales_invoice');
         state.showPrintSettings = true;
         render();
         return;
@@ -16286,6 +16383,9 @@ function bindAppEvents() {
       document.getElementById('c-print-footer-per-type-toggle').onclick = () => { state.showFooterPerType = !state.showFooterPerType; render(); };
     }
   }
+  if (state.showPrintPreview) {
+    document.getElementById('print-preview-close').onclick = () => { state.showPrintPreview = false; render(); };
+  }
   if (state.showPrintSettings) {
     document.getElementById('print-settings-close').onclick = () => { state.showPrintSettings = false; render(); };
     document.getElementById('print-settings-cancel').onclick = () => { state.showPrintSettings = false; render(); };
@@ -16303,27 +16403,24 @@ function bindAppEvents() {
         document.getElementById('c-signature-status').textContent = '✓ تم الرفع بنجاح';
       };
     }
+    document.getElementById('print-settings-doctype').onchange = (ev) => {
+      state.printSettingsDocType = ev.target.value;
+      loadPrintSettingsForType(state.printSettingsDocType);
+      render();
+    };
+    document.getElementById('print-settings-preview').onclick = () => {
+      readPrintSettingsFromDom();
+      state.showPrintPreview = true;
+      render();
+    };
     document.getElementById('print-settings-save').onclick = async () => {
-      const get = (id) => document.getElementById(id)?.value;
-      const getChecked = (id) => document.getElementById(id)?.checked;
+      readPrintSettingsFromDom();
+      const byType = { ...(state.company?.print_settings_by_type || {}) };
+      byType[state.printSettingsDocType] = { ...state.printSettingsWorking };
       const payload = {
-        print_font: get('c-print_font') || 'IBM Plex Sans Arabic', print_font_size: Number(get('c-print_font_size')) || 11, print_accent_color: get('c-print_accent_color') || 'var(--print-accent)',
-        print_paper_size: get('c-print_paper_size') || 'a4', print_show_logo: getChecked('c-print_show_logo'), print_show_qr: getChecked('c-print_show_qr'), print_show_signatures: getChecked('c-print_show_signatures'), print_show_iban: getChecked('c-print_show_iban'), print_footer_text: get('c-print_footer_text') || null,
-        print_margin_mm: Number(get('c-print_margin_mm')) || 10, print_copies: Number(get('c-print_copies')) || 1,
-        signature_url: get('c-signature_url') || null,
-        print_orientation: get('c-print_orientation') || 'portrait', print_qr_size: Number(get('c-print_qr_size')) || 25,
-        print_table_border: get('c-print_table_border') || 'solid', print_row_spacing: get('c-print_row_spacing') || 'normal',
-        print_watermark_draft: getChecked('c-print_watermark_draft'),
-        print_header_height: Number(get('c-print_header_height')) || 25, print_footer_height: Number(get('c-print_footer_height')) || 20,
-        print_header_bg_color: get('c-print_header_bg_color') || '#ffffff', print_footer_bg_color: get('c-print_footer_bg_color') || '#ffffff',
-        print_table_header_bg: get('c-print_table_header_bg') || '#1B3352', print_table_header_text: get('c-print_table_header_text') || '#ffffff',
-        print_table_border_color: get('c-print_table_border_color') || '#C9C4B0', print_table_corner: get('c-print_table_corner') || 'square',
-        print_footer_by_type: {
-          sales_invoice: get('c-print-footer-sales_invoice') || '',
-          purchase_invoice: get('c-print-footer-purchase_invoice') || '',
-          quotation: get('c-print-footer-quotation') || '',
-          vouchers: get('c-print-footer-vouchers') || '',
-        },
+        print_settings_by_type: byType,
+        signature_url: state.printSettingsWorking.signature_url || null,
+        print_footer_by_type: state.printSettingsWorking.print_footer_by_type || state.company?.print_footer_by_type || {},
       };
       const { error } = await sb.from('company_settings').update(payload).eq('id', state.company.id);
       if (error) { showToast('فشل حفظ إعدادات الطباعة: ' + error.message, 'error'); return; }
