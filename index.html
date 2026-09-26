@@ -2244,7 +2244,7 @@ function renderApp() {
     </div>` : ''}
     <div style="border:1px solid #1B3352;border-radius:4px;box-shadow:0 6px 24px rgba(0,0,0,0.35);flex:1;display:flex;flex-direction:column;">
       <div class="win-title" style="border-radius:4px 4px 0 0;">
-        <span>${state.company && (state.company.name_ar || state.company.logo_url) ? `${state.company.logo_url ? `<img src="${escapeHtml(state.company.logo_url)}" style="height:18px;vertical-align:middle;margin-left:8px;border-radius:2px;" onerror="this.style.display='none'" />` : ''}${escapeHtml(state.company.name_ar || 'نظام المبيعات')}` : 'نظام المبيعات'}</span>
+        <span><img src="icon-192.png" style="height:20px;width:20px;vertical-align:middle;margin-left:8px;border-radius:5px;" onerror="this.style.display='none'" />برنامج مبيعات</span>
       </div>
       <div style="background:#fff;border-bottom:1px solid #A9A48C;display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:0 8px;position:relative;">
         <div style="padding:0 4px;">${langToggleBtn(false)}</div>
@@ -3283,31 +3283,19 @@ function renderHomeSection() {
           </div>
         </div>
         <div style="flex:1;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center;">
-          ${c.logo_url ? `<img src="${escapeHtml(c.logo_url)}" style="max-height:100px;max-width:220px;margin-bottom:16px;" />` : `<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#2C4A6E,#3D6389);display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px;font-weight:700;margin-bottom:16px;">${escapeHtml((c.name_ar||'ن م')[0]||'ن')}</div>`}
-          <div style="font-family:'Tajawal',sans-serif;font-weight:700;font-size:22px;color:#1F2421;margin-bottom:4px;">${escapeHtml(c.name_ar || 'نظام المبيعات')}</div>
-          <div style="font-size:13px;color:#5F5E5A;margin-bottom:28px;">${escapeHtml(c.tagline_ar || c.name_en || 'نظام إدارة المخزون والمبيعات')}</div>
-          <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px;">
-            ${phones.map(p => `
-              <div style="display:flex;align-items:center;gap:10px;border:1px solid #2E86C1;border-radius:20px;padding:8px 16px;">
-                <i class="ti ${p.icon}" style="font-size:18px;color:#2C4A6E;"></i>
-                <span style="font-size:13px;color:#3A3826;" dir="ltr">${escapeHtml(p.value)}</span>
-              </div>`).join('')}
-            ${phones.length === 0 ? `<div style="font-size:12px;color:#A9A48C;">عبّي بيانات التواصل من "النظام ← بيانات الشركة"</div>` : ''}
-          </div>
-          <div style="margin-top:32px;font-size:11px;color:#A9A48C;">${t('all_rights_reserved')} ${escapeHtml(c.name_ar || c.name_en || 'شركتك')}</div>
-          <div style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;">
-            <svg width="32" height="32" viewBox="0 0 200 200">
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;">
+            <svg width="56" height="56" viewBox="0 0 200 200">
               <rect x="10" y="10" width="180" height="180" rx="38" fill="#0F172A"/>
               <line x1="100" y1="45" x2="60" y2="150" stroke="#F8FAFC" stroke-width="13" stroke-linecap="round"/>
               <line x1="100" y1="45" x2="140" y2="150" stroke="#F8FAFC" stroke-width="13" stroke-linecap="round"/>
               <line x1="72" y1="118" x2="128" y2="118" stroke="#22C55E" stroke-width="11" stroke-linecap="round"/>
             </svg>
-            <div style="text-align:right;">
-              <div style="font-size:11px;color:#5F5E5A;font-weight:500;">${t('developed_by')} أحمد سوفت</div>
-              <div style="font-size:10px;color:#A9A48C;" dir="ltr">0545335561</div>
+            <div style="text-align:center;">
+              <div style="font-size:15px;color:#1F2421;font-weight:700;">${t('developed_by')} أحمد سوفت</div>
+              <div style="font-size:12px;color:#A9A48C;margin-top:3px;" dir="ltr">0545335561</div>
             </div>
           </div>
-          <div style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid #0F6E56;border-radius:4px;font-size:10.5px;color:#0F6E56;">
+          <div style="margin-top:20px;display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid #0F6E56;border-radius:4px;font-size:10.5px;color:#0F6E56;">
             <i class="ti ti-shield-check" style="font-size:14px;"></i> متوافق مع أنظمة هيئة الزكاة والضريبة والجمارك (ZATCA)
           </div>
         </div>
