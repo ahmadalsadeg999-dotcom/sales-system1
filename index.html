@@ -8631,7 +8631,7 @@ function printFooterFor(docType) {
 }
 
 // يحمّل إعدادات الطباعة الخاصة بنوع مستند معيّن (لو موجودة)، وإلا يرجّع الإعدادات العامة كافتراضي
-const PRINT_SETTING_KEYS = ['print_font','print_font_size','print_accent_color','print_paper_size','print_show_logo','print_show_qr','print_show_signatures','print_show_iban','print_footer_text','print_margin_mm','print_copies','print_orientation','print_qr_size','print_table_border','print_row_spacing','print_watermark_draft','print_watermark_text','print_watermark_opacity','print_logo_opacity','print_header_height','print_footer_height','print_header_bg_color','print_footer_bg_color','print_table_header_bg','print_table_header_text','print_table_border_color','print_table_corner'];
+const PRINT_SETTING_KEYS = ['print_font','print_font_size','print_accent_color','print_paper_size','print_show_logo','print_show_qr','print_show_signatures','print_show_iban','print_footer_text','print_margin_mm','print_copies','print_orientation','print_qr_size','print_table_border','print_row_spacing','print_watermark_draft','print_watermark_text','print_watermark_opacity','print_logo_opacity','print_logo_as_watermark','print_logo_watermark_opacity','print_logo_watermark_size','print_header_height','print_footer_height','print_header_bg_color','print_footer_bg_color','print_table_header_bg','print_table_header_text','print_table_border_color','print_table_corner'];
 function loadPrintSettingsForType(docType) {
   const overrides = (state.company?.print_settings_by_type || {})[docType];
   state.printSettingsHasOverride = !!overrides;
@@ -8655,6 +8655,9 @@ function readPrintSettingsFromDom() {
     print_watermark_text: get('c-print_watermark_text') || 'مسودة',
     print_watermark_opacity: Number(get('c-print_watermark_opacity')) || 12,
     print_logo_opacity: Number(get('c-print_logo_opacity')) ?? 100,
+    print_logo_as_watermark: getChecked('c-print_logo_as_watermark'),
+    print_logo_watermark_opacity: Number(get('c-print_logo_watermark_opacity')) || 8,
+    print_logo_watermark_size: Number(get('c-print_logo_watermark_size')) || 90,
     print_header_height: Number(get('c-print_header_height')) || 25, print_footer_height: Number(get('c-print_footer_height')) || 20,
     print_header_bg_color: get('c-print_header_bg_color') || '#ffffff', print_footer_bg_color: get('c-print_footer_bg_color') || '#ffffff',
     print_table_header_bg: get('c-print_table_header_bg') || '#1B3352', print_table_header_text: get('c-print_table_header_text') || '#ffffff',
@@ -8682,6 +8685,11 @@ function renderPrintPreviewModal() {
       <div style="padding:20px;">
         <div style="position:relative;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,0.15);padding:0;font-family:${f.print_font||'IBM Plex Sans Arabic'},sans-serif;font-size:${f.print_font_size||11}px;overflow:hidden;">
           ${f.print_watermark_draft ? `<div style="position:absolute;top:45%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font-size:60px;font-weight:900;color:rgba(200,0,0,${(f.print_watermark_opacity??12)/100});z-index:5;pointer-events:none;white-space:nowrap;">${escapeHtml(f.print_watermark_text||'مسودة')}</div>` : ''}
+          ${f.print_logo_as_watermark ? (
+            state.company?.logo_url
+              ? `<img src="${escapeHtml(state.company.logo_url)}" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${f.print_logo_watermark_size??90}px;opacity:${(f.print_logo_watermark_opacity??8)/100};z-index:4;pointer-events:none;" />`
+              : `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${f.print_logo_watermark_size??90}px;height:${f.print_logo_watermark_size??90}px;background:#888;opacity:${(f.print_logo_watermark_opacity??8)/100};z-index:4;pointer-events:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;border-radius:8px;">لا يوجد شعار مرفوع بعد</div>`
+          ) : ''}
           <div style="min-height:${f.print_header_height||25}mm;background:${f.print_header_bg_color||'#fff'};display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #eee;">
             ${f.print_show_logo!==false ? `<div style="width:50px;height:50px;background:#ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#888;opacity:${(f.print_logo_opacity??100)/100};">شعار</div>` : '<div></div>'}
             <div style="text-align:center;font-weight:700;font-size:15px;">${docTypeLabels[state.printSettingsDocType]||''} — عيّنة معاينة</div>
@@ -8795,6 +8803,11 @@ function renderPrintSettingsModal() {
         ${partyField('نص العلامة المائية', `<input id="c-print_watermark_text" class="input" placeholder="مسودة" value="${escapeHtml(f.print_watermark_text||'مسودة')}" />`)}
         ${partyField('شفافية العلامة المائية', `<div style="display:flex;align-items:center;gap:8px;"><input id="c-print_watermark_opacity" type="range" min="2" max="40" value="${f.print_watermark_opacity ?? 12}" style="flex:1;" /><span id="c-print_watermark_opacity_val" class="mono" style="font-size:11px;min-width:32px;">${f.print_watermark_opacity ?? 12}%</span></div>`)}
         ${partyField('شفافية الشعار بالطباعة', `<div style="display:flex;align-items:center;gap:8px;"><input id="c-print_logo_opacity" type="range" min="20" max="100" value="${f.print_logo_opacity ?? 100}" style="flex:1;" /><span id="c-print_logo_opacity_val" class="mono" style="font-size:11px;min-width:32px;">${f.print_logo_opacity ?? 100}%</span></div>`)}
+        <div style="grid-column:1/-1;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input id="c-print_logo_as_watermark" type="checkbox" ${f.print_logo_as_watermark?'checked':''} /> استخدام الشعار كعلامة مائية خلفية كبيرة بمنتصف الصفحة (بدل/مع علامة النص)</label>
+        </div>
+        ${partyField('شفافية شعار العلامة المائية', `<div style="display:flex;align-items:center;gap:8px;"><input id="c-print_logo_watermark_opacity" type="range" min="3" max="30" value="${f.print_logo_watermark_opacity ?? 8}" style="flex:1;" /><span id="c-print_logo_watermark_opacity_val" class="mono" style="font-size:11px;min-width:32px;">${f.print_logo_watermark_opacity ?? 8}%</span></div>`)}
+        ${partyField('حجم شعار العلامة المائية (مم)', `<input id="c-print_logo_watermark_size" type="number" min="40" max="150" class="input" value="${f.print_logo_watermark_size ?? 90}" />`)}
       </div>
       <div style="display:flex;gap:10px;padding:14px 18px 18px;justify-content:flex-end;border-top:1px solid #E4E2DA;">
         <button id="print-settings-cancel" class="btn" style="padding:8px 16px;">إلغاء</button>
@@ -16407,6 +16420,9 @@ function bindAppEvents() {
     if (document.getElementById('c-print_logo_opacity')) {
       document.getElementById('c-print_logo_opacity').oninput = (ev) => { document.getElementById('c-print_logo_opacity_val').textContent = ev.target.value + '%'; };
     }
+    if (document.getElementById('c-print_logo_watermark_opacity')) {
+      document.getElementById('c-print_logo_watermark_opacity').oninput = (ev) => { document.getElementById('c-print_logo_watermark_opacity_val').textContent = ev.target.value + '%'; };
+    }
     document.getElementById('print-settings-doctype').onchange = (ev) => {
       state.printSettingsDocType = ev.target.value;
       loadPrintSettingsForType(state.printSettingsDocType);
@@ -17082,6 +17098,16 @@ async function init() {
       .print-area img[data-print-logo] { opacity: var(--print-logo-opacity, 1) !important; }
     }`;
     document.head.appendChild(varsStyle);
+    // شعار كعلامة مائية خلفية — يظهر بكل طباعة (مو بس المسودات)، لو الإعداد مفعّل وفيه شعار مرفوع
+    if (state.company?.print_logo_as_watermark && state.company?.logo_url) {
+      const logoWm = document.createElement('style');
+      logoWm.id = 'logo-watermark-style';
+      const size = state.company?.print_logo_watermark_size ?? 90;
+      const opacity = (state.company?.print_logo_watermark_opacity ?? 8) / 100;
+      logoWm.textContent = `.print-area { position: relative; }
+        .print-area::before { content: ""; position: fixed; top: 50%; left: 50%; width: ${size}px; height: ${size}px; transform: translate(-50%,-50%); background-image: url('${state.company.logo_url}'); background-size: contain; background-repeat: no-repeat; background-position: center; opacity: ${opacity}; z-index: 1; pointer-events: none; }`;
+      document.head.appendChild(logoWm);
+    }
     // نضيف علامة مائية "مسودة" تلقائياً لو الإعداد مفعّل والمستند الحالي غير معتمد بعد
     if (state.company?.print_watermark_draft) {
       const draftForms = [state.salesForm, state.purchaseForm, state.salesReturnForm, state.purchaseReturnForm, state.receiptVoucherForm, state.paymentVoucherForm, state.settlementVoucherForm, state.cashDisbursementForm];
@@ -17117,6 +17143,8 @@ async function init() {
     if (wmEl) wmEl.remove();
     const varsEl = document.getElementById('print-custom-vars-style');
     if (varsEl) varsEl.remove();
+    const logoWmEl = document.getElementById('logo-watermark-style');
+    if (logoWmEl) logoWmEl.remove();
     printCopyClones.forEach(c => c.remove());
     printCopyClones = [];
   });
