@@ -3738,7 +3738,7 @@ function renderSalesFormModal() {
           <table id="si-lines-table" style="width:100%;border-collapse:collapse;">
             <thead>
               <tr>
-                ${[t('col_no'),t('col_item_sku'),t('col_item_name'),t('col_unit'),t('col_qty'),t('col_price'),t('col_total'),t('col_tax_pct'),t('col_tax'),t('col_total_tax'),'<span class="no-print">'+t('col_line_profit')+'</span>',''].map((h,i,arr) => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;${i<arr.length-1?'border-left:1px solid rgba(255,255,255,0.25);':''}">${h}</th>`).join('')}
+                ${[t('col_no'),t('col_item_sku'),t('col_item_name'),t('col_unit'),t('col_qty'),t('col_price'),t('col_total'),t('col_tax_pct'),t('col_tax'),t('col_total_tax'),'<span class="no-print">'+t('col_line_profit')+'</span>',''].map((h,i,arr) => `<th style="padding:var(--print-row-padding,7px) 6px;background:var(--print-table-header-bg,#1B3352);color:var(--print-table-header-text,#fff);font-size:10.5px;font-weight:500;text-align:right;${i<arr.length-1?'border-left:1px solid rgba(255,255,255,0.25);':''}">${h}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
@@ -8687,6 +8687,14 @@ function renderPrintSettingsModal() {
           <input type="hidden" id="c-signature_url" value="${escapeHtml(f.signature_url||'')}" />
         </div>
         <div style="grid-column:1/-1;border-top:1px solid #A9A48C;margin:4px 0;padding-top:8px;font-size:12.5px;font-weight:500;">تحكم بصري إضافي</div>
+        ${partyField('ارتفاع الترويسة العلوية (مم)', `<input id="c-print_header_height" type="number" min="0" max="80" class="input" value="${f.print_header_height ?? 25}" />`)}
+        ${partyField('ارتفاع الترويسة السفلية (مم)', `<input id="c-print_footer_height" type="number" min="0" max="80" class="input" value="${f.print_footer_height ?? 20}" />`)}
+        ${partyField('لون خلفية الترويسة العلوية', `<input id="c-print_header_bg_color" type="color" class="input" style="padding:2px;height:36px;" value="${f.print_header_bg_color||'#ffffff'}" />`)}
+        ${partyField('لون خلفية الترويسة السفلية', `<input id="c-print_footer_bg_color" type="color" class="input" style="padding:2px;height:36px;" value="${f.print_footer_bg_color||'#ffffff'}" />`)}
+        ${partyField('لون خلفية رأس الجدول', `<input id="c-print_table_header_bg" type="color" class="input" style="padding:2px;height:36px;" value="${f.print_table_header_bg||'#1B3352'}" />`)}
+        ${partyField('لون نص رأس الجدول', `<input id="c-print_table_header_text" type="color" class="input" style="padding:2px;height:36px;" value="${f.print_table_header_text||'#ffffff'}" />`)}
+        ${partyField('لون حدود الجدول', `<input id="c-print_table_border_color" type="color" class="input" style="padding:2px;height:36px;" value="${f.print_table_border_color||'#C9C4B0'}" />`)}
+        ${partyField('شكل زوايا الجدول', `<select id="c-print_table_corner" class="input"><option value="square" ${(!f.print_table_corner||f.print_table_corner==='square')?'selected':''}>حادة</option><option value="rounded" ${f.print_table_corner==='rounded'?'selected':''}>دائرية</option></select>`)}
         ${partyField('اتجاه الورقة', `<select id="c-print_orientation" class="input"><option value="portrait" ${(!f.print_orientation||f.print_orientation==='portrait')?'selected':''}>طولي (Portrait)</option><option value="landscape" ${f.print_orientation==='landscape'?'selected':''}>عرضي (Landscape)</option></select>`)}
         ${partyField('حجم الباركود/QR (مم)', `<input id="c-print_qr_size" type="number" min="15" max="50" class="input" value="${f.print_qr_size||25}" />`)}
         ${partyField('نمط حدود الجدول', `<select id="c-print_table_border" class="input"><option value="solid" ${(!f.print_table_border||f.print_table_border==='solid')?'selected':''}>خطوط كاملة</option><option value="dashed" ${f.print_table_border==='dashed'?'selected':''}>منقّطة</option><option value="none" ${f.print_table_border==='none'?'selected':''}>بدون حدود</option></select>`)}
@@ -16306,6 +16314,10 @@ function bindAppEvents() {
         print_orientation: get('c-print_orientation') || 'portrait', print_qr_size: Number(get('c-print_qr_size')) || 25,
         print_table_border: get('c-print_table_border') || 'solid', print_row_spacing: get('c-print_row_spacing') || 'normal',
         print_watermark_draft: getChecked('c-print_watermark_draft'),
+        print_header_height: Number(get('c-print_header_height')) || 25, print_footer_height: Number(get('c-print_footer_height')) || 20,
+        print_header_bg_color: get('c-print_header_bg_color') || '#ffffff', print_footer_bg_color: get('c-print_footer_bg_color') || '#ffffff',
+        print_table_header_bg: get('c-print_table_header_bg') || '#1B3352', print_table_header_text: get('c-print_table_header_text') || '#ffffff',
+        print_table_border_color: get('c-print_table_border_color') || '#C9C4B0', print_table_corner: get('c-print_table_corner') || 'square',
         print_footer_by_type: {
           sales_invoice: get('c-print-footer-sales_invoice') || '',
           purchase_invoice: get('c-print-footer-purchase_invoice') || '',
@@ -16945,6 +16957,28 @@ async function init() {
       printSizeStyleEl.textContent = `@page { size: A4 ${orientation}; margin: ${marginMm}mm; }`;
     }
     document.head.appendChild(printSizeStyleEl);
+    // نحقن متغيّرات CSS للألوان والأشكال المخصّصة، عشان قوالب الطباعة تلقطها تلقائياً
+    const varsStyle = document.createElement('style');
+    varsStyle.id = 'print-custom-vars-style';
+    const c = state.company || {};
+    varsStyle.textContent = `:root {
+      --print-header-height: ${c.print_header_height ?? 25}mm;
+      --print-footer-height: ${c.print_footer_height ?? 20}mm;
+      --print-header-bg: ${c.print_header_bg_color || '#ffffff'};
+      --print-footer-bg: ${c.print_footer_bg_color || '#ffffff'};
+      --print-table-header-bg: ${c.print_table_header_bg || '#1B3352'};
+      --print-table-header-text: ${c.print_table_header_text || '#ffffff'};
+      --print-table-border-color: ${c.print_table_border_color || '#C9C4B0'};
+      --print-table-radius: ${c.print_table_corner === 'rounded' ? '8px' : '0px'};
+      --print-qr-size: ${c.print_qr_size || 25}mm;
+      --print-table-border-style: ${c.print_table_border === 'dashed' ? 'dashed' : c.print_table_border === 'none' ? 'none' : 'solid'};
+      --print-row-padding: ${c.print_row_spacing === 'compact' ? '4px' : c.print_row_spacing === 'relaxed' ? '12px' : '7px'};
+    }
+    @media print {
+      .print-only-header { background: var(--print-header-bg) !important; }
+      .print-only-footer { background: var(--print-footer-bg) !important; }
+    }`;
+    document.head.appendChild(varsStyle);
     // نضيف علامة مائية "مسودة" تلقائياً لو الإعداد مفعّل والمستند الحالي غير معتمد بعد
     if (state.company?.print_watermark_draft) {
       const draftForms = [state.salesForm, state.purchaseForm, state.salesReturnForm, state.purchaseReturnForm, state.receiptVoucherForm, state.paymentVoucherForm, state.settlementVoucherForm, state.cashDisbursementForm];
@@ -16976,6 +17010,8 @@ async function init() {
     if (printSizeStyleEl) { printSizeStyleEl.remove(); printSizeStyleEl = null; }
     const wmEl = document.getElementById('draft-watermark-style');
     if (wmEl) wmEl.remove();
+    const varsEl = document.getElementById('print-custom-vars-style');
+    if (varsEl) varsEl.remove();
     printCopyClones.forEach(c => c.remove());
     printCopyClones = [];
   });
