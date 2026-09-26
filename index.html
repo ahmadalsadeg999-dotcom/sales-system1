@@ -16,6 +16,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&family=Cairo:wght@400;500;700&family=Almarai:wght@400;700&family=Noto+Kufi+Arabic:wght@400;700&display=swap');
@@ -245,6 +246,10 @@ let state = {
   showFiscalLock: false, fiscalLockDateInput: '',
   showPermMatrix: false, permMatrixMode: 'role', permMatrixTargetId: '', permScreens: [], permRoles: [],
   myPermissions: {}, permMatrixTab: 'screens',
+  showBulkImport: false, bulkImportRows: [], bulkImportBusy: false, bulkImportResult: null,
+  showBarcodeScanner: false, barcodeScannerCallback: null, barcodeScannerError: '',
+  showPrintSettings: false,
+  showFooterPerType: false,
   permMatrixData: {}, permMatrixDirty: false, showNewRoleBox: false, newRoleName: '',
   showSupplierPriceCompare: false, spcSelectedItemId: '', spcQuery: '', spcResults: [],
   showPerformanceReport: false, perfReportFrom: '', perfReportTo: '', perfReportData: null,
@@ -1065,30 +1070,6 @@ function renderCompanyModal() {
         ${partyField('أوقات العمل', `<input id="c-working_hours" class="input" value="${escapeHtml(f.working_hours||'')}" placeholder="مثال: يومياً من 9 صباحاً حتى 9 مساءً" />`)}
         <div style="grid-column:1/-1;">${partyField('ملاحظة تذييل الفاتورة', `<input id="c-footer_note" class="input" value="${escapeHtml(f.footer_note||'')}" placeholder="مثال: شكراً لتعاملكم معنا" />`)}</div>
         <div style="grid-column:1/-1;">${partyField('الشروط والأحكام الافتراضية لعروض الأسعار', `<textarea id="c-quote_terms" class="input" rows="3">${escapeHtml(f.quote_terms||'')}</textarea>`)}</div>
-        <div style="grid-column:1/-1;border-top:1px solid #A9A48C;margin:4px 0;padding-top:8px;font-size:12.5px;font-weight:500;">شكل الطباعة</div>
-        ${partyField('نوع الخط', `<select id="c-print_font" class="input">
-          <option value="IBM Plex Sans Arabic" ${(!f.print_font||f.print_font==='IBM Plex Sans Arabic')?'selected':''}>IBM Plex Sans Arabic</option>
-          <option value="Tajawal" ${f.print_font==='Tajawal'?'selected':''}>Tajawal</option>
-          <option value="Cairo" ${f.print_font==='Cairo'?'selected':''}>Cairo</option>
-          <option value="Almarai" ${f.print_font==='Almarai'?'selected':''}>Almarai</option>
-          <option value="Noto Kufi Arabic" ${f.print_font==='Noto Kufi Arabic'?'selected':''}>Noto Kufi Arabic</option>
-        </select>`)}
-        ${partyField('حجم الخط (نقطة)', `<input id="c-print_font_size" type="number" min="8" max="16" class="input" value="${escapeHtml(String(f.print_font_size||11))}" />`)}
-        ${partyField('لون تظليل الجداول', `<input id="c-print_accent_color" type="color" class="input" style="padding:2px;height:36px;" value="${escapeHtml(f.print_accent_color||'var(--print-accent)')}" />`)}
-        ${partyField('حجم ورقة الطباعة', `<select id="c-print_paper_size" class="input">
-          <option value="a4" ${(!f.print_paper_size||f.print_paper_size==='a4')?'selected':''}>A4 عادي</option>
-          <option value="receipt" ${f.print_paper_size==='receipt'?'selected':''}>إيصال حراري ضيّق (80مم)</option>
-        </select>`)}
-        <div style="grid-column:1/-1;">
-          <label style="font-size:12.5px;color:#3A3826;display:block;margin-bottom:8px;">عناصر تظهر بالمطبوعات</label>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;">
-            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input id="c-print_show_logo" type="checkbox" ${f.print_show_logo!==false?'checked':''} /> الشعار</label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input id="c-print_show_qr" type="checkbox" ${f.print_show_qr!==false?'checked':''} /> رمز QR</label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input id="c-print_show_signatures" type="checkbox" ${f.print_show_signatures!==false?'checked':''} /> خطوط التوقيع</label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input id="c-print_show_iban" type="checkbox" ${f.print_show_iban!==false?'checked':''} /> الآيبان</label>
-          </div>
-        </div>
-        <div style="grid-column:1/-1;">${partyField('نص تذييل إضافي بالطباعة (اختياري)', `<input id="c-print_footer_text" class="input" placeholder="مثلاً: يسعدنا خدمتكم دائماً" value="${escapeHtml(f.print_footer_text||'')}" />`)}</div>
         <div style="grid-column:1/-1;">
           <label style="font-size:12.5px;color:#3A3826;display:block;margin-bottom:4px;">شعار الشركة (لوجو)</label>
           <input id="c-logo-file" type="file" accept="image/*" class="input" style="padding:6px;" />
@@ -2233,6 +2214,7 @@ const SUBMENUS = {
     { label: 'المستخدمون والصلاحيات', target: '__users__' },
     { label: 'مصفوفة الصلاحيات المتقدمة', target: '__perm_matrix__' },
     { label: 'بيانات الشركة', target: '__company__' },
+    { label: 'إعدادات الطباعة', target: '__print_settings__' },
     { label: 'إعدادات طرق الدفع', target: '__payment_methods__' },
     { divider: true },
     { label: 'نسخة احتياطية وصيانة النظام', target: '__maintenance__' },
@@ -2286,7 +2268,7 @@ function renderApp() {
               ${(m==='النظام' ? SUBMENUS[m].filter(item =>
                   item.target === '__users__' ? (isAdmin() || canManageUsers())
                   : item.target === '__perm_matrix__' ? isAdmin()
-                  : item.target === '__company__' || item.target === '__payment_methods__' ? canManageCompany()
+                  : item.target === '__company__' || item.target === '__payment_methods__' || item.target === '__print_settings__' ? canManageCompany()
                   : item.target === '__maintenance__' ? canManageBackup()
                   : item.target === '__designer_panel__' ? isAdmin()
                   : item.target === '__fiscal_lock__' ? isAdmin()
@@ -2360,6 +2342,9 @@ function renderApp() {
   ${state.showDesignerPanel ? renderDesignerPanelModal() : ''}
   ${state.showFiscalLock ? renderFiscalLockModal() : ''}
   ${state.showPermMatrix ? renderPermMatrixModal() : ''}
+  ${state.showBulkImport ? renderBulkImportModal() : ''}
+  ${state.showBarcodeScanner ? renderBarcodeScannerModal() : ''}
+  ${state.showPrintSettings ? renderPrintSettingsModal() : ''}
   ${state.showVatReport ? renderVatReportModal() : ''}
   ${state.showSalesChart ? renderSalesChartModal() : ''}
   ${state.showProfitReport ? renderProfitReportModal() : ''}
@@ -2764,7 +2749,7 @@ function renderQuoteFormModal() {
           </div>
           <div style="margin-top:24px;padding-top:8px;border-top:1px solid #A9A48C;text-align:center;font-size:10px;color:#5F5E5A;">
             ${[state.company?.address, [state.company?.phone, state.company?.phone2].filter(Boolean).join(' - '), state.company?.mobile ? 'جوال: '+state.company.mobile : '', state.company?.website].filter(Boolean).join(' · ')}
-            ${state.company?.footer_note ? `<div style="margin-top:4px;font-weight:500;">${escapeHtml(state.company.footer_note)}</div>` : ''}
+            ${printFooterFor('quotation') ? `<div style="margin-top:4px;font-weight:500;">${escapeHtml(printFooterFor('quotation'))}</div>` : ''}
           </div>
         </div>
       </div>
@@ -3192,7 +3177,7 @@ function renderPurchaseFormModal() {
 
         <div class="print-only" style="margin-top:24px;padding-top:8px;border-top:1px solid #A9A48C;text-align:center;font-size:10px;color:#5F5E5A;">
           ${[state.company?.address, [state.company?.phone, state.company?.phone2].filter(Boolean).join(' - '), state.company?.mobile ? 'جوال: '+state.company.mobile : '', state.company?.website].filter(Boolean).join(' · ')}
-          ${state.company?.footer_note ? `<div style="margin-top:4px;font-weight:500;">${escapeHtml(state.company.footer_note)}</div>` : ''}
+          ${printFooterFor('purchase_invoice') ? `<div style="margin-top:4px;font-weight:500;">${escapeHtml(printFooterFor('purchase_invoice'))}</div>` : ''}
         </div>
         `}
       </div>
@@ -3738,7 +3723,8 @@ function renderSalesFormModal() {
         <div id="si-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
         <div id="si-last-prices" style="display:none;margin-bottom:8px;padding:6px 12px;background:#FDFBF3;border:1px solid #DEDACB;border-radius:4px;font-size:11.5px;color:#3A3826;"></div>
         <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-          <input id="si-quick-sku" class="input mono" style="max-width:140px;" placeholder="رقم الصنف (Enter)" dir="ltr" />
+          <input id="si-quick-sku" class="input mono" style="max-width:120px;" placeholder="رقم الصنف (Enter)" dir="ltr" />
+          <button id="si-scan-barcode-btn" type="button" class="btn" style="padding:6px 10px;" title="مسح بالكاميرا"><i class="ti ti-scan" style="font-size:16px;"></i></button>
           <select id="si-item-select" class="input" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
           ${itemPickerButton('si-item-select','si-item-qty','si-item-price','price','si-add-line')}
           <input id="si-item-qty" class="input" style="max-width:80px;" placeholder="الكمية" />
@@ -3824,7 +3810,7 @@ function renderSalesFormModal() {
         </div>` : ''}
         <div style="margin-top:26px;padding-top:10px;border-top:1px solid var(--print-accent);text-align:center;font-size:10px;color:#5F5E5A;">
           ${[state.company?.address, [state.company?.phone, state.company?.phone2].filter(Boolean).join(' - '), state.company?.mobile ? 'جوال: '+state.company.mobile : '', state.company?.website].filter(Boolean).join(' · ')}
-          ${state.company?.footer_note ? `<div style="margin-top:5px;font-weight:600;color:#1B3352;">${escapeHtml(state.company.footer_note)}</div>` : ''}
+          ${printFooterFor('sales_invoice') ? `<div style="margin-top:5px;font-weight:600;color:#1B3352;">${escapeHtml(printFooterFor('sales_invoice'))}</div>` : ''}
         </div>
       </div>
 
@@ -6027,6 +6013,7 @@ function renderItemsSection(items, lowStock) {
             <input id="search-input" class="input" placeholder="${t('items_search_ph')}" value="${escapeHtml(state.query)}" />
           </div>
           ${hasPerm('items','can_add') ? `<button id="new-item-btn" class="btn primary" style="padding:8px 14px;">${t('items_new_btn')}</button>` : ''}
+          ${hasPerm('items','can_add') ? `<button id="bulk-import-items-btn" class="btn" style="padding:8px 14px;"><i class="ti ti-file-spreadsheet" style="font-size:14px;"></i> استيراد من Excel</button>` : ''}
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${state.items.length} ${t('items_count')}${lowStock > 0 ? ` · ${lowStock} ${t('items_needs_reorder')}` : ''}</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
@@ -8636,6 +8623,176 @@ function renderPermMatrixModal() {
   </div>`;
 }
 
+function printFooterFor(docType) {
+  const perType = (state.company?.print_footer_by_type || {})[docType];
+  return perType || state.company?.print_footer_text || state.company?.footer_note || '';
+}
+
+function renderPrintSettingsModal() {
+  const f = state.companyForm;
+  return `
+  <div id="print-settings-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-printer"></i> إعدادات الطباعة</span><button id="print-settings-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="grid-column:1/-1;border-top:1px solid #A9A48C;margin:4px 0;padding-top:8px;font-size:12.5px;font-weight:500;">شكل الطباعة</div>
+        ${partyField('نوع الخط', `<select id="c-print_font" class="input">
+          <option value="IBM Plex Sans Arabic" ${(!f.print_font||f.print_font==='IBM Plex Sans Arabic')?'selected':''}>IBM Plex Sans Arabic</option>
+          <option value="Tajawal" ${f.print_font==='Tajawal'?'selected':''}>Tajawal</option>
+          <option value="Cairo" ${f.print_font==='Cairo'?'selected':''}>Cairo</option>
+          <option value="Almarai" ${f.print_font==='Almarai'?'selected':''}>Almarai</option>
+          <option value="Noto Kufi Arabic" ${f.print_font==='Noto Kufi Arabic'?'selected':''}>Noto Kufi Arabic</option>
+        </select>`)}
+        ${partyField('حجم الخط (نقطة)', `<input id="c-print_font_size" type="number" min="8" max="16" class="input" value="${escapeHtml(String(f.print_font_size||11))}" />`)}
+        ${partyField('لون تظليل الجداول', `<input id="c-print_accent_color" type="color" class="input" style="padding:2px;height:36px;" value="${escapeHtml(f.print_accent_color||'var(--print-accent)')}" />`)}
+        ${partyField('حجم ورقة الطباعة', `<select id="c-print_paper_size" class="input">
+          <option value="a4" ${(!f.print_paper_size||f.print_paper_size==='a4')?'selected':''}>A4 عادي</option>
+          <option value="receipt" ${f.print_paper_size==='receipt'?'selected':''}>إيصال حراري ضيّق (80مم)</option>
+        </select>`)}
+        <div style="grid-column:1/-1;">
+          <label style="font-size:12.5px;color:#3A3826;display:block;margin-bottom:8px;">عناصر تظهر بالمطبوعات</label>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input id="c-print_show_logo" type="checkbox" ${f.print_show_logo!==false?'checked':''} /> الشعار</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input id="c-print_show_qr" type="checkbox" ${f.print_show_qr!==false?'checked':''} /> رمز QR</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input id="c-print_show_signatures" type="checkbox" ${f.print_show_signatures!==false?'checked':''} /> خطوط التوقيع</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input id="c-print_show_iban" type="checkbox" ${f.print_show_iban!==false?'checked':''} /> الآيبان</label>
+          </div>
+        </div>
+        <div style="grid-column:1/-1;">${partyField('نص تذييل إضافي بالطباعة (اختياري)', `<input id="c-print_footer_text" class="input" placeholder="مثلاً: يسعدنا خدمتكم دائماً" value="${escapeHtml(f.print_footer_text||'')}" />`)}</div>
+        <div style="grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:11px;color:#8B8A7A;margin-top:-6px;margin-bottom:6px;cursor:pointer;" id="c-print-footer-per-type-toggle">
+          <i class="ti ti-chevron-down" style="font-size:12px;"></i> تخصيص نص تذييل مختلف لكل نوع مستند (اختياري)
+        </div>
+        <div id="c-print-footer-per-type-box" style="grid-column:1/-1;display:${state.showFooterPerType?'grid':'none'};grid-template-columns:1fr 1fr;gap:10px;padding:10px;background:#F4F1EA;border-radius:6px;margin-bottom:6px;">
+          ${partyField('تذييل فاتورة البيع', `<input id="c-print-footer-sales_invoice" class="input" value="${escapeHtml((f.print_footer_by_type||{}).sales_invoice||'')}" />`)}
+          ${partyField('تذييل فاتورة الشراء', `<input id="c-print-footer-purchase_invoice" class="input" value="${escapeHtml((f.print_footer_by_type||{}).purchase_invoice||'')}" />`)}
+          ${partyField('تذييل عرض السعر', `<input id="c-print-footer-quotation" class="input" value="${escapeHtml((f.print_footer_by_type||{}).quotation||'')}" />`)}
+          ${partyField('تذييل سندات القبض/الصرف', `<input id="c-print-footer-vouchers" class="input" value="${escapeHtml((f.print_footer_by_type||{}).vouchers||'')}" />`)}
+        </div>
+        <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px;padding-top:8px;border-top:1px dashed #DEDACB;">
+          ${partyField('هامش الطباعة (مم)', `<input id="c-print_margin_mm" type="number" min="0" max="30" class="input" value="${f.print_margin_mm ?? 10}" />`)}
+          ${partyField('عدد نسخ الطباعة الافتراضي', `<input id="c-print_copies" type="number" min="1" max="5" class="input" value="${f.print_copies || 1}" />`)}
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;padding:14px 18px 18px;justify-content:flex-end;border-top:1px solid #E4E2DA;">
+        <button id="print-settings-cancel" class="btn" style="padding:8px 16px;">إلغاء</button>
+        <button id="print-settings-save" class="btn primary" style="padding:8px 16px;">حفظ إعدادات الطباعة</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderBarcodeScannerModal() {
+  return `
+  <div id="barcode-scanner-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;z-index:30;">
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:440px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-scan"></i> مسح الباركود</span><button id="barcode-scanner-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:0;position:relative;background:#000;">
+        <video id="barcode-scanner-video" style="width:100%;display:block;max-height:340px;object-fit:cover;" muted playsinline></video>
+        <div style="position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center;">
+          <div style="width:70%;height:35%;border:2px solid #3fb13a;border-radius:8px;box-shadow:0 0 0 2000px rgba(0,0,0,0.35);"></div>
+        </div>
+      </div>
+      ${state.barcodeScannerError ? `<div style="padding:14px;text-align:center;color:#C0392B;font-size:12.5px;">${escapeHtml(state.barcodeScannerError)}</div>` : `<div style="padding:10px 14px;text-align:center;color:#5F5E5A;font-size:12px;">وجّه الكاميرا نحو الباركود — يتم المسح تلقائياً</div>`}
+    </div>
+  </div>`;
+}
+
+// يفتح نافذة الكاميرا لمسح باركود، وينادي callback(code) فور ما يلقى رمز صحيح
+let _barcodeReaderInstance = null;
+function openBarcodeScanner(callback) {
+  state.showBarcodeScanner = true;
+  state.barcodeScannerCallback = callback;
+  state.barcodeScannerError = '';
+  render();
+  setTimeout(async () => {
+    if (typeof ZXing === 'undefined') {
+      state.barcodeScannerError = 'مكتبة المسح ما تحمّلت — تأكد من الاتصال بالإنترنت';
+      render();
+      return;
+    }
+    try {
+      _barcodeReaderInstance = new ZXing.BrowserMultiFormatReader();
+      const videoEl = document.getElementById('barcode-scanner-video');
+      await _barcodeReaderInstance.decodeFromConstraints(
+        { video: { facingMode: 'environment' } },
+        videoEl,
+        (result, err) => {
+          if (result) {
+            const code = result.getText();
+            closeBarcodeScanner();
+            if (state.barcodeScannerCallback) state.barcodeScannerCallback(code);
+          }
+        }
+      );
+    } catch (ex) {
+      state.barcodeScannerError = 'تعذّر الوصول للكاميرا — تأكد من إعطاء الصلاحية للمتصفح: ' + (ex?.message || String(ex));
+      render();
+    }
+  }, 100);
+}
+function closeBarcodeScanner() {
+  if (_barcodeReaderInstance) { try { _barcodeReaderInstance.reset(); } catch(e){} _barcodeReaderInstance = null; }
+  state.showBarcodeScanner = false;
+  state.barcodeScannerCallback = null;
+  render();
+}
+
+function renderBulkImportModal() {
+  const rows = state.bulkImportRows;
+  const validCount = rows.filter(r => !r.error).length;
+  const errorCount = rows.length - validCount;
+  return `
+  <div id="bulk-import-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);" onclick="event.stopPropagation()">
+      <div class="win-title"><span><i class="ti ti-file-spreadsheet"></i> استيراد أصناف من Excel</span><button id="bulk-import-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:18px;">
+        ${rows.length === 0 ? `
+        <div style="text-align:center;padding:30px;border:2px dashed #C7C4B4;border-radius:12px;">
+          <i class="ti ti-file-spreadsheet" style="font-size:42px;color:#8B8A7A;"></i>
+          <div style="font-size:13px;color:#3A3826;margin:10px 0;">اختر ملف Excel (.xlsx) فيه أعمدة الأصناف</div>
+          <input id="bulk-import-file" type="file" accept=".xlsx,.xls" style="margin:10px auto;display:block;" />
+          <div style="font-size:11px;color:#8B8A7A;margin-top:14px;text-align:right;background:#F4F1EA;padding:10px 14px;border-radius:8px;">
+            <b>الأعمدة المتوقعة (بالترتيب، بأي أسماء عناوين):</b><br/>
+            رقم الصنف (SKU) — إجباري | اسم الصنف — إجباري | الفئة | الوحدة | التكلفة | سعر البيع | الكمية | الباركود
+          </div>
+        </div>
+        ` : `
+        <div style="display:flex;gap:10px;margin-bottom:12px;font-size:12.5px;">
+          <span style="color:#0F6E56;font-weight:600;">✓ ${validCount} صنف صالح للاستيراد</span>
+          ${errorCount ? `<span style="color:#C0392B;font-weight:600;">✕ ${errorCount} صف فيه خطأ (بيتجاهل)</span>` : ''}
+        </div>
+        <div style="max-height:400px;overflow-y:auto;border:1px solid #E4E2DA;border-radius:10px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;">
+              ${['#','رقم الصنف','الاسم','الفئة','الوحدة','التكلفة','السعر','الكمية','الحالة'].map(h=>`<th style="padding:6px 8px;text-align:right;">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>
+              ${rows.map((r,i) => `
+                <tr style="background:${r.error?'#FCEBEB':i%2?'#F4F1EA':'#fff'};border-bottom:1px solid #EDEAE0;">
+                  <td style="padding:5px 8px;">${i+1}</td>
+                  <td style="padding:5px 8px;" class="mono">${escapeHtml(r.sku||'')}</td>
+                  <td style="padding:5px 8px;">${escapeHtml(r.name||'')}</td>
+                  <td style="padding:5px 8px;">${escapeHtml(r.category||'')}</td>
+                  <td style="padding:5px 8px;">${escapeHtml(r.unit||'')}</td>
+                  <td style="padding:5px 8px;" class="mono">${escapeHtml(r.cost||'')}</td>
+                  <td style="padding:5px 8px;" class="mono">${escapeHtml(r.price||'')}</td>
+                  <td style="padding:5px 8px;" class="mono">${escapeHtml(r.qty||'')}</td>
+                  <td style="padding:5px 8px;font-size:11px;color:${r.error?'#C0392B':'#0F6E56'};">${r.error || 'صالح ✓'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
+          <button id="bulk-import-cancel" class="btn" style="padding:8px 16px;">إلغاء</button>
+          <button id="bulk-import-confirm" class="btn primary" style="padding:8px 16px;" ${validCount===0?'disabled':''}>${state.bulkImportBusy?'...جاري الاستيراد':`استيراد ${validCount} صنف`}</button>
+        </div>
+        `}
+        ${state.bulkImportResult ? `<div style="margin-top:14px;padding:10px 14px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:8px;font-size:12.5px;color:#0F6E56;font-weight:600;">${state.bulkImportResult}</div>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderDesignerPanelModal() {
   const tabs = ['عام', 'المحاسبة', 'الاشتراك', 'متابعة العملاء', 'التصفير الكامل'];
   return `
@@ -10677,8 +10834,16 @@ function bindAppEvents() {
       }
       if (target === '__company__') {
         await loadCompany();
-        state.companyForm = { name_ar: state.company?.name_ar || '', name_en: state.company?.name_en || '', address: state.company?.address || '', phone: state.company?.phone || '', logo_url: state.company?.logo_url || '', tax_number: state.company?.tax_number || '', commercial_register: state.company?.commercial_register || '', iban: state.company?.iban || '', email: state.company?.email || '', website: state.company?.website || '', phone2: state.company?.phone2 || '', mobile: state.company?.mobile || '', whatsapp: state.company?.whatsapp || '', working_hours: state.company?.working_hours || '', tagline_ar: state.company?.tagline_ar || '', tagline_en: state.company?.tagline_en || '', footer_note: state.company?.footer_note || '', quote_terms: state.company?.quote_terms || '', print_font: state.company?.print_font || 'IBM Plex Sans Arabic', print_font_size: state.company?.print_font_size || 11, print_accent_color: state.company?.print_accent_color || 'var(--print-accent)', print_paper_size: state.company?.print_paper_size || 'a4', print_show_logo: state.company?.print_show_logo !== false, print_show_qr: state.company?.print_show_qr !== false, print_show_signatures: state.company?.print_show_signatures !== false, print_show_iban: state.company?.print_show_iban !== false, print_footer_text: state.company?.print_footer_text || '' };
+        state.companyForm = { name_ar: state.company?.name_ar || '', name_en: state.company?.name_en || '', address: state.company?.address || '', phone: state.company?.phone || '', logo_url: state.company?.logo_url || '', tax_number: state.company?.tax_number || '', commercial_register: state.company?.commercial_register || '', iban: state.company?.iban || '', email: state.company?.email || '', website: state.company?.website || '', phone2: state.company?.phone2 || '', mobile: state.company?.mobile || '', whatsapp: state.company?.whatsapp || '', working_hours: state.company?.working_hours || '', tagline_ar: state.company?.tagline_ar || '', tagline_en: state.company?.tagline_en || '', footer_note: state.company?.footer_note || '', quote_terms: state.company?.quote_terms || '', print_font: state.company?.print_font || 'IBM Plex Sans Arabic', print_font_size: state.company?.print_font_size || 11, print_accent_color: state.company?.print_accent_color || 'var(--print-accent)', print_paper_size: state.company?.print_paper_size || 'a4', print_show_logo: state.company?.print_show_logo !== false, print_show_qr: state.company?.print_show_qr !== false, print_show_signatures: state.company?.print_show_signatures !== false, print_show_iban: state.company?.print_show_iban !== false, print_footer_text: state.company?.print_footer_text || '', print_margin_mm: state.company?.print_margin_mm ?? 10, print_copies: state.company?.print_copies || 1, print_footer_by_type: state.company?.print_footer_by_type || {} };
         state.showCompany = true;
+        render();
+        return;
+      }
+      if (target === '__print_settings__') {
+        if (!canManageCompany()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
+        await loadCompany();
+        state.companyForm = { ...state.companyForm, print_font: state.company?.print_font || 'IBM Plex Sans Arabic', print_font_size: state.company?.print_font_size || 11, print_accent_color: state.company?.print_accent_color || 'var(--print-accent)', print_paper_size: state.company?.print_paper_size || 'a4', print_show_logo: state.company?.print_show_logo !== false, print_show_qr: state.company?.print_show_qr !== false, print_show_signatures: state.company?.print_show_signatures !== false, print_show_iban: state.company?.print_show_iban !== false, print_footer_text: state.company?.print_footer_text || '', print_margin_mm: state.company?.print_margin_mm ?? 10, print_copies: state.company?.print_copies || 1, print_footer_by_type: state.company?.print_footer_by_type || {} };
+        state.showPrintSettings = true;
         render();
         return;
       }
@@ -11774,6 +11939,20 @@ function bindAppEvents() {
         sel.dispatchEvent(new Event('change'));
         ev.target.value = '';
       };
+    }
+    if (document.getElementById('si-scan-barcode-btn')) {
+      document.getElementById('si-scan-barcode-btn').onclick = () => {
+        openBarcodeScanner((code) => {
+          const item = state.items.find(it => (it.sku||'').toLowerCase() === code.toLowerCase() || (it.barcode||'').toLowerCase() === code.toLowerCase() || (state.itemAltNumbersMap[it.id]||[]).some(alt => alt.toLowerCase() === code.toLowerCase()));
+          if (!item) { showToast(`ما لقيت صنف برمز "${code}"`, 'error'); return; }
+          const sel = document.getElementById('si-item-select');
+          sel.value = item.id;
+          sel.dispatchEvent(new Event('change'));
+        });
+      };
+    }
+    if (document.getElementById('barcode-scanner-close')) {
+      document.getElementById('barcode-scanner-close').onclick = closeBarcodeScanner;
     }
     if (document.getElementById('si-item-select')) {
       // نعدّل السعر المعبّى تلقائياً حسب "مستوى السعر" المسجّل بكرت العميل المختار (جملة/تجزئة)
@@ -13011,6 +13190,14 @@ function bindAppEvents() {
       render();
     };
   }
+  if (document.getElementById('bulk-import-items-btn')) {
+    document.getElementById('bulk-import-items-btn').onclick = () => {
+      state.showBulkImport = true;
+      state.bulkImportRows = [];
+      state.bulkImportResult = null;
+      render();
+    };
+  }
   document.querySelectorAll('[data-edit]').forEach(btn => {
     btn.onclick = () => { openItemById(btn.dataset.edit); };
   });
@@ -13375,6 +13562,74 @@ function bindAppEvents() {
       const rows = state.profitReportRows.map(r => [r.invoice_number, r.customer, r.date, r.revenue, r.cogs, r.profit, r.margin.toFixed(1)]);
       exportFormattedAccountingSheet('كشف الأرباح والخسائر.xlsx', 'الأرباح والخسائر', headers, rows);
     };
+  }
+
+  if (state.showBulkImport) {
+    document.getElementById('bulk-import-close').onclick = () => { state.showBulkImport = false; render(); };
+    if (document.getElementById('bulk-import-cancel')) {
+      document.getElementById('bulk-import-cancel').onclick = () => { state.bulkImportRows = []; render(); };
+    }
+    if (document.getElementById('bulk-import-file')) {
+      document.getElementById('bulk-import-file').onchange = async (ev) => {
+        const file = ev.target.files[0];
+        if (!file) return;
+        const data = await file.arrayBuffer();
+        const wb = XLSX.read(data, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        if (rows.length < 2) { showToast('الملف فاضي أو ما فيه بيانات', 'error'); return; }
+        const headers = rows[0].map(h => String(h).trim());
+        // نطابق كل عمود مع الحقل المناسب بالبحث عن كلمات مفتاحية بعنوانه (يدعم عربي/إنجليزي بأي ترتيب)
+        const findCol = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)));
+        const colMap = {
+          sku: findCol(['رقم الصنف', 'sku', 'كود']),
+          name: findCol(['اسم الصنف', 'الاسم', 'name']),
+          category: findCol(['الفئة', 'category', 'تصنيف']),
+          unit: findCol(['الوحدة', 'unit']),
+          cost: findCol(['التكلفة', 'cost']),
+          price: findCol(['سعر البيع', 'السعر', 'price']),
+          qty: findCol(['الكمية', 'qty', 'quantity']),
+          barcode: findCol(['الباركود', 'barcode']),
+        };
+        const existingSkus = new Set(state.items.map(it => it.sku));
+        const parsed = rows.slice(1).filter(r => r.some(c => String(c).trim())).map(r => {
+          const get = (key) => colMap[key] >= 0 ? String(r[colMap[key]]||'').trim() : '';
+          const row = { sku: get('sku'), name: get('name'), category: get('category'), unit: get('unit')||'حبة', cost: get('cost')||'0', price: get('price')||'0', qty: get('qty')||'0', barcode: get('barcode') };
+          if (!row.sku) row.error = 'رقم الصنف مطلوب';
+          else if (!row.name) row.error = 'اسم الصنف مطلوب';
+          else if (existingSkus.has(row.sku)) row.error = 'رقم الصنف موجود مسبقاً بالنظام';
+          else if (isNaN(Number(row.cost)) || isNaN(Number(row.price)) || isNaN(Number(row.qty))) row.error = 'قيمة رقمية غير صحيحة';
+          return row;
+        });
+        state.bulkImportRows = parsed;
+        state.bulkImportResult = null;
+        render();
+      };
+    }
+    if (document.getElementById('bulk-import-confirm')) {
+      document.getElementById('bulk-import-confirm').onclick = async () => {
+        const validRows = state.bulkImportRows.filter(r => !r.error);
+        if (!validRows.length) return;
+        state.bulkImportBusy = true; render();
+        const payload = validRows.map(r => ({
+          sku: r.sku, name: r.name, category: r.category || null, unit: r.unit,
+          cost: Number(r.cost), price: Number(r.price), qty: Number(r.qty), barcode: r.barcode || null, active: true,
+        }));
+        const { error } = await sb.from('items').insert(payload);
+        state.bulkImportBusy = false;
+        if (error) {
+          state.bulkImportResult = null;
+          showToast('فشل الاستيراد: ' + error.message, 'error');
+          render();
+          return;
+        }
+        logActivity('استيراد جماعي للأصناف', `${validRows.length} صنف`);
+        await loadItems();
+        state.bulkImportRows = [];
+        state.bulkImportResult = `تم استيراد ${validRows.length} صنف بنجاح ✓`;
+        render();
+      };
+    }
   }
 
   if (state.showPermMatrix) {
@@ -15996,6 +16251,36 @@ function bindAppEvents() {
     };
   }
 
+  if (state.showCompany || state.showPrintSettings) {
+    if (document.getElementById('c-print-footer-per-type-toggle')) {
+      document.getElementById('c-print-footer-per-type-toggle').onclick = () => { state.showFooterPerType = !state.showFooterPerType; render(); };
+    }
+  }
+  if (state.showPrintSettings) {
+    document.getElementById('print-settings-close').onclick = () => { state.showPrintSettings = false; render(); };
+    document.getElementById('print-settings-cancel').onclick = () => { state.showPrintSettings = false; render(); };
+    document.getElementById('print-settings-save').onclick = async () => {
+      const get = (id) => document.getElementById(id)?.value;
+      const getChecked = (id) => document.getElementById(id)?.checked;
+      const payload = {
+        print_font: get('c-print_font') || 'IBM Plex Sans Arabic', print_font_size: Number(get('c-print_font_size')) || 11, print_accent_color: get('c-print_accent_color') || 'var(--print-accent)',
+        print_paper_size: get('c-print_paper_size') || 'a4', print_show_logo: getChecked('c-print_show_logo'), print_show_qr: getChecked('c-print_show_qr'), print_show_signatures: getChecked('c-print_show_signatures'), print_show_iban: getChecked('c-print_show_iban'), print_footer_text: get('c-print_footer_text') || null,
+        print_margin_mm: Number(get('c-print_margin_mm')) || 10, print_copies: Number(get('c-print_copies')) || 1,
+        print_footer_by_type: {
+          sales_invoice: get('c-print-footer-sales_invoice') || '',
+          purchase_invoice: get('c-print-footer-purchase_invoice') || '',
+          quotation: get('c-print-footer-quotation') || '',
+          vouchers: get('c-print-footer-vouchers') || '',
+        },
+      };
+      const { error } = await sb.from('company_settings').update(payload).eq('id', state.company.id);
+      if (error) { showToast('فشل حفظ إعدادات الطباعة: ' + error.message, 'error'); return; }
+      await loadCompany();
+      state.showPrintSettings = false;
+      showToast('تم حفظ إعدادات الطباعة بنجاح');
+      render();
+    };
+  }
   if (state.showCompany) {
     const closeCompany = () => { state.showCompany = false; render(); };
     document.getElementById('company-close').onclick = closeCompany;
@@ -16026,8 +16311,6 @@ function bindAppEvents() {
         whatsapp: get('c-whatsapp') || null, working_hours: get('c-working_hours') || null,
         tagline_ar: get('c-tagline_ar') || null, tagline_en: get('c-tagline_en') || null, footer_note: get('c-footer_note') || null,
         quote_terms: get('c-quote_terms') || null,
-        print_font: get('c-print_font') || 'IBM Plex Sans Arabic', print_font_size: Number(get('c-print_font_size')) || 11, print_accent_color: get('c-print_accent_color') || 'var(--print-accent)',
-        print_paper_size: get('c-print_paper_size') || 'a4', print_show_logo: getChecked('c-print_show_logo'), print_show_qr: getChecked('c-print_show_qr'), print_show_signatures: getChecked('c-print_show_signatures'), print_show_iban: getChecked('c-print_show_iban'), print_footer_text: get('c-print_footer_text') || null,
       };
       const { error } = await sb.from('company_settings').upsert(payload);
       if (error) { alert('خطأ بالحفظ:\n' + error.message); return; }
@@ -16608,18 +16891,39 @@ async function init() {
   render();
   if (state.session) checkAndRunAutoBackup(); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
   document.addEventListener('keydown', handleGlobalShortcuts);
-  // يطبّق إعدادات الطباعة (حجم الورقة) تلقائياً على أي طباعة تصير بالنظام، بغض النظر عن مكان الزر
+  // يطبّق إعدادات الطباعة (حجم الورقة، الهامش، عدد النسخ) تلقائياً على أي طباعة تصير بالنظام، بغض النظر عن مكان الزر
   let printSizeStyleEl = null;
+  let printCopyClones = [];
   window.addEventListener('beforeprint', () => {
     const paperSize = state.company?.print_paper_size;
+    const marginMm = state.company?.print_margin_mm ?? 10;
+    printSizeStyleEl = document.createElement('style');
     if (paperSize === 'receipt') {
-      printSizeStyleEl = document.createElement('style');
-      printSizeStyleEl.textContent = '@page { size: 80mm auto; margin: 3mm; } @media print { body, .print-area { font-size: 11px !important; } .print-area { max-width: 74mm !important; width: 74mm !important; } }';
-      document.head.appendChild(printSizeStyleEl);
+      printSizeStyleEl.textContent = `@page { size: 80mm auto; margin: ${Math.min(marginMm,10)}mm; } @media print { body, .print-area { font-size: 11px !important; } .print-area { max-width: 74mm !important; width: 74mm !important; } }`;
+    } else {
+      printSizeStyleEl.textContent = `@page { size: A4; margin: ${marginMm}mm; }`;
+    }
+    document.head.appendChild(printSizeStyleEl);
+    // نكرّر منطقة الطباعة الظاهرة حالياً حسب "عدد النسخ الافتراضي" — الطباعة العادية من المتصفح ما تدعم تعيين عدد النسخ برمجياً،
+    // فبدلها نكرّر المحتوى نفسه كصفحات متتالية بنفس مهمة الطباعة الواحدة
+    const copies = state.company?.print_copies || 1;
+    if (copies > 1) {
+      const visibleArea = Array.from(document.querySelectorAll('.print-area')).find(el => el.offsetParent !== null);
+      if (visibleArea) {
+        for (let i = 1; i < copies; i++) {
+          const clone = visibleArea.cloneNode(true);
+          clone.classList.add('print-copy-clone');
+          clone.style.pageBreakBefore = 'always';
+          visibleArea.parentElement.appendChild(clone);
+          printCopyClones.push(clone);
+        }
+      }
     }
   });
   window.addEventListener('afterprint', () => {
     if (printSizeStyleEl) { printSizeStyleEl.remove(); printSizeStyleEl = null; }
+    printCopyClones.forEach(c => c.remove());
+    printCopyClones = [];
   });
 }
 sb.auth.onAuthStateChange((event, session) => {
