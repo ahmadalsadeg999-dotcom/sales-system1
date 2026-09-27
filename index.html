@@ -3086,7 +3086,7 @@ function renderPurchaseFormModal() {
           <span id="pi-import-status" style="font-size:11px;color:#5F5E5A;"></span>
         </div>`}
         <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);margin-bottom:14px;overflow-x:auto;">
-          <table style="width:100%;border-collapse:collapse;">
+          <table id="pi-lines-table" style="width:100%;border-collapse:collapse;">
             <thead><tr>
               ${[t('col_no'),t('col_item_sku'),t('col_item_name'),t('col_unit'),t('col_qty'),t('col_cost'),t('col_total'),t('col_tax_pct'),t('col_tax'),t('col_total_tax'),''].map(h => `<th style="padding:7px 6px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:10.5px;font-weight:500;text-align:right;border-left:1px solid rgba(255,255,255,0.2);">${h}</th>`).join('')}
             </tr></thead>
@@ -3100,8 +3100,8 @@ function renderPurchaseFormModal() {
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.sku||'')}</td>
               <td style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(l.item_name)}</td>
               <td style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${escapeHtml(l.unit||'')}</td>
-              <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${l.quantity}</td>
-              <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(l.unit_cost)}</td>
+              <td class="mono" style="padding:4px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${f.approved ? l.quantity : `<input data-purchase-line-qty="${idx}" class="input mono" style="max-width:60px;padding:3px 5px;" value="${l.quantity}" />`}</td>
+              <td class="mono" style="padding:4px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${f.approved ? fmt(l.unit_cost) : `<input data-purchase-line-cost="${idx}" class="input mono" style="max-width:75px;padding:3px 5px;" value="${l.unit_cost}" />`}</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(lineSub)}</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${l.tax_percent||15}%</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(lineTax)}</td>
@@ -11353,6 +11353,29 @@ function bindAppEvents() {
   if (state.showPurchaseForm) {
     const closeForm = () => { state.showPurchaseForm = false; render(); };
     document.getElementById('purchase-close').onclick = closeForm;
+    if (document.getElementById('pi-lines-table') && !document.getElementById('pi-lines-table').dataset.inputDelegatedBound) {
+      const piTbl = document.getElementById('pi-lines-table');
+      piTbl.dataset.inputDelegatedBound = '1';
+      piTbl.addEventListener('input', (ev) => {
+        const qtyInp = ev.target.closest('[data-purchase-line-qty]');
+        const costInp = ev.target.closest('[data-purchase-line-cost]');
+        if (qtyInp) {
+          const idx = parseInt(qtyInp.dataset.purchaseLineQty, 10);
+          state.purchaseForm.lines[idx].quantity = Number(ev.target.value) || 0;
+          const pos = ev.target.selectionStart;
+          render();
+          const el = document.querySelector(`[data-purchase-line-qty="${idx}"]`);
+          if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+        } else if (costInp) {
+          const idx = parseInt(costInp.dataset.purchaseLineCost, 10);
+          state.purchaseForm.lines[idx].unit_cost = Number(ev.target.value) || 0;
+          const pos = ev.target.selectionStart;
+          render();
+          const el = document.querySelector(`[data-purchase-line-cost="${idx}"]`);
+          if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+        }
+      });
+    }
     bindNumberNav('pi', state.purchases, openPurchaseById);
     document.getElementById('purchase-exit').onclick = closeForm;
     if (document.getElementById('purchase-cancel')) document.getElementById('purchase-cancel').onclick = closeForm;
