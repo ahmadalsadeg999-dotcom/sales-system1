@@ -75,6 +75,7 @@
     tfoot { display: table-footer-group; }
     .print-area .win-title { display: none !important; }
     html, body { background: #fff !important; }
+    .print-area { background: #fff !important; }
     .print-scroll { overflow: visible !important; }
     #bl-print-host { display: block !important; visibility: visible !important; position: absolute !important; top: 0; left: 0; z-index: 99999; padding: 10px; background: #fff; }
     #bl-print-host * { visibility: visible !important; }
@@ -1341,7 +1342,9 @@ function calcLineTotals(f) {
   const subtotal = f.lines.reduce((s,l) => s + lineAmt(l), 0);
   const discount = Number(f.discount) || 0;
   const net = subtotal - discount;
-  const taxTotal = f.lines.reduce((s,l) => s + (lineAmt(l)) * (Number(l.tax_percent||15)/100), 0);
+  // الضريبة تُحسب على المبلغ بعد خصم الفاتورة (يتوزع الخصم على الأسطر بنسبة قيمتها) — متطلب هيئة الزكاة
+  const discRatio = subtotal > 0 ? Math.max(0, net) / subtotal : 1;
+  const taxTotal = f.lines.reduce((s,l) => s + (lineAmt(l)) * discRatio * (Number(l.tax_percent||15)/100), 0);
   const grandTotal = net + taxTotal;
   return { subtotal, discount, net, taxTotal, grandTotal };
 }
@@ -3673,79 +3676,87 @@ function renderSalesFormModal() {
       </div>
       <div class="no-print" style="padding:6px 16px 0;text-align:center;">${journalNumbersBadge()}</div>` : ''}
 
-      <div id="si-tpl1-a" class="print-only" style="padding:14px 16px 0;${printStyleVars()}">
-        <div dir="ltr" style="display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;">
-          <div style="text-align:left;font-size:11px;line-height:1.6;" dir="ltr">
-            ${state.company?.name_en ? `<div style="font-weight:700;font-size:14px;color:#1B3352;">${escapeHtml(state.company.name_en)}</div>` : ''}
-            ${state.company?.tagline_en ? `<div style="font-size:10px;color:#5F5E5A;">${escapeHtml(state.company.tagline_en)}</div>` : ''}
-            ${state.company?.tax_number ? `<div style="margin-top:3px;">VAT: ${escapeHtml(state.company.tax_number)}</div>` : ''}
-            ${state.company?.email ? `<div>${escapeHtml(state.company.email)}</div>` : ''}
-          </div>
-          ${state.company?.logo_url && state.company?.print_show_logo !== false ? `<img data-print-logo src="${escapeHtml(state.company.logo_url)}" style="height:54px;" />` : ''}
-          <div style="text-align:right;font-size:11px;line-height:1.6;">
-            ${state.company?.name_ar ? `<div style="font-weight:700;font-size:14px;color:#1B3352;">${escapeHtml(state.company.name_ar)}</div>` : ''}
-            ${state.company?.tagline_ar ? `<div style="font-size:10px;color:#5F5E5A;">${escapeHtml(state.company.tagline_ar)}</div>` : ''}
-            ${state.company?.address ? `<div style="margin-top:3px;">${escapeHtml(state.company.address)}</div>` : ''}
-            ${state.company?.iban && state.company?.print_show_iban !== false ? `<div>الآيبان: <span dir="ltr" style="display:inline-block;">${escapeHtml(state.company.iban)}</span></div>` : ''}
-          </div>
-        </div>
-        <div style="background:var(--print-accent);border-radius:3px;display:flex;justify-content:space-between;align-items:center;padding:8px 14px;margin-bottom:12px;">
-          <span style="font-size:10px;color:#3A3826;">صفحة 1/1</span>
-          <span style="font-weight:700;font-size:15px;color:#1F2421;letter-spacing:0.3px;">فاتورة بيع ${f.no_tax?'':'ضريبية'} / ${f.invoice_type}</span>
-          <span style="font-size:10px;color:#3A3826;" class="mono">${new Date().toLocaleString('ar-SA')}</span>
-        </div>
-        <div style="border:1px solid #1B3352;border-radius:3px;margin-bottom:12px;overflow:hidden;">
-          <div style="display:grid;grid-template-columns:repeat(6,1fr);font-size:11px;text-align:right;border-bottom:1px solid #C9C4B0;">
-            <div style="padding:6px 8px;background:#F4F1EA;font-weight:600;color:#1B3352;border-left:1px solid #C9C4B0;">رقم الفاتورة</div>
-            <div style="padding:6px 8px;border-left:1px solid #C9C4B0;font-weight:600;" class="mono">${escapeHtml(f.invoice_number)}</div>
-            <div style="padding:6px 8px;background:#F4F1EA;font-weight:600;color:#1B3352;border-left:1px solid #C9C4B0;">مرجع العميل</div>
-            <div style="padding:6px 8px;border-left:1px solid #C9C4B0;">${escapeHtml(f.customer_ref||'—')}</div>
-            <div style="padding:6px 8px;background:#F4F1EA;font-weight:600;color:#1B3352;border-left:1px solid #C9C4B0;">رقم الطلبية</div>
-            <div style="padding:6px 8px;">${escapeHtml(f.order_number||'—')}</div>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(6,1fr);font-size:11px;text-align:right;">
-            <div style="padding:6px 8px;background:#F4F1EA;font-weight:600;color:#1B3352;border-left:1px solid #C9C4B0;">التاريخ</div>
-            <div style="padding:6px 8px;border-left:1px solid #C9C4B0;" class="mono">${escapeHtml(f.invoice_date)}</div>
-            <div style="padding:6px 8px;background:#F4F1EA;font-weight:600;color:#1B3352;border-left:1px solid #C9C4B0;">اسم العميل</div>
-            <div style="padding:6px 8px;grid-column:span 3;font-weight:500;">${escapeHtml(f.customer_id ? (customers.find(c=>c.id===f.customer_id)||{}).name||'—' : (f.walkin_customer_name || 'زبون نقدي'))}</div>
-          </div>
-          ${(() => {
-            const cust = f.customer_id ? customers.find(c=>c.id===f.customer_id) : null;
-            if (!cust) {
-              // زبون غير مسجّل — نعرض بياناته الضريبية اليدوية لو أدخلها
-              const hasTax = f.walkin_customer_tax_number;
-              const hasAddr = f.walkin_customer_address;
-              if (!hasTax && !hasAddr) return '';
-              return `<div style="display:grid;grid-template-columns:repeat(6,1fr);font-size:11px;text-align:right;border-top:1px solid #C9C4B0;">
-                <div style="padding:6px 8px;background:#F4F1EA;font-weight:600;color:#1B3352;border-left:1px solid #C9C4B0;">الرقم الضريبي للعميل</div>
-                <div style="padding:6px 8px;${hasAddr?'border-left:1px solid #C9C4B0;':''}" class="mono">${escapeHtml(hasTax||'—')}</div>
-                ${hasAddr ? `<div style="padding:6px 8px;background:#F4F1EA;font-weight:600;color:#1B3352;border-left:1px solid #C9C4B0;">عنوان العميل</div>
-                <div style="padding:6px 8px;grid-column:span 3;">${escapeHtml(hasAddr)}</div>` : ''}
-              </div>`;
-            }
-            const addrParts = [
-              cust.building_number ? `مبنى ${cust.building_number}` : '',
-              cust.street_name || '',
-              cust.district_name || '',
-              cust.city_name || '',
-              cust.postal_code || '',
-            ].filter(Boolean);
-            const hasCode = cust.code;
-            const hasAddr = addrParts.length > 0;
-            const hasTax = cust.tax_number;
-            if (!hasCode && !hasAddr && !hasTax) return '';
-            return `<div style="display:grid;grid-template-columns:repeat(6,1fr);font-size:11px;text-align:right;border-top:1px solid #C9C4B0;">
-              <div style="padding:6px 8px;background:#F4F1EA;font-weight:600;color:#1B3352;border-left:1px solid #C9C4B0;">رقم العميل</div>
-              <div style="padding:6px 8px;border-left:1px solid #C9C4B0;" class="mono">${escapeHtml(hasCode||'—')}</div>
-              <div style="padding:6px 8px;background:#F4F1EA;font-weight:600;color:#1B3352;border-left:1px solid #C9C4B0;">الرقم الضريبي للعميل</div>
-              <div style="padding:6px 8px;" class="mono">${escapeHtml(hasTax||'—')}</div>
+      <div id="si-tpl1-a" class="print-only" style="${printStyleVars()}">
+        ${(() => {
+          const c = state.company || {};
+          const cust = f.customer_id ? customers.find(x => x.id === f.customer_id) : null;
+          const rep = f.sales_rep_id ? (state.salesReps||[]).find(r => r.id === f.sales_rep_id) : null;
+          const main = c.print_table_header_bg || '#1B3352';
+          const standard = !f.no_tax && !!(cust?.tax_number || f.walkin_customer_tax_number);
+          const titleAr = f.no_tax ? 'فاتورة مبيعات' : standard ? 'فاتورة ضريبية' : 'فاتورة ضريبية مبسطة';
+          const titleEn = f.no_tax ? 'Sales Invoice' : standard ? 'Tax Invoice' : 'Simplified Tax Invoice';
+          const na = f.national_address || {};
+          const addr = [
+            na.building_no || cust?.building_number ? 'مبنى ' + (na.building_no || cust?.building_number) : '',
+            na.street || cust?.street_name, na.district || cust?.district_name, na.city || cust?.city_name,
+            na.postal_code || cust?.postal_code, na.additional_no ? 'إضافي ' + na.additional_no : '',
+          ].filter(Boolean).join('، ') || (!cust ? f.walkin_customer_address : '') || '';
+          const row = (ar, en, val, mono) => val ? `<tr><td class="pi-k">${ar}<span>${en}</span></td><td class="pi-v${mono?' mono':''}">${escapeHtml(String(val))}</td></tr>` : '';
+          return `
+        <style>
+          .pi{color:#1F2421;}
+          .pi .mono{font-family:'Segoe UI',Tahoma,monospace;}
+          .pi-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;padding-bottom:10px;border-bottom:3px solid ${main};}
+          .pi-head .ar{text-align:right;} .pi-head .en{text-align:left;direction:ltr;}
+          .pi-head .nm{font-size:17px;font-weight:800;color:${main};line-height:1.3;}
+          .pi-head .sub{font-size:10px;color:#555;line-height:1.55;}
+          .pi-title{display:flex;justify-content:space-between;align-items:center;margin:10px 0;}
+          .pi-title .t{font-size:18px;font-weight:800;color:${main};}
+          .pi-title .t span{display:block;font-size:11px;font-weight:600;color:#666;letter-spacing:.5px;}
+          .pi-badge{border:1.5px solid ${main};color:${main};border-radius:14px;padding:3px 14px;font-size:12px;font-weight:700;}
+          .pi-boxes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+          .pi-box{border:1px solid #C9C4B0;border-radius:6px;overflow:hidden;}
+          .pi-box h4{margin:0;background:${main};color:#fff;font-size:11.5px;padding:5px 10px;display:flex;justify-content:space-between;}
+          .pi-box table{width:100%;border-collapse:collapse;}
+          .pi-box td{padding:4px 10px;font-size:11px;border-top:1px solid #EEEAE0;vertical-align:top;}
+          .pi-k{width:42%;color:#555;font-weight:600;white-space:nowrap;} .pi-k span{display:block;font-size:8.5px;color:#999;font-weight:400;direction:ltr;text-align:right;}
+          .pi-v{font-weight:600;}
+        </style>
+        <div class="pi" style="padding:6px 4px 0;">
+          <div class="pi-head">
+            <div class="ar">
+              <div class="nm">${escapeHtml(c.name_ar || 'اسم الشركة')}</div>
+              <div class="sub">${[c.tagline_ar, c.address, c.commercial_register ? 'س.ت: ' + c.commercial_register : '', c.tax_number ? 'الرقم الضريبي: ' + c.tax_number : ''].filter(Boolean).map(escapeHtml).join('<br>')}</div>
             </div>
-            ${hasAddr ? `<div style="display:grid;grid-template-columns:repeat(6,1fr);font-size:11px;text-align:right;border-top:1px solid #C9C4B0;">
-              <div style="padding:6px 8px;background:#F4F1EA;font-weight:600;color:#1B3352;border-left:1px solid #C9C4B0;">عنوان العميل</div>
-              <div style="padding:6px 8px;grid-column:span 5;">${escapeHtml(addrParts.join(' - '))}</div>
-            </div>` : ''}`;
-          })()}
-        </div>
+            <div>${c.logo_url && c.print_show_logo !== false ? `<img data-print-logo src="${escapeHtml(c.logo_url)}" style="max-height:70px;max-width:150px;" />` : ''}</div>
+            <div class="en">
+              <div class="nm">${escapeHtml(c.name_en || '')}</div>
+              <div class="sub">${[c.tagline_en, c.commercial_register ? 'C.R: ' + c.commercial_register : '', c.tax_number ? 'VAT No: ' + c.tax_number : '', [c.phone, c.mobile].filter(Boolean).join(' / '), c.email].filter(Boolean).map(escapeHtml).join('<br>')}</div>
+            </div>
+          </div>
+          <div class="pi-title">
+            <div class="t">${titleAr}<span>${titleEn}</span></div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              ${!f.approved ? '<span class="pi-badge" style="border-color:#C0392B;color:#C0392B;">مسودة</span>' : ''}
+              <span class="pi-badge">${escapeHtml(f.invoice_type)} ${f.invoice_type === 'آجل' ? 'Credit' : 'Cash'}</span>
+            </div>
+          </div>
+          <div class="pi-boxes">
+            <div class="pi-box">
+              <h4><span>بيانات الفاتورة</span><span>Invoice Details</span></h4>
+              <table>
+                ${row('رقم الفاتورة', 'Invoice No', f.invoice_number, true)}
+                ${row('تاريخ الفاتورة', 'Invoice Date', f.invoice_date, true)}
+                ${row('الرقم اليدوي', 'Manual No', f.order_number, true)}
+                ${row('مرجع العميل', 'Customer Ref', f.customer_ref)}
+                ${row('المندوب', 'Salesman', rep?.name)}
+                ${row('طريقة الدفع', 'Payment', f.invoice_type === 'آجل' && !(Number(f.paid_amount) > 0) ? 'آجل' : ((f.payments||[]).map(p => p.method).join(' + ') || f.payment_method))}
+              </table>
+            </div>
+            <div class="pi-box">
+              <h4><span>بيانات العميل</span><span>Customer Details</span></h4>
+              <table>
+                ${row('اسم العميل', 'Customer', cust ? cust.name : (f.walkin_customer_name || 'زبون نقدي'))}
+                ${row('رقم العميل', 'Customer No', cust?.account_code || cust?.code, true)}
+                ${row('الرقم الضريبي', 'VAT No', cust?.tax_number || f.walkin_customer_tax_number, true)}
+                ${row('السجل التجاري', 'C.R', cust?.commercial_register, true)}
+                ${row('الجوال', 'Mobile', f.customer_mobile || cust?.mobile || cust?.phone, true)}
+                ${row('العنوان', 'Address', addr)}
+              </table>
+            </div>
+          </div>
+        </div>`;
+        })()}
       </div>
 
       <style>
@@ -3987,52 +3998,72 @@ function renderSalesFormModal() {
       </div>`;
       })()}
 
-      <div id="si-lines-table-wrap" class="print-only" style="padding:0 16px;margin-bottom:14px;">
-        <table style="width:100%;border-collapse:collapse;border:1px solid #C9C4B0;">
-          <thead><tr>
-            ${['#','رقم الصنف','اسم الصنف','الوحدة','الكمية','السعر',...(showLineDisc?['خصم %']:[]),'المجموع','ض%','الضريبة','المجموع/ض'].map(h => `<th style="padding:var(--print-row-padding,6px);background:var(--print-table-header-bg,#1B3352);color:var(--print-table-header-text,#fff);font-size:11px;border:1px solid var(--print-table-border-color,#C9C4B0);">${h}</th>`).join('')}
-          </tr></thead>
+      <div id="si-lines-table-wrap" class="print-only" style="margin-bottom:10px;${printStyleVars()}">
+        ${(() => {
+          const c = state.company || {};
+          const main = c.print_table_header_bg || '#1B3352';
+          const headTxt = c.print_table_header_text || '#fff';
+          const bd = c.print_table_border_color || '#C9C4B0';
+          const heads = [['#',''],['رقم الصنف','Item No'],['الوصف','Description'],['الوحدة','Unit'],['الكمية','Qty'],['سعر الوحدة','Unit Price'],...(showLineDisc?[['خصم','Disc %']]:[]),['المبلغ الخاضع','Taxable Amt'],['الضريبة %','VAT %'],['مبلغ الضريبة','VAT Amt'],['الإجمالي','Total']];
+          const cell = `padding:5px 4px;font-size:10.5px;border:1px solid ${bd};text-align:center;`;
+          return `
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr>${heads.map(([a,e]) => `<th style="background:${main};color:${headTxt};padding:5px 3px;font-size:10px;font-weight:700;border:1px solid ${main};line-height:1.25;">${a}${e?`<div style="font-size:8px;font-weight:400;opacity:.85;">${e}</div>`:''}</th>`).join('')}</tr></thead>
           <tbody>
-            ${f.lines.map((l,idx) => { const sub = lineAmt(l), tx = sub*(Number(l.tax_percent||15)/100); const c = 'padding:var(--print-row-padding,5px);font-size:11px;border:1px solid var(--print-table-border-color,#C9C4B0);text-align:center;'; return `<tr${idx%2?' style="background:var(--print-accent,#F4F1EA);"':''}>
-              <td style="${c}">${idx+1}</td><td style="${c}" class="mono">${escapeHtml(l.sku||'')}</td><td style="${c}text-align:right;">${escapeHtml(l.item_name)}</td><td style="${c}">${escapeHtml(l.unit||'')}</td>
-              <td style="${c}" class="mono">${l.quantity}</td><td style="${c}" class="mono">${fmt(l.unit_price)}</td>${showLineDisc?`<td style="${c}">${Number(l.disc_pct)||0}%</td>`:''}
-              <td style="${c}" class="mono">${fmt(sub)}</td><td style="${c}">${l.tax_percent||0}%</td><td style="${c}" class="mono">${fmt(tx)}</td><td style="${c}font-weight:700;" class="mono">${fmt(sub+tx)}</td></tr>`; }).join('')}
+            ${f.lines.map((l,idx) => { const sub = lineAmt(l), tx = sub*(Number(l.tax_percent||0)/100); return `<tr style="background:${idx%2?'#F7F5EF':'#fff'};">
+              <td style="${cell}color:#777;">${idx+1}</td>
+              <td style="${cell}" class="mono">${escapeHtml(l.sku||'')}</td>
+              <td style="${cell}text-align:right;font-weight:600;">${escapeHtml(l.item_name)}</td>
+              <td style="${cell}">${escapeHtml(l.unit||'')}</td>
+              <td style="${cell}" class="mono">${l.quantity}</td>
+              <td style="${cell}" class="mono">${fmt(l.unit_price)}</td>
+              ${showLineDisc?`<td style="${cell}">${Number(l.disc_pct)||0}%</td>`:''}
+              <td style="${cell}" class="mono">${fmt(sub)}</td>
+              <td style="${cell}">${Number(l.tax_percent||0)}%</td>
+              <td style="${cell}" class="mono">${fmt(tx)}</td>
+              <td style="${cell}font-weight:700;" class="mono">${fmt(sub+tx)}</td></tr>`; }).join('')}
           </tbody>
         </table>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#666;margin-top:3px;"><span>عدد الأصناف: ${f.lines.length}</span><span>إجمالي الكميات: ${f.lines.reduce((s,l)=>s+Number(l.quantity||0),0)}</span></div>`;
+        })()}
       </div>
 
-      <div id="si-tpl1-b" class="print-only" style="padding:0 16px;">
-        <div style="border:1px solid #1B3352;border-radius:3px;margin-bottom:12px;overflow:hidden;">
-          <div style="display:grid;grid-template-columns:repeat(6,1fr);background:#1B3352;color:#fff;font-weight:600;font-size:11px;text-align:center;">
-            <div style="padding:7px;border-left:1px solid rgba(255,255,255,0.2);">المجموع</div>
-            <div style="padding:7px;border-left:1px solid rgba(255,255,255,0.2);">الخصم</div>
-            <div style="padding:7px;border-left:1px solid rgba(255,255,255,0.2);">الصافي</div>
-            <div style="padding:7px;border-left:1px solid rgba(255,255,255,0.2);">الضريبة</div>
-            <div style="padding:7px;border-left:1px solid rgba(255,255,255,0.2);">المجموع/ض</div>
-            <div style="padding:7px;">المطلوب</div>
+      <div id="si-tpl1-b" class="print-only" style="${printStyleVars()}">
+        ${(() => {
+          const c = state.company || {};
+          const main = c.print_table_header_bg || '#1B3352';
+          const pays = (f.payments||[]).filter(p => Number(p.amount) > 0);
+          const line = (ar, en, v, strong, color) => `<tr${strong?` style="background:${main};color:#fff;"`:''}><td style="padding:5px 10px;font-size:${strong?'12.5':'11'}px;font-weight:${strong?'800':'600'};">${ar} <span style="font-size:8.5px;font-weight:400;opacity:.75;">${en}</span></td><td class="mono" style="padding:5px 10px;text-align:left;font-size:${strong?'14':'11.5'}px;font-weight:${strong?'800':'700'};${color?'color:'+color+';':''}">${v}</td></tr>`;
+          return `
+        <div style="display:grid;grid-template-columns:1fr 290px;gap:12px;align-items:start;">
+          <div>
+            <div style="border:1px solid #C9C4B0;border-radius:6px;padding:7px 10px;font-size:11px;background:#FDFBF3;margin-bottom:8px;"><b style="color:${main};">المبلغ كتابةً:</b> ${numberToArabicWords(tot.grandTotal)}</div>
+            ${pays.length ? `<div style="border:1px solid #C9C4B0;border-radius:6px;overflow:hidden;margin-bottom:8px;">
+              <div style="background:#F4F1EA;font-size:10.5px;font-weight:700;padding:4px 10px;color:${main};">تفصيل المدفوعات / Payments</div>
+              ${pays.map(p => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 10px;border-top:1px solid #EEEAE0;"><span>${escapeHtml(p.method)}${p.ref?` <span style="color:#888;">#${escapeHtml(p.ref)}</span>`:''}</span><b class="mono">${fmt(p.amount)}</b></div>`).join('')}
+            </div>` : ''}
+            ${f.notes ? `<div style="font-size:10.5px;color:#444;border-right:3px solid ${main};padding:3px 8px;margin-bottom:8px;"><b>ملاحظات:</b> ${escapeHtml(f.notes)}</div>` : ''}
+            ${f.approved && c.print_show_qr !== false ? `<div style="display:flex;align-items:center;gap:10px;"><canvas id="si-qr-canvas" style="width:95px;height:95px;"></canvas><div style="font-size:9.5px;color:#777;line-height:1.5;">رمز الاستجابة السريعة للفاتورة الإلكترونية<br>ZATCA e-Invoice QR</div></div>` : ''}
           </div>
-          <div style="display:grid;grid-template-columns:repeat(6,1fr);font-size:12px;text-align:center;">
-            <div style="padding:7px;border-left:1px solid #C9C4B0;" class="mono">${fmt(tot.subtotal)}</div>
-            <div style="padding:7px;border-left:1px solid #C9C4B0;" class="mono">${fmt(tot.discount)}</div>
-            <div style="padding:7px;border-left:1px solid #C9C4B0;" class="mono">${fmt(tot.net)}</div>
-            <div style="padding:7px;border-left:1px solid #C9C4B0;" class="mono">${fmt(tot.taxTotal)}</div>
-            <div style="padding:7px;border-left:1px solid #C9C4B0;font-weight:700;background:var(--print-accent);" class="mono">${fmt(tot.grandTotal)}</div>
-            <div style="padding:7px;font-weight:700;background:${due>0?'#FCEBEB':'#E1F5EE'};color:${due>0?'#C0392B':'#0F6E56'};" class="mono">${fmt(due)}</div>
-          </div>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #C9C4B0;border-radius:6px;overflow:hidden;">
+            ${line('الإجمالي قبل الخصم', 'Subtotal', fmt(tot.subtotal))}
+            ${Number(tot.discount) ? line('الخصم', 'Discount', fmt(tot.discount), false, '#C0392B') : ''}
+            ${line('الإجمالي الخاضع للضريبة', 'Taxable Amount', fmt(tot.net))}
+            ${f.no_tax ? '' : line('ضريبة القيمة المضافة', 'VAT', fmt(tot.taxTotal))}
+            ${line('الإجمالي المستحق', 'Grand Total', fmt(tot.grandTotal) + ' <span style="font-size:10px;">' + escapeHtml(feat('currency_abbr_ar')||'') + '</span>', true)}
+            ${line('المدفوع', 'Paid', fmt(Number(f.paid_amount)||0))}
+            ${line('المتبقي', 'Balance Due', fmt(due), false, due > 0.005 ? '#C0392B' : '#0F6E56')}
+          </table>
         </div>
-        <div style="border:1px solid #C9C4B0;border-radius:3px;padding:8px 12px;font-size:11px;background:#FDFBF3;margin-bottom:14px;"><b style="color:#1B3352;">المبلغ كتابة:</b> ${numberToArabicWords(tot.grandTotal)}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:40px;padding-top:16px;">
-          <div style="text-align:center;"><div style="border-top:1px solid #3A3826;padding-top:6px;font-size:11.5px;color:#5F5E5A;">توقيع البائع</div></div>
-          <div style="text-align:center;"><div style="border-top:1px solid #3A3826;padding-top:6px;font-size:11.5px;color:#5F5E5A;">توقيع العميل / المستلم</div></div>
+        <div style="display:${c.print_show_signatures !== false ? 'grid' : 'none'};grid-template-columns:1fr 1fr 1fr;gap:24px;margin-top:34px;">
+          ${['المستلم / Received by','البائع / Salesman','الختم / Stamp'].map(x => `<div style="text-align:center;"><div style="border-top:1px solid #3A3826;padding-top:5px;font-size:10.5px;color:#555;">${x}</div></div>`).join('')}
         </div>
-        ${f.approved && state.company?.print_show_qr !== false ? `
-        <div style="text-align:center;margin-top:18px;">
-          <canvas id="si-qr-canvas" style="width:90px;height:90px;"></canvas>
-        </div>` : ''}
-        <div style="margin-top:26px;padding-top:10px;border-top:1px solid var(--print-accent);text-align:center;font-size:10px;color:#5F5E5A;">
-          ${[state.company?.address, [state.company?.phone, state.company?.phone2].filter(Boolean).join(' - '), state.company?.mobile ? 'جوال: '+state.company.mobile : '', state.company?.website].filter(Boolean).join(' · ')}
-          ${printFooterFor('sales_invoice') ? `<div style="margin-top:5px;font-weight:600;color:#1B3352;">${escapeHtml(printFooterFor('sales_invoice'))}</div>` : ''}
+        <div style="margin-top:18px;padding-top:7px;border-top:2px solid ${main};display:flex;justify-content:space-between;gap:10px;font-size:9.5px;color:#555;">
+          <span>${[c.address, [c.phone, c.phone2].filter(Boolean).join(' - '), c.mobile ? 'جوال: ' + c.mobile : '', c.website].filter(Boolean).map(escapeHtml).join(' · ')}</span>
+          <span class="mono">${c.iban && c.print_show_iban !== false ? 'IBAN: ' + escapeHtml(c.iban) : ''}</span>
         </div>
+        ${printFooterFor('sales_invoice') ? `<div style="text-align:center;margin-top:5px;font-size:10.5px;font-weight:700;color:${main};">${escapeHtml(printFooterFor('sales_invoice'))}</div>` : ''}`;
+        })()}
       </div>
 
       <!-- قالب 2: بسيط موجز — بدون جداول ملوّنة، تنسيق نصي مباشر -->
