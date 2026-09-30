@@ -1377,7 +1377,7 @@ function filteredSalesInvoices() {
   return list;
 }
 function newSalesForm() {
-  return { invoice_number:'', invoice_type:'نقدي', price_mode:'قبل الضريبة', default_tax:'15', no_tax:false, customer_id:'', walkin_customer_name:'', walkin_customer_tax_number:'', walkin_customer_address:'', cash_customer_mode:'walkin', customer_ref:'', order_number:'', warehouse_id: defaultWarehouseId(), quotation_id:null, quotation_number_display:'', invoice_date:new Date().toISOString().slice(0,10), discount:'0', paid_amount:'0', notes:'', lines:[], approved:false, sales_rep_id:'', customer_mobile:'', national_address:{} };
+  return { invoice_number:'', invoice_type:'نقدي', price_mode:'قبل الضريبة', default_tax:'15', no_tax:false, customer_id:'', walkin_customer_name:'', walkin_customer_tax_number:'', walkin_customer_address:'', cash_customer_mode:'walkin', customer_ref:'', order_number:'', warehouse_id: defaultWarehouseId(), quotation_id:null, quotation_number_display:'', invoice_date:new Date().toISOString().slice(0,10), discount:'0', paid_amount:'0', notes:'', lines:[], approved:false, sales_rep_id:'', customer_mobile:'', national_address:{}, payments:[] };
 }
 async function openSalesById(id) {
   const inv = state.salesInvoices.find(x => x.id === id);
@@ -1388,7 +1388,7 @@ async function openSalesById(id) {
     customer_id: inv.customer_id, walkin_customer_name: inv.walkin_customer_name||'', walkin_customer_tax_number: inv.walkin_customer_tax_number||'', walkin_customer_address: inv.walkin_customer_address||'', cash_customer_mode: inv.customer_id ? 'registered' : 'walkin', customer_ref: inv.customer_ref||'', order_number: inv.order_number||'', warehouse_id: inv.warehouse_id || defaultWarehouseId(), quotation_id: inv.quotation_id||null,
     quotation_number_display: '', invoice_date: inv.invoice_date, discount: String(inv.discount||0), paid_amount: String(inv.paid_amount||0),
     notes: inv.notes||'', approved: !!inv.approved,
-    sales_rep_id: inv.sales_rep_id||'', customer_mobile: inv.customer_mobile||'', national_address: inv.customer_national_address||{},
+    sales_rep_id: inv.sales_rep_id||'', customer_mobile: inv.customer_mobile||'', national_address: inv.customer_national_address||{}, payments: Array.isArray(inv.payment_details) ? inv.payment_details : [],
     lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price), disc_pct:Number(l.discount_percent||0), tax_percent:Number(l.tax_percent||15) })),
   };
   state.editingSalesId = id;
@@ -3578,6 +3578,8 @@ function bindSalesSanmarUI() {
     render();
     const el = $('si-discount-pct'); if (el) { el.value = ev.target.value; el.focus(); try { el.setSelectionRange(pos, pos); } catch(e) {} }
   };
+  if ($('si-copy-total')) $('si-copy-total').onclick = () => openSalesPayDialog(false);
+  if ($('si-paid')) { $('si-paid').oninput = null; $('si-paid').onclick = () => openSalesPayDialog(false); $('si-paid').onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); openSalesPayDialog(false); } }; }
   if ($('sales-receipts')) $('sales-receipts').onclick = async () => {
     const t = calcLineTotals(f);
     const due = Math.max(0, t.grandTotal - (Number(f.paid_amount) || 0));
@@ -3976,8 +3978,8 @@ function renderSalesFormModal() {
             <label class="sx-lbl">المجموع/ض</label><input class="sx-in sx-ro" style="font-weight:700;color:#000;" value="${fmt(tot.grandTotal)}" disabled />
             <label class="sx-lbl">المدفوع</label>
             <div style="display:flex;gap:3px;">
-              ${!f.approved ? `<button id="si-copy-total" type="button" title="نسخ الإجمالي" style="width:24px;border:1px solid #ACA899;background:#FFF3A0;cursor:pointer;font-weight:700;font-size:11px;">&gt;&gt;</button>` : ''}
-              <input id="si-paid" class="sx-in" style="font-weight:700;" value="${escapeHtml(String(f.paid_amount||'0'))}" ${dis} />
+              <button id="si-copy-total" type="button" title="تفصيل المدفوعات" style="width:24px;border:1px solid #ACA899;background:#FFF3A0;cursor:pointer;font-weight:700;font-size:11px;">&gt;&gt;</button>
+              <input id="si-paid" class="sx-in" style="font-weight:700;cursor:pointer;background:#fff;" value="${fmt(f.paid_amount||0)}" readonly title="اضغط لتفصيل المدفوعات${(f.payments||[]).length>1 ? ' — ' + f.payments.map(p => p.method + ': ' + fmt(p.amount)).join('، ') : ''}" />
             </div>
             <label class="sx-lbl">المطلوب</label><input class="sx-in sx-ro" style="font-weight:700;color:${due>0.005?'#C0392B':'#0F6E56'};" value="${fmt(due)}" disabled />
           </div>
@@ -6036,28 +6038,91 @@ function renderAccountMappingModal() {
   </div>`;
 }
 
+// تجهيز صفوف تفصيل المدفوعات: صف لكل طريقة دفع مفعّلة + أي طريقة محفوظة بالفاتورة ولو صارت موقوفة
+function openSalesPayDialog(fromSave) {
+  const f = state.salesForm;
+  state.salesPayRows = buildSalesPayRows(f);
+  // فاتورة نقدية جديدة بدون أي دفعة: نعبّي أول طريقة بالإجمالي (زي سنمار)
+  if (f.invoice_type === 'نقدي' && !f.approved && !state.salesPayRows.some(r => Number(r.amount) > 0)) {
+    const r = state.salesPayRows.find(x => x.method === f.payment_method) || state.salesPayRows[0];
+    r.amount = String(Math.round(calcLineTotals(f).grandTotal * 100) / 100);
+  }
+  state.salesPayReceived = '';
+  state.salesPayFromSave = !!fromSave;
+  state.showSalesPayDialog = true;
+  render();
+}
+function buildSalesPayRows(f) {
+  const saved = Array.isArray(f.payments) ? f.payments : [];
+  const methods = activePaymentMethods().map(m => m.name);
+  saved.forEach(p => { if (p.method && !methods.includes(p.method)) methods.push(p.method); });
+  if (!methods.length) methods.push('نقدي');
+  const rows = methods.map(m => { const sp = saved.find(p => p.method === m); return { method: m, amount: sp ? String(sp.amount) : '', ref: sp?.ref || '' }; });
+  if (!saved.length && Number(f.paid_amount) > 0) {
+    const r = rows.find(x => x.method === f.payment_method) || rows[0];
+    r.amount = String(Number(f.paid_amount));
+  }
+  return rows;
+}
+function salesPayTotals() {
+  const f = state.salesForm;
+  const total = calcLineTotals(f).grandTotal;
+  const sum = (state.salesPayRows || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const received = state.salesPayReceived === '' || state.salesPayReceived == null ? sum : Number(state.salesPayReceived) || 0;
+  return { total, sum, received, change: received - sum, remaining: total - sum };
+}
 function renderSalesPayDialog() {
   const f = state.salesForm;
-  const t = calcLineTotals(f);
-  const paid = Number(f.paid_amount) || 0;
-  const rest = t.grandTotal - paid;
+  const rows = state.salesPayRows || [];
+  const pt = salesPayTotals();
+  const ro = f.approved ? 'disabled' : '';
   return `
-  <div id="spd-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40;">
-    <div style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:380px;box-shadow:0 20px 50px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
-      <div class="win-title"><span>الدفع — فاتورة ${escapeHtml(f.invoice_number||'جديدة')}</span><button id="spd-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
-      <div style="padding:16px;display:flex;flex-direction:column;gap:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;background:#F4F1EA;border-radius:8px;padding:10px 12px;">
-          <span style="font-size:13px;">الإجمالي المستحق</span>
-          <span class="mono" style="font-size:20px;font-weight:700;color:#1B3352;">${fmt(t.grandTotal)} <span style="font-size:11px;color:#8B8A7A;">${escapeHtml(feat('currency_abbr_ar')||'')}</span></span>
+  <div id="spd-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40;">
+    <style>
+      .spd{background:#D4D8C4;border:1px solid #6B6B6B;width:100%;max-width:360px;box-shadow:0 12px 40px rgba(0,0,0,0.35);font-family:Tahoma,'IBM Plex Sans Arabic',sans-serif;}
+      .spd-title{display:flex;justify-content:space-between;align-items:center;background:#fff;padding:5px 10px;font-size:13px;border-bottom:1px solid #999;}
+      .spd-grid{width:100%;border-collapse:collapse;font-size:12.5px;}
+      .spd-grid th{background:linear-gradient(#FFFFFF,#E3E1D5);border:1px solid #ACA899;padding:4px;font-weight:700;}
+      .spd-grid td{border:1px solid #D4D0C8;height:30px;padding:0 4px;background:#fff;}
+      .spd-grid td.m{background:#F5E6CC;font-weight:700;white-space:nowrap;}
+      .spd-grid td.n{background:#ECE9D8;text-align:center;font-weight:700;width:22px;}
+      .spd-grid input{border:none;background:transparent;width:100%;height:26px;font-size:14px;font-weight:700;text-align:left;font-family:Tahoma,monospace;}
+      .spd-grid input.r{font-size:12px;font-weight:400;text-align:center;}
+      .spd-grid input:focus{background:#FFF8C6;outline:1px solid #316AC5;}
+      .spd-box{height:34px;border:1px solid #7F9DB9;background:#FDF9EC;font-size:16px;font-weight:700;text-align:left;padding:0 8px;width:140px;font-family:Tahoma,monospace;box-sizing:border-box;}
+      .spd-lbl{font-size:14px;font-weight:700;text-align:right;}
+      .spd-btn{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;width:62px;height:56px;border:1px solid #7F7F7F;background:linear-gradient(#FFFFFF,#D6D3C6);cursor:pointer;font-size:11.5px;font-weight:700;border-radius:2px;padding:4px 2px 3px;font-family:inherit;}
+      .spd-btn i{font-size:24px;}
+    </style>
+    <div class="spd" onclick="event.stopPropagation()">
+      <div class="spd-title"><span>تفصيل المدفوعات</span><button id="spd-close" type="button" style="border:none;background:none;font-size:16px;cursor:pointer;">✕</button></div>
+      <div style="padding:10px 12px;">
+        <div style="display:flex;justify-content:center;margin-bottom:6px;"><div class="spd-box" style="width:130px;text-align:center;background:#FDF9EC;line-height:32px;">${fmt(pt.total)}</div></div>
+        <div style="background:#fff;border:1px solid #919B9C;max-height:230px;min-height:180px;overflow-y:auto;">
+          <table class="spd-grid">
+            <thead><tr><th></th><th>طريقة الدفع</th><th style="width:110px;">المبلغ</th><th style="width:80px;">الرقم</th></tr></thead>
+            <tbody>
+              ${rows.map((r, i) => `<tr>
+                <td class="n">${i+1}</td>
+                <td class="m">${escapeHtml(r.method)}</td>
+                <td><input data-spd-amount="${i}" value="${escapeHtml(String(r.amount||''))}" inputmode="decimal" autocomplete="off" ${ro} /></td>
+                <td><input data-spd-ref="${i}" class="r" value="${escapeHtml(r.ref||'')}" placeholder="" ${ro} /></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
         </div>
-        ${f.invoice_type === 'نقدي' ? partyField('طريقة الدفع', `<select id="spd-method" class="input"><option value="">—</option>${activePaymentMethods().map(m => `<option value="${escapeHtml(m.name)}" ${f.payment_method===m.name?'selected':''}>${escapeHtml(m.name)}</option>`).join('')}</select>`) : ''}
-        ${partyField('المبلغ المدفوع', `<input id="spd-paid" class="input mono" style="font-size:16px;" value="${escapeHtml(String(f.paid_amount||'0'))}" />`)}
-        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:${rest>0.005?'#C0392B':'#0F6E56'};padding:0 4px;">
-          <span>${rest < -0.005 ? 'الباقي للعميل' : 'المتبقي على العميل'}</span><span id="spd-rest" class="mono">${fmt(Math.abs(rest))}</span>
+        <div style="font-size:10.5px;color:#444;margin:4px 2px 8px;">Enter على خانة مبلغ فاضية يعبّيها بالمتبقي من الفاتورة.</div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;justify-content:center;padding:0 30px;">
+          <span class="spd-lbl">المجموع</span><div class="spd-box" id="spd-sum" style="line-height:32px;">${fmt(pt.sum)}</div>
+          <span class="spd-lbl">المبلغ المستلم</span><input id="spd-received" class="spd-box" value="${escapeHtml(state.salesPayReceived === '' || state.salesPayReceived == null ? (Math.round(pt.sum*100)/100) : state.salesPayReceived)}" inputmode="decimal" ${ro} />
+          <span class="spd-lbl">الباقي</span><div class="spd-box" id="spd-change" style="line-height:32px;color:${pt.change<-0.005?'#C0392B':'#000'};">${fmt(pt.change)}</div>
         </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
-          <button id="spd-confirm" class="btn primary" style="padding:8px 18px;"><i class="ti ti-check"></i> تأكيد وحفظ</button>
-          <button id="spd-cancel" class="btn" style="padding:8px 14px;">رجوع</button>
+        <div id="spd-remaining" style="text-align:center;font-size:12px;font-weight:700;margin-top:6px;color:${pt.remaining>0.005?'#C0392B':pt.remaining<-0.005?'#BA7517':'#0F6E56'};">
+          ${pt.remaining>0.005 ? `المتبقي على العميل: ${fmt(pt.remaining)}` : pt.remaining<-0.005 ? `المدفوع أكبر من الفاتورة بـ ${fmt(-pt.remaining)}` : 'الفاتورة مسددة بالكامل'}
+        </div>
+        <div style="display:flex;gap:6px;justify-content:center;margin-top:10px;">
+          ${f.approved ? '' : `<button id="spd-confirm" type="button" class="spd-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ</button>`}
+          <button id="spd-cancel" type="button" class="spd-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
         </div>
       </div>
     </div>
@@ -12979,9 +13044,7 @@ function bindAppEvents() {
         if (f.lines.length === 0) { alert('أضف صنف واحد على الأقل'); return; }
         // شاشة الدفع عند الحفظ (لو مفعّلة من مميزات النظام) — تظهر قبل الحفظ، والحفظ يكمل بعد تأكيدها
         if (feat('pay_screen_on_save') && !f.approved && !state.salesPayConfirmed) {
-          if (!f.paid_amount || Number(f.paid_amount) === 0) f.paid_amount = f.invoice_type === 'نقدي' ? String(calcLineTotals(f).grandTotal.toFixed(2)) : '0';
-          state.showSalesPayDialog = true;
-          render();
+          openSalesPayDialog(true);
           return;
         }
         state.salesPayConfirmed = false;
@@ -13011,7 +13074,7 @@ function bindAppEvents() {
         }
         setBtnLoading(document.getElementById('sales-save'), true, 'جاري الحفظ');
         const t = calcLineTotals(f);
-        const headerPayload = { invoice_type:f.invoice_type, customer_id:f.customer_id||null, walkin_customer_name: f.invoice_type==='نقدي' ? (f.walkin_customer_name||null) : null, walkin_customer_tax_number: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_tax_number||null) : null, walkin_customer_address: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_address||null) : null, customer_ref:f.customer_ref||null, order_number:f.order_number||null, warehouse_id: f.warehouse_id||null, payment_method: f.payment_method||null, quotation_id:f.quotation_id||null, invoice_date:f.invoice_date, discount:t.discount, paid_amount:Number(f.paid_amount)||0, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal, no_tax:!!f.no_tax, sales_rep_id: f.sales_rep_id||null, customer_mobile: f.customer_mobile||null, customer_national_address: f.national_address && Object.values(f.national_address).some(Boolean) ? f.national_address : null };
+        const headerPayload = { invoice_type:f.invoice_type, customer_id:f.customer_id||null, walkin_customer_name: f.invoice_type==='نقدي' ? (f.walkin_customer_name||null) : null, walkin_customer_tax_number: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_tax_number||null) : null, walkin_customer_address: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_address||null) : null, customer_ref:f.customer_ref||null, order_number:f.order_number||null, warehouse_id: f.warehouse_id||null, payment_method: f.payment_method||null, quotation_id:f.quotation_id||null, invoice_date:f.invoice_date, discount:t.discount, paid_amount:Number(f.paid_amount)||0, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal, no_tax:!!f.no_tax, sales_rep_id: f.sales_rep_id||null, customer_mobile: f.customer_mobile||null, payment_details: (f.payments||[]).length ? f.payments : null, customer_national_address: f.national_address && Object.values(f.national_address).some(Boolean) ? f.national_address : null };
         const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(l.tax_percent||15)/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, discount_percent:Number(l.disc_pct)||0, tax_percent:l.tax_percent||15, tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
         if (state.editingSalesId) {
           const { error } = await sb.from('sales_invoices').update(headerPayload).eq('id', state.editingSalesId);
@@ -13093,11 +13156,17 @@ function bindAppEvents() {
         // القيد المحاسبي: مدين الصندوق/البنك أو العملاء — دائن المبيعات + ضريبة مخرجات، زائد قيد تكلفة البضاعة المباعة
         {
           const jLines = [];
+          // تفصيل المدفوعات: سطر مدين لكل طريقة دفع (صندوق/بنك/شبكة...) حسب ربطها بالحسابات
+          const payLines = (Array.isArray(f.payments) && f.payments.length ? f.payments : (Number(f.paid_amount) > 0 ? [{ method: f.payment_method, amount: Number(f.paid_amount) }] : []))
+            .filter(p => Number(p.amount) > 0)
+            .map(p => ({ account_code: cashOrBankAccount(p.method), debit: Number(p.amount), credit:0, description: 'مقبوض - ' + (p.method || 'نقدي') + (p.ref ? ' #' + p.ref : '') }));
+          const paidTotal = payLines.reduce((s, l) => s + l.debit, 0);
           if (f.invoice_type === 'آجل') {
-            jLines.push({ account_code: getPartyAccountCode(f.customer_id,'customer'), debit: t.grandTotal, credit:0, description:'مستحق على العميل' });
+            payLines.forEach(l => jLines.push(l));
+            jLines.push({ account_code: getPartyAccountCode(f.customer_id,'customer'), debit: t.grandTotal - paidTotal, credit:0, description:'مستحق على العميل' });
             jLines.push({ account_code:acc('sales_credit'), debit:0, credit: t.subtotal - t.discount, description:'مبيعات آجلة' });
           } else {
-            jLines.push({ account_code: cashOrBankAccount(f.payment_method), debit: Number(f.paid_amount)||0, credit:0, description:'مقبوض نقداً' });
+            payLines.forEach(l => jLines.push(l));
             const due = t.grandTotal - (Number(f.paid_amount)||0);
             if (due > 0 && f.customer_id) jLines.push({ account_code: getPartyAccountCode(f.customer_id,'customer'), debit: due, credit:0, description:'باقي غير مدفوع' });
             jLines.push({ account_code:acc('sales_cash'), debit:0, credit: t.subtotal - t.discount, description:'مبيعات نقدية' });
@@ -14981,32 +15050,71 @@ function bindAppEvents() {
     };
   }
   if (state.showSalesPayDialog) {
-    const closeSpd = () => { state.showSalesPayDialog = false; render(); };
+    const f = state.salesForm;
+    const closeSpd = () => { state.showSalesPayDialog = false; state.salesPayFromSave = false; render(); };
     document.getElementById('spd-close').onclick = closeSpd;
     document.getElementById('spd-cancel').onclick = closeSpd;
-    const paidEl = document.getElementById('spd-paid');
-    paidEl.focus(); paidEl.select();
-    paidEl.oninput = () => {
-      const t = calcLineTotals(state.salesForm);
-      const rest = t.grandTotal - (Number(paidEl.value) || 0);
-      const r = document.getElementById('spd-rest'); if (r) r.textContent = fmt(Math.abs(rest));
+    const refreshTotals = () => {
+      const pt = salesPayTotals();
+      const sumEl = document.getElementById('spd-sum'); if (sumEl) sumEl.textContent = fmt(pt.sum);
+      const recEl = document.getElementById('spd-received');
+      if (recEl && (state.salesPayReceived === '' || state.salesPayReceived == null) && document.activeElement !== recEl) recEl.value = Math.round(pt.sum*100)/100;
+      const chEl = document.getElementById('spd-change'); if (chEl) { chEl.textContent = fmt(pt.change); chEl.style.color = pt.change < -0.005 ? '#C0392B' : '#000'; }
+      const rmEl = document.getElementById('spd-remaining');
+      if (rmEl) {
+        rmEl.textContent = pt.remaining > 0.005 ? `المتبقي على العميل: ${fmt(pt.remaining)}` : pt.remaining < -0.005 ? `المدفوع أكبر من الفاتورة بـ ${fmt(-pt.remaining)}` : 'الفاتورة مسددة بالكامل';
+        rmEl.style.color = pt.remaining > 0.005 ? '#C0392B' : pt.remaining < -0.005 ? '#BA7517' : '#0F6E56';
+      }
     };
-    const confirmPay = () => {
-      const f = state.salesForm;
-      const paid = Number(paidEl.value);
-      if (isNaN(paid) || paid < 0) { showToast('أدخل مبلغ صحيح', 'error'); return; }
-      const t = calcLineTotals(f);
-      const m = document.getElementById('spd-method'); if (m) f.payment_method = m.value;
-      f.paid_amount = String(Math.min(paid, t.grandTotal).toFixed(2));
+    const amountInputs = [...document.querySelectorAll('[data-spd-amount]')];
+    amountInputs.forEach(inp => {
+      const i = Number(inp.dataset.spdAmount);
+      inp.oninput = () => { state.salesPayRows[i].amount = inp.value; refreshTotals(); };
+      inp.onfocus = () => inp.select();
+      inp.onkeydown = (ev) => {
+        if (ev.key !== 'Enter') return;
+        ev.preventDefault();
+        if (!inp.value.trim()) {
+          const pt = salesPayTotals();
+          if (pt.remaining > 0.005) { inp.value = String(Math.round(pt.remaining*100)/100); state.salesPayRows[i].amount = inp.value; refreshTotals(); }
+        }
+        const next = amountInputs[i+1];
+        if (next && salesPayTotals().remaining > 0.005) next.focus();
+        else { const r = document.getElementById('spd-received'); if (r) { r.focus(); r.select(); } }
+      };
+    });
+    document.querySelectorAll('[data-spd-ref]').forEach(inp => { inp.oninput = () => { state.salesPayRows[Number(inp.dataset.spdRef)].ref = inp.value; }; });
+    const recEl = document.getElementById('spd-received');
+    if (recEl) {
+      recEl.oninput = () => { state.salesPayReceived = recEl.value; refreshTotals(); };
+      recEl.onfocus = () => recEl.select();
+      recEl.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); document.getElementById('spd-confirm')?.click(); } };
+    }
+    const first = amountInputs.find(x => Number(x.value) > 0) || amountInputs[0];
+    if (first && !f.approved && (!document.activeElement || document.activeElement === document.body)) first.focus();
+    const confirmBtn = document.getElementById('spd-confirm');
+    if (confirmBtn) confirmBtn.onclick = () => {
+      const bad = state.salesPayRows.find(r => r.amount !== '' && (isNaN(Number(r.amount)) || Number(r.amount) < 0));
+      if (bad) { showToast(`مبلغ غير صحيح في "${bad.method}"`, 'error'); return; }
+      const pt = salesPayTotals();
+      if (pt.remaining < -0.005) { showToast('مجموع المدفوعات أكبر من إجمالي الفاتورة — الزيادة تُحسب بخانة "المبلغ المستلم" كباقي للعميل', 'error'); return; }
+      if (pt.received + 0.005 < pt.sum) { showToast('المبلغ المستلم أقل من مجموع المدفوعات', 'error'); return; }
+      const pays = state.salesPayRows.filter(r => Number(r.amount) > 0).map(r => ({ method: r.method, amount: Math.round(Number(r.amount)*100)/100, ref: r.ref || '' }));
+      f.payments = pays;
+      f.paid_amount = String(Math.round(pt.sum*100)/100);
+      if (pays.length) f.payment_method = [...pays].sort((x, y) => y.amount - x.amount)[0].method;
+      const fromSave = state.salesPayFromSave;
       state.showSalesPayDialog = false;
-      state.salesPayConfirmed = true;
-      render();
-      const saveBtn = document.getElementById('sales-save');
-      if (saveBtn) saveBtn.click(); else state.salesPayConfirmed = false;
+      state.salesPayFromSave = false;
+      if (fromSave) {
+        state.salesPayConfirmed = true;
+        render();
+        const saveBtn = document.getElementById('sales-save');
+        if (saveBtn) saveBtn.click(); else state.salesPayConfirmed = false;
+      } else render();
     };
-    document.getElementById('spd-confirm').onclick = confirmPay;
-    paidEl.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); confirmPay(); } };
   }
+
   if (state.showPaymentMethodsSettings) {
     const closePm = () => { state.showPaymentMethodsSettings = false; render(); };
     document.getElementById('pm-close').onclick = closePm;
