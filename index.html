@@ -76,6 +76,7 @@
     .print-area .win-title { display: none !important; }
     html, body { background: #fff !important; }
     .print-area { background: #fff !important; }
+    .print-area.pro-doc > *:not(.pro-print) { display: none !important; }
     .print-scroll { overflow: visible !important; }
     #bl-print-host { display: block !important; visibility: visible !important; position: absolute !important; top: 0; left: 0; z-index: 99999; padding: 10px; background: #fff; }
     #bl-print-host * { visibility: visible !important; }
@@ -2630,6 +2631,98 @@ function renderQuotationsSection() {
       ${state.showQuoteForm ? renderQuoteFormModal() : ''}`;
 }
 
+// ---------- قالب طباعة موحّد احترافي (نفس تصميم فاتورة البيع) — يُستخدم لعروض الأسعار وفواتير الشراء ----------
+// cfg: { titleAr, titleEn, badges:[{text,color}], docTitle:[ar,en], docRows:[[ar,en,val,mono]], partyTitle:[ar,en], partyRows:[...],
+//        lines:[{sku,name,unit,qty,price,disc,tax}], showDisc, totals:[[ar,en,val,kind]], words, payments, notesHtml, qrId, signatures:[..], footerType }
+function renderProPrintDoc(cfg) {
+  const c = state.company || {};
+  const main = c.print_table_header_bg || '#1B3352';
+  const headTxt = c.print_table_header_text || '#fff';
+  const bd = c.print_table_border_color || '#C9C4B0';
+  const row = (ar, en, val, mono) => (val !== undefined && val !== null && val !== '') ? `<tr><td class="pp-k">${ar}<span>${en}</span></td><td class="pp-v${mono?' mono':''}">${escapeHtml(String(val))}</td></tr>` : '';
+  const heads = [['#',''],['رقم الصنف','Item No'],['الوصف','Description'],['الوحدة','Unit'],['الكمية','Qty'],[cfg.priceLabel?.[0]||'سعر الوحدة', cfg.priceLabel?.[1]||'Unit Price'],...(cfg.showDisc?[['خصم','Disc %']]:[]),['المبلغ الخاضع','Taxable Amt'],['الضريبة %','VAT %'],['مبلغ الضريبة','VAT Amt'],['الإجمالي','Total']];
+  const cell = `padding:5px 4px;font-size:10.5px;border:1px solid ${bd};text-align:center;`;
+  const tline = (ar, en, v, kind) => {
+    const strong = kind === 'grand';
+    const color = kind === 'neg' ? '#C0392B' : kind === 'due' ? (Number(String(v).replace(/,/g,'')) > 0.005 ? '#C0392B' : '#0F6E56') : '';
+    return `<tr${strong?` style="background:${main};color:#fff;"`:''}><td style="padding:5px 10px;font-size:${strong?'12.5':'11'}px;font-weight:${strong?'800':'600'};">${ar} <span style="font-size:8.5px;font-weight:400;opacity:.75;">${en}</span></td><td class="mono" style="padding:5px 10px;text-align:left;font-size:${strong?'14':'11.5'}px;font-weight:${strong?'800':'700'};${color?'color:'+color+';':''}">${v}${strong ? ' <span style="font-size:10px;">' + escapeHtml(cfg.currency || feat('currency_abbr_ar') || '') + '</span>' : ''}</td></tr>`;
+  };
+  const pays = (cfg.payments || []).filter(x => Number(x.amount) > 0);
+  const totalQty = cfg.lines.reduce((a, l) => a + Number(l.qty || 0), 0);
+  return `
+  <div class="print-only pro-print" style="${printStyleVars()}">
+    <style>
+      .pp{color:#1F2421;} .pp .mono{font-family:'Segoe UI',Tahoma,monospace;}
+      .pp-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;padding-bottom:10px;border-bottom:3px solid ${main};}
+      .pp-head .ar{text-align:right;} .pp-head .en{text-align:left;direction:ltr;}
+      .pp-head .nm{font-size:17px;font-weight:800;color:${main};line-height:1.3;}
+      .pp-head .sub{font-size:10px;color:#555;line-height:1.55;}
+      .pp-title{display:flex;justify-content:space-between;align-items:center;margin:10px 0;}
+      .pp-title .t{font-size:18px;font-weight:800;color:${main};} .pp-title .t span{display:block;font-size:11px;font-weight:600;color:#666;letter-spacing:.5px;}
+      .pp-badge{border:1.5px solid ${main};color:${main};border-radius:14px;padding:3px 14px;font-size:12px;font-weight:700;}
+      .pp-boxes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+      .pp-box{border:1px solid #C9C4B0;border-radius:6px;overflow:hidden;}
+      .pp-box h4{margin:0;background:${main};color:#fff;font-size:11.5px;padding:5px 10px;display:flex;justify-content:space-between;}
+      .pp-box table{width:100%;border-collapse:collapse;} .pp-box td{padding:4px 10px;font-size:11px;border-top:1px solid #EEEAE0;vertical-align:top;}
+      .pp-k{width:42%;color:#555;font-weight:600;white-space:nowrap;} .pp-k span{display:block;font-size:8.5px;color:#999;font-weight:400;direction:ltr;text-align:right;}
+      .pp-v{font-weight:600;}
+    </style>
+    <div class="pp" style="padding:6px 4px 0;">
+      <div class="pp-head">
+        <div class="ar">
+          <div class="nm">${escapeHtml(c.name_ar || 'اسم الشركة')}</div>
+          <div class="sub">${[c.tagline_ar, c.address, c.commercial_register ? 'س.ت: ' + c.commercial_register : '', c.tax_number ? 'الرقم الضريبي: ' + c.tax_number : ''].filter(Boolean).map(escapeHtml).join('<br>')}</div>
+        </div>
+        <div>${c.logo_url && c.print_show_logo !== false ? `<img data-print-logo src="${escapeHtml(c.logo_url)}" style="max-height:70px;max-width:150px;" />` : ''}</div>
+        <div class="en">
+          <div class="nm">${escapeHtml(c.name_en || '')}</div>
+          <div class="sub">${[c.tagline_en, c.commercial_register ? 'C.R: ' + c.commercial_register : '', c.tax_number ? 'VAT No: ' + c.tax_number : '', [c.phone, c.mobile].filter(Boolean).join(' / '), c.email].filter(Boolean).map(escapeHtml).join('<br>')}</div>
+        </div>
+      </div>
+      <div class="pp-title">
+        <div class="t">${cfg.titleAr}<span>${cfg.titleEn}</span></div>
+        <div style="display:flex;gap:6px;align-items:center;">${(cfg.badges||[]).filter(b => b && b.text).map(b => `<span class="pp-badge"${b.color?` style="border-color:${b.color};color:${b.color};"`:''}>${escapeHtml(b.text)}</span>`).join('')}</div>
+      </div>
+      <div class="pp-boxes">
+        <div class="pp-box"><h4><span>${cfg.docTitle[0]}</span><span>${cfg.docTitle[1]}</span></h4><table>${cfg.docRows.map(r => row(...r)).join('')}</table></div>
+        <div class="pp-box"><h4><span>${cfg.partyTitle[0]}</span><span>${cfg.partyTitle[1]}</span></h4><table>${cfg.partyRows.map(r => row(...r)).join('')}</table></div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>${heads.map(([a,e]) => `<th style="background:${main};color:${headTxt};padding:5px 3px;font-size:10px;font-weight:700;border:1px solid ${main};line-height:1.25;">${a}${e?`<div style="font-size:8px;font-weight:400;opacity:.85;">${e}</div>`:''}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${cfg.lines.map((l, idx) => { const sub = Number(l.qty||0) * Number(l.price||0) * (1 - (Number(l.disc)||0)/100); const tx = sub * (Number(l.tax||0)/100); return `<tr style="background:${idx%2?'#F7F5EF':'#fff'};">
+            <td style="${cell}color:#777;">${idx+1}</td><td style="${cell}" class="mono">${escapeHtml(l.sku||'')}</td><td style="${cell}text-align:right;font-weight:600;">${escapeHtml(l.name||'')}</td><td style="${cell}">${escapeHtml(l.unit||'')}</td>
+            <td style="${cell}" class="mono">${l.qty}</td><td style="${cell}" class="mono">${fmt(l.price)}</td>${cfg.showDisc?`<td style="${cell}">${Number(l.disc)||0}%</td>`:''}
+            <td style="${cell}" class="mono">${fmt(sub)}</td><td style="${cell}">${Number(l.tax||0)}%</td><td style="${cell}" class="mono">${fmt(tx)}</td><td style="${cell}font-weight:700;" class="mono">${fmt(sub+tx)}</td></tr>`; }).join('')}
+        </tbody>
+      </table>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:#666;margin:3px 0 10px;"><span>عدد الأصناف: ${cfg.lines.length}</span><span>إجمالي الكميات: ${totalQty}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 290px;gap:12px;align-items:start;">
+        <div>
+          ${cfg.words ? `<div style="border:1px solid #C9C4B0;border-radius:6px;padding:7px 10px;font-size:11px;background:#FDFBF3;margin-bottom:8px;"><b style="color:${main};">المبلغ كتابةً:</b> ${cfg.words}</div>` : ''}
+          ${pays.length ? `<div style="border:1px solid #C9C4B0;border-radius:6px;overflow:hidden;margin-bottom:8px;"><div style="background:#F4F1EA;font-size:10.5px;font-weight:700;padding:4px 10px;color:${main};">تفصيل المدفوعات / Payments</div>
+            ${pays.map(x => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 10px;border-top:1px solid #EEEAE0;"><span>${escapeHtml(x.method||'')}${x.ref?` <span style="color:#888;">#${escapeHtml(x.ref)}</span>`:''}</span><b class="mono">${fmt(x.amount)}</b></div>`).join('')}</div>` : ''}
+          ${cfg.notesHtml || ''}
+          ${cfg.qrId ? `<canvas id="${cfg.qrId}" style="width:95px;height:95px;"></canvas>` : ''}
+        </div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #C9C4B0;">${cfg.totals.filter(Boolean).map(r => tline(...r)).join('')}</table>
+      </div>
+      <div style="display:${c.print_show_signatures !== false ? 'grid' : 'none'};grid-template-columns:repeat(${(cfg.signatures||[]).length||3},1fr);gap:24px;margin-top:34px;">
+        ${(cfg.signatures || ['المستلم / Received by','البائع / Salesman','الختم / Stamp']).map(x => `<div style="text-align:center;"><div style="border-top:1px solid #3A3826;padding-top:5px;font-size:10.5px;color:#555;">${x}</div></div>`).join('')}
+      </div>
+      <div style="margin-top:18px;padding-top:7px;border-top:2px solid ${main};display:flex;justify-content:space-between;gap:10px;font-size:9.5px;color:#555;">
+        <span>${[c.address, [c.phone, c.phone2].filter(Boolean).join(' - '), c.mobile ? 'جوال: ' + c.mobile : '', c.website].filter(Boolean).map(escapeHtml).join(' · ')}</span>
+        <span class="mono">${c.iban && c.print_show_iban !== false ? 'IBAN: ' + escapeHtml(c.iban) : ''}</span>
+      </div>
+      ${cfg.footerType && printFooterFor(cfg.footerType) ? `<div style="text-align:center;margin-top:5px;font-size:10.5px;font-weight:700;color:${main};">${escapeHtml(printFooterFor(cfg.footerType))}</div>` : ''}
+    </div>
+  </div>`;
+}
+function partyAddressText(p) {
+  if (!p) return '';
+  return [p.building_number ? 'مبنى ' + p.building_number : '', p.street_name, p.district_name, p.city_name, p.postal_code].filter(Boolean).join('، ') || p.address || '';
+}
+
 function renderQuoteFormModal() {
   const f = state.quoteForm;
   const customers = state.parties.filter(p => p.party_type === 'customer');
@@ -2637,8 +2730,27 @@ function renderQuoteFormModal() {
   const qtab = state.quoteActiveTab || 'معلومات العرض';
   return `
   <div id="quote-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
-    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:900px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    <div class="print-area pro-doc" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:900px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${t('quote_title')}</span><button id="quote-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      ${renderProPrintDoc((() => {
+        const cust = f.customer_id ? customers.find(x => x.id === f.customer_id) : null;
+        const terms = [state.company?.quote_terms, f.notes].filter(Boolean);
+        return {
+          titleAr: 'عرض سعر', titleEn: 'Quotation',
+          badges: [{ text: f.status || '' }],
+          docTitle: ['بيانات العرض', 'Quotation Details'],
+          docRows: [['رقم العرض','Quotation No', f.quote_number, true], ['تاريخ العرض','Date', f.quote_date, true], ['صالح حتى','Valid Until', f.valid_until, true], ['مرجع العميل','Customer Ref', f.customer_ref]],
+          partyTitle: ['بيانات العميل', 'Customer Details'],
+          partyRows: [['اسم العميل','Customer', cust ? cust.name : (f.walkin_customer_name || '')], ['رقم العميل','Customer No', cust?.account_code || cust?.code, true], ['الرقم الضريبي','VAT No', cust?.tax_number, true], ['الجوال','Mobile', cust?.mobile || cust?.phone, true], ['العنوان','Address', partyAddressText(cust)]],
+          lines: f.lines.map(l => ({ sku: l.sku, name: l.item_name, unit: l.unit, qty: l.quantity, price: l.unit_price, disc: l.disc_pct, tax: l.tax_percent })),
+          showDisc: f.lines.some(l => Number(l.disc_pct) > 0),
+          totals: [['الإجمالي قبل الخصم','Subtotal', fmt(tot.subtotal)], Number(tot.discount) ? ['الخصم','Discount', fmt(tot.discount), 'neg'] : null, ['الإجمالي الخاضع للضريبة','Taxable Amount', fmt(tot.net)], f.no_tax ? null : ['ضريبة القيمة المضافة','VAT', fmt(tot.taxTotal)], ['إجمالي العرض','Total', fmt(tot.grandTotal), 'grand']],
+          words: numberToArabicWords(tot.grandTotal),
+          notesHtml: terms.length ? `<div style="border:1px solid #C9C4B0;border-radius:6px;padding:7px 10px;font-size:10.5px;line-height:1.7;margin-bottom:8px;"><b style="color:${state.company?.print_table_header_bg||'#1B3352'};">الشروط والملاحظات / Terms:</b><br>${terms.map(x => escapeHtml(x).replace(/\n/g,'<br>')).join('<br>')}</div>` : '',
+          signatures: ['العميل / Customer','المندوب / Sales','الختم / Stamp'],
+          footerType: 'quotation',
+        };
+      })())}
       ${f.status==='محول لفاتورة' ? `<div class="no-print" style="margin:8px 16px 0;text-align:center;background:#0F6E56;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">${t('quote_converted')}</div>` : ''}
 
       <div class="print-only" style="padding:14px 16px 0;${printStyleVars()}">
@@ -2937,7 +3049,8 @@ function calcPurchaseTotals(f) {
   const subtotal = f.lines.reduce((s, l) => s + l.quantity * l.unit_cost, 0);
   const discount = Number(f.discount) || 0;
   const net = subtotal - discount;
-  const taxTotal = f.lines.reduce((s, l) => s + (l.quantity * l.unit_cost) * (Number(l.tax_percent||15) / 100), 0);
+  const discRatio = subtotal > 0 ? Math.max(0, net) / subtotal : 1; // الضريبة بعد خصم الفاتورة
+  const taxTotal = f.lines.reduce((s, l) => s + (l.quantity * l.unit_cost) * discRatio * (Number(l.tax_percent||15) / 100), 0);
   const grandTotal = net + taxTotal;
   const paid = Number(f.paid_amount) || 0;
   const due = grandTotal - paid;
@@ -2956,7 +3069,28 @@ function renderPurchaseFormModal() {
   const ptab = state.purchaseActiveTab || 'معلومات الفاتورة';
   return `
   <div id="purchase-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
-    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:900px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    <div class="print-area pro-doc" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:900px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+      ${renderProPrintDoc((() => {
+        const sup = f.supplier_id ? suppliers.find(x => x.id === f.supplier_id) : null;
+        const wh = (state.warehouses||[]).find(w => w.id === f.warehouse_id);
+        const cur = tot.isForeign ? f.currency : '';
+        return {
+          titleAr: 'فاتورة مشتريات', titleEn: 'Purchase Invoice',
+          badges: [!f.approved ? { text: 'مسودة', color: '#C0392B' } : null, { text: (f.invoice_type||'') + (f.invoice_type === 'آجل' ? ' Credit' : ' Cash') }],
+          docTitle: ['بيانات الفاتورة', 'Invoice Details'],
+          docRows: [['رقم الفاتورة','Invoice No', f.invoice_number, true], ['تاريخ الفاتورة','Invoice Date', f.invoice_date, true], ['رقم فاتورة المورد','Supplier Inv No', f.supplier_ref, true], ['رقم الطلبية','PO No', f.order_number, true], ['المستودع','Warehouse', wh?.name], ['العملة','Currency', tot.isForeign ? `${f.currency} (سعر الصرف ${f.exchange_rate})` : ''], ['طريقة الدفع','Payment', f.invoice_type === 'آجل' && !(Number(f.paid_amount) > 0) ? 'آجل' : f.payment_method]],
+          partyTitle: ['بيانات المورد', 'Supplier Details'],
+          partyRows: [['اسم المورد','Supplier', sup ? sup.name : (f.walkin_supplier_name || '')], ['رقم المورد','Supplier No', sup?.account_code || sup?.code, true], ['الرقم الضريبي','VAT No', sup?.tax_number || f.walkin_supplier_tax_number, true], ['الجوال','Mobile', sup?.mobile || sup?.phone, true], ['العنوان','Address', partyAddressText(sup)]],
+          lines: f.lines.map(l => ({ sku: l.sku, name: l.item_name, unit: l.unit, qty: l.quantity, price: l.unit_cost, tax: l.tax_percent })),
+          priceLabel: ['تكلفة الوحدة', 'Unit Cost'],
+          totals: [['الإجمالي قبل الخصم','Subtotal', fmt(tot.subtotal)], Number(tot.discount) ? ['الخصم','Discount', fmt(tot.discount), 'neg'] : null, ['الإجمالي الخاضع للضريبة','Taxable Amount', fmt(tot.net)], f.no_tax ? null : ['ضريبة القيمة المضافة','VAT', fmt(tot.taxTotal)], ['الإجمالي','Grand Total', fmt(tot.grandTotal), 'grand'], tot.isForeign ? ['المعادل بالريال','Total in SAR', fmt(tot.grandTotalSAR)] : null, ['المدفوع','Paid', fmt(tot.paid)], ['المتبقي للمورد','Balance Due', fmt(tot.due), 'due']],
+          currency: cur,
+          words: tot.isForeign ? '' : numberToArabicWords(tot.grandTotal),
+          notesHtml: f.notes ? `<div style="font-size:10.5px;color:#444;border-right:3px solid ${state.company?.print_table_header_bg||'#1B3352'};padding:3px 8px;margin-bottom:8px;"><b>ملاحظات:</b> ${escapeHtml(f.notes)}</div>` : '',
+          signatures: ['المستلم / Received by','المحاسب / Accountant','المدير / Manager'],
+          footerType: 'purchase_invoice',
+        };
+      })())}
       <div class="win-title">
         <span>${t('title_purchase_invoice')}</span>
         <button id="purchase-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button>
