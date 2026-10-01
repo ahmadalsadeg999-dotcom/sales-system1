@@ -95,9 +95,21 @@
 <div id="toast-container" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- إعدادات الاتصال بقاعدة البيانات: ملف مستقل لكل عميل (config.js) — هذا الملف index.html نفسه لكل العملاء -->
+<script src="config.js"></script>
 <script>
-const SUPABASE_URL = 'https://cjwrizfjlgzhhyshdfjo.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_jcUJZ8wanuhtZtV4_iU9kA_zAHkIpwj';
+const APP_CONFIG = window.APP_CONFIG || {};
+if (!APP_CONFIG.SUPABASE_URL || !APP_CONFIG.SUPABASE_KEY) {
+  document.getElementById('root').innerHTML = `
+    <div style="max-width:520px;margin:80px auto;padding:28px;border:2px solid #C0392B;border-radius:10px;background:#FFF5F4;font-family:Tahoma,sans-serif;direction:rtl;text-align:center;">
+      <div style="font-size:42px;">⚠️</div>
+      <h2 style="color:#C0392B;margin:8px 0;">ملف الإعدادات config.js غير موجود</h2>
+      <p style="color:#333;line-height:1.8;">النظام يحتاج ملف <b>config.js</b> بجانب ملف index.html، وفيه رابط قاعدة البيانات ومفتاحها.<br>تواصل مع الدعم الفني.</p>
+    </div>`;
+  throw new Error('config.js missing or incomplete');
+}
+const SUPABASE_URL = APP_CONFIG.SUPABASE_URL;
+const SUPABASE_KEY = APP_CONFIG.SUPABASE_KEY;
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let state = {
