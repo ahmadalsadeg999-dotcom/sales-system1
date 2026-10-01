@@ -18,6 +18,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&family=Cairo:wght@400;500;700&family=Almarai:wght@400;700&family=Noto+Kufi+Arabic:wght@400;700&display=swap');
   * { box-sizing: border-box; }
@@ -1372,6 +1374,7 @@ function renderStatementModal() {
       <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;">
         ${iconBtn('statement-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('statement-print', 'ti-printer', '#5F5E5A', 'طباعة', !p)}
+        ${iconBtn('statement-whatsapp', 'ti-brand-whatsapp', '#25D366', 'واتساب', !p)}
       </div>
     </div>
   </div>`;
@@ -1628,7 +1631,7 @@ function printListAsDocument(title, headers, rows) {
   setTimeout(cleanup, 8000);
 }
 
-function saveAreaAsPDF(areaSelector, filename, btnId) {
+function saveAreaAsPDF(areaSelector, filename, btnId, opts = {}) {
   const el = document.querySelector(areaSelector);
   if (!el || !window.html2pdf) { alert('تعذّر إنشاء ملف PDF — تأكد من الاتصال بالإنترنت وحاول من جديد'); return; }
   const btn = btnId ? document.getElementById(btnId) : null;
@@ -1655,7 +1658,7 @@ function saveAreaAsPDF(areaSelector, filename, btnId) {
   // نفرض خط عربي آمن مضمون التشكيل الصحيح (مدمج بالنظام، ما يحتاج إنترنت) وقت الالتقاط تحديداً — يمنع ظهور الحروف مشوّهة لو تأخّر تحميل الخط المخصّص من الإنترنت
   // نستخدم style موقّت بـ !important عشان يتغلّب حتى على أي font-family مضبوط inline بعناصر داخلية (زي قسم الطباعة نفسه)
   const safeFontStyle = document.createElement('style');
-  safeFontStyle.textContent = `${areaSelector} , ${areaSelector} * { font-family: 'Segoe UI','Tahoma','Arial',sans-serif !important; }`;
+  safeFontStyle.textContent = `${areaSelector} , ${areaSelector} * { font-family: 'Segoe UI','Tahoma','Arial',sans-serif !important; }` + (opts.extraCss || '');
   document.head.appendChild(safeFontStyle);
   // نقيس الأبعاد الحقيقية النهائية بعد التوسعة الكاملة — هذا يضمن التقاط العرض الصحيح كامل، مو العرض الضيق القديم
   const fullHeight = el.scrollHeight;
@@ -1671,17 +1674,24 @@ function saveAreaAsPDF(areaSelector, filename, btnId) {
   };
   // تأخير بسيط يضمن اكتمال إعادة رسم المتصفح للأنماط الجديدة (التوسعة الكاملة) قبل التقاط الصورة — يمنع مشكلة الالتقاط المصغّر
   requestAnimationFrame(() => { requestAnimationFrame(() => {
-  html2pdf().set({
-    margin: 8,
+  const worker = html2pdf().set({
+    margin: opts.output === 'image' ? 0 : 8,
+    image: opts.output === 'image' ? { type: 'png' } : { type: 'jpeg', quality: 0.95 },
     html2canvas: {
       scale: 2,
       useCORS: true,
-      letterRendering: true,
+      letterRendering: opts.letterRendering !== undefined ? opts.letterRendering : true,
+      backgroundColor: '#ffffff',
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['css', 'legacy'] },
-  }).from(el).outputPdf('blob').then((blob) => {
+  }).from(el);
+  const out = opts.output === 'image'
+    ? worker.toCanvas().get('canvas').then(c => new Promise(res => c.toBlob(res, 'image/png')))
+    : worker.outputPdf('blob');
+  out.then((blob) => {
     restoreAll();
+    if (opts.onBlob) { if (btn) setBtnLoading(btn, false); opts.onBlob(blob); return; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -2472,6 +2482,7 @@ function renderApp() {
   ${state.showSalesPayDialog ? renderSalesPayDialog() : ''}
   ${state.showWalkinPicker ? renderWalkinPicker() : ''}
   ${state.showOwnerDash ? renderOwnerDash() : ''}
+  ${state.showWaChooser ? renderWaChooser() : ''}
   ${state.itemPickerOpen ? renderItemPickerModal() : ''}
   ${state.showDesignerPanel ? renderDesignerPanelModal() : ''}
   ${state.showFiscalLock ? renderFiscalLockModal() : ''}
@@ -3526,7 +3537,7 @@ function renderOwnerDash() {
       </div>
       <div class="od-box">
         <div class="od-h">أعلى الديون على العملاء</div>
-        ${D.topDebtors.length ? D.topDebtors.map(p => `<div class="od-row"><span>${escapeHtml(p.name)}</span><b class="mono" style="color:#C0392B;">${fmt(p.balance)}</b></div>`).join('') : '<div class="od-empty">لا توجد ديون 👍</div>'}
+        ${D.topDebtors.length ? D.topDebtors.map(p => `<div class="od-row" style="align-items:center;"><span>${escapeHtml(p.name)}</span><span style="display:flex;align-items:center;gap:10px;"><b class="mono" style="color:#C0392B;">${fmt(p.balance)}</b><button data-od-wa="${p.id}" title="تذكير على واتساب" style="border:none;background:#25D366;color:#fff;border-radius:8px;width:32px;height:30px;cursor:pointer;font-size:17px;"><i class="ti ti-brand-whatsapp"></i></button></span></div>`).join('') : '<div class="od-empty">لا توجد ديون 👍</div>'}
       </div>
       ${D.lowStock ? `<div class="od-box" style="border-color:#BA7517;background:#FDF6E8;"><div class="od-row"><span><i class="ti ti-alert-triangle" style="color:#BA7517;"></i> أصناف وصلت حد الطلب</span><b class="mono">${D.lowStock}</b></div></div>` : ''}
       <div style="text-align:center;font-size:11px;color:#888;margin:6px 0 2px;">آخر تحديث: ${D.at.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</div>`;
@@ -3566,6 +3577,10 @@ function renderOwnerDash() {
 function bindOwnerDash() {
   const c = document.getElementById('od-close'); if (c) c.onclick = () => { state.showOwnerDash = false; render(); };
   const r = document.getElementById('od-refresh'); if (r) r.onclick = () => loadOwnerDash();
+  document.querySelectorAll('[data-od-wa]').forEach(b => { b.onclick = () => {
+    const party = state.parties.find(x => x.id === b.dataset.odWa); if (!party) return;
+    if (sendWhatsApp(party.mobile || party.phone, waDebtReminderText(party), party.name)) logActivity('تذكير دين واتساب', party.name);
+  }; });
   document.querySelectorAll('[data-od-period]').forEach(b => { b.onclick = () => { if (state.ownerLoading) return; state.ownerPeriod = b.dataset.odPeriod; loadOwnerDash(); }; });
 }
 
@@ -4228,6 +4243,21 @@ function bindSalesSanmarUI() {
   };
   if ($('si-copy-total')) $('si-copy-total').onclick = () => openSalesPayDialog(false);
   if ($('si-paid')) { $('si-paid').oninput = null; $('si-paid').onclick = () => openSalesPayDialog(false); $('si-paid').onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); openSalesPayDialog(false); } }; }
+  if ($('sales-whatsapp')) $('sales-whatsapp').onclick = () => { state.showWaChooser = true; render(); };
+  if (state.showWaChooser) {
+    const close = () => { state.showWaChooser = false; render(); };
+    if ($('wac-cancel')) $('wac-cancel').onclick = close;
+    if ($('wac-overlay')) $('wac-overlay').onclick = close;
+    document.querySelectorAll('[data-wac]').forEach(b => { b.onclick = () => {
+      const kind = b.dataset.wac; state.showWaChooser = false; render();
+      if (kind === 'text') {
+        const cust = f.customer_id ? state.parties.find(p => p.id === f.customer_id) : null;
+        if (sendWhatsApp(f.customer_mobile || cust?.mobile || cust?.phone, waSalesInvoiceText(f), cust?.name || f.walkin_customer_name || 'العميل')) logActivity('إرسال فاتورة واتساب', f.invoice_number);
+      } else {
+        setTimeout(() => shareSalesInvoiceFile(kind), 60);
+      }
+    }; });
+  }
   if ($('sales-receipts')) $('sales-receipts').onclick = async () => {
     const t = calcLineTotals(f);
     const due = Math.max(0, t.grandTotal - (Number(f.paid_amount) || 0));
@@ -4581,6 +4611,7 @@ function renderSalesFormModal() {
           <div style="display:flex;gap:3px;flex-wrap:nowrap;align-items:flex-end;overflow-x:auto;">
             ${f.approved ? '' : `<button id="sales-save" type="button" class="sx-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ</button>`}
             <button id="sales-print" type="button" class="sx-btn" ${(!state.editingSalesId || !hasPerm('sales_invoice','can_print'))?'disabled':''}><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+            <button id="sales-whatsapp" type="button" class="sx-btn" ${!state.editingSalesId?'disabled':''} title="إرسال الفاتورة للعميل على واتساب"><i class="ti ti-brand-whatsapp" style="color:#25D366;"></i>واتساب</button>
             <button id="sales-receipts" type="button" class="sx-btn" ${(!state.editingSalesId || !f.customer_id)?'disabled':''} title="سند قبض لهذه الفاتورة"><i class="ti ti-receipt" style="color:#5F5E5A;"></i>وصولات</button>
             <button id="sales-prev" type="button" class="sx-btn" ${state.salesInvoices.length===0?'disabled':''}><i class="ti ti-arrow-big-right" style="color:#27AE60;"></i>${t('btn_prev')}</button>
             <button id="sales-next" type="button" class="sx-btn" ${state.salesInvoices.length===0?'disabled':''}><i class="ti ti-arrow-big-left" style="color:#27AE60;"></i>${t('btn_next')}</button>
@@ -11256,6 +11287,153 @@ async function partyGLBalance(partyId, partyType) {
   const code = getPartyAccountCode(partyId, partyType);
   const { data } = await sb.from('journal_entry_lines').select('debit, credit').eq('account_code', code);
   return (data || []).reduce((s, l) => s + Number(l.debit || 0) - Number(l.credit || 0), 0);
+}
+// ---------- واتساب: إرسال الفاتورة كملف PDF أو صورة ----------
+// على الجوال (وويندوز الحديث) تفتح قائمة المشاركة ← تختار واتساب ← الملف يُرفق تلقائياً.
+// لو الجهاز ما يدعم مشاركة الملفات: نحمّل الملف ونفتح محادثة العميل، وأنت ترفقه من التنزيلات.
+function salesTemplateHideCss() {
+  const t = state.salesPrintTemplate === '2' ? '2' : state.salesPrintTemplate === '3' ? '3' : '1';
+  const hide = t === '1' ? ['#si-tpl2', '#si-tpl3'] : t === '2' ? ['#si-tpl1-a', '#si-lines-table-wrap', '#si-tpl1-b', '#si-tpl3'] : ['#si-tpl1-a', '#si-lines-table-wrap', '#si-tpl1-b', '#si-tpl2'];
+  return hide.join(',') + '{display:none !important;}';
+}
+// التقاط الفاتورة كصورة بمحرك المتصفح نفسه (يحافظ على تشكيل ومسافات العربي بدقة)
+async function captureSalesInvoicePng() {
+  const el = document.querySelector('#sales-overlay .print-area');
+  if (!el || !window.htmlToImage) throw new Error('تعذّر تحميل أداة التصوير — تأكد من الإنترنت');
+  const overlay = el.parentElement;
+  const saved = [];
+  const setStyle = (node, css) => { saved.push([node, node.getAttribute('style')]); Object.assign(node.style, css); };
+  setStyle(el, { maxHeight: 'none', height: 'auto', overflow: 'visible', width: '900px', maxWidth: '900px', background: '#fff', border: 'none', borderRadius: '0', boxShadow: 'none', padding: '18px' });
+  if (overlay) setStyle(overlay, { position: 'absolute', inset: 'auto', top: '0', left: '0', display: 'block', padding: '0', background: '#fff', overflow: 'visible' });
+  const t = state.salesPrintTemplate === '2' ? '2' : state.salesPrintTemplate === '3' ? '3' : '1';
+  const showIds = t === '1' ? ['si-tpl1-a', 'si-lines-table-wrap', 'si-tpl1-b'] : t === '2' ? ['si-tpl2'] : ['si-tpl3'];
+  el.querySelectorAll('.print-only').forEach(n => setStyle(n, { display: (showIds.includes(n.id) || !n.id || !/^si-(tpl|lines)/.test(n.id)) ? 'block' : 'none' }));
+  el.querySelectorAll('.no-print, .win-title').forEach(n => setStyle(n, { display: 'none' }));
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  try {
+    return await window.htmlToImage.toBlob(el, { pixelRatio: 2, backgroundColor: '#ffffff', cacheBust: true, width: el.scrollWidth, height: el.scrollHeight });
+  } finally {
+    saved.reverse().forEach(([node, st]) => { if (st === null) node.removeAttribute('style'); else node.setAttribute('style', st); });
+  }
+}
+async function pngBlobToPdf(pngBlob) {
+  const { jsPDF } = window.jspdf || {};
+  if (!jsPDF) throw new Error('تعذّر تحميل أداة PDF');
+  const url = URL.createObjectURL(pngBlob);
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+  // نحوّلها JPEG مضغوطة — يصغّر حجم ملف PDF من ميجات إلى مئات الكيلوبايت
+  const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
+  const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(img, 0, 0);
+  const jpg = cv.toDataURL('image/jpeg', 0.9);
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+  const pageW = 210, pageH = 297, margin = 8, w = pageW - margin * 2, h = img.height * w / img.width, usable = pageH - margin * 2;
+  let y = 0;
+  while (y < h) {
+    if (y > 0) pdf.addPage();
+    pdf.addImage(jpg, 'JPEG', margin, margin - y, w, h);
+    y += usable;
+  }
+  URL.revokeObjectURL(url);
+  return pdf.output('blob');
+}
+async function shareSalesInvoiceFile(kind) {
+  const f = state.salesForm;
+  const cust = f.customer_id ? state.parties.find(p => p.id === f.customer_id) : null;
+  const phone = f.customer_mobile || cust?.mobile || cust?.phone || '';
+  const ext = kind === 'image' ? 'png' : 'pdf';
+  const filename = `فاتورة_${f.invoice_number}.${ext}`;
+  const caption = `السلام عليكم${cust?.name || f.walkin_customer_name ? ' ' + (cust?.name || f.walkin_customer_name) : ''} 🌷\nمرفق لكم فاتورة رقم ${f.invoice_number} بمبلغ ${fmt(calcLineTotals(f).grandTotal)} ${waCur()}\nشكراً لتعاملكم مع ${waShop()}`;
+  showToast(kind === 'image' ? 'جاري تجهيز صورة الفاتورة...' : 'جاري تجهيز ملف PDF...');
+  let blob;
+  try {
+    const png = await captureSalesInvoicePng();
+    blob = kind === 'image' ? png : await pngBlobToPdf(png);
+  } catch (e) { showToast('تعذّر تجهيز الملف: ' + (e.message || e), 'error'); return; }
+  const file = new File([blob], filename, { type: kind === 'image' ? 'image/png' : 'application/pdf' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], text: caption, title: filename }); logActivity('إرسال فاتورة واتساب (' + ext + ')', f.invoice_number); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  // بديل: تحميل الملف + فتح محادثة العميل
+  const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  showToast('تم تحميل الملف — أرفقه في المحادثة من مجلد التنزيلات 📎');
+  if (sendWhatsApp(phone, caption + '\n\n(الفاتورة مرفقة 📎)', cust?.name || 'العميل')) logActivity('إرسال فاتورة واتساب (' + ext + ')', f.invoice_number);
+}
+function renderWaChooser() {
+  return `
+  <div id="wac-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:45;">
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:340px;padding:18px;box-shadow:0 16px 40px rgba(0,0,0,.3);" onclick="event.stopPropagation()">
+      <div style="display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px;margin-bottom:12px;"><i class="ti ti-brand-whatsapp" style="color:#25D366;font-size:24px;"></i> إرسال الفاتورة للعميل</div>
+      ${[['pdf','ti-file-type-pdf','#D9534F','ملف PDF','الفاتورة كاملة بنفس شكل الطباعة'],['image','ti-photo','#1B5FA8','صورة','تظهر مباشرة في المحادثة بدون فتح ملف'],['text','ti-message-2','#25D366','رسالة نصية','ملخص الفاتورة مكتوب في الرسالة']]
+        .map(([k, ic, col, t1, t2]) => `<button data-wac="${k}" style="width:100%;display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:8px;border:1px solid #E3E7EE;border-radius:10px;background:#fff;cursor:pointer;text-align:right;font-family:inherit;">
+          <i class="ti ${ic}" style="font-size:26px;color:${col};"></i><span><b style="font-size:14px;display:block;">${t1}</b><span style="font-size:11.5px;color:#777;">${t2}</span></span></button>`).join('')}
+      <button id="wac-cancel" style="width:100%;padding:9px;border:none;background:#F1F2F4;border-radius:10px;cursor:pointer;font-weight:700;font-family:inherit;">إلغاء</button>
+    </div>
+  </div>`;
+}
+// ---------- واتساب: فتح محادثة برسالة جاهزة ----------
+function sendWhatsApp(phoneRaw, text, who) {
+  if (!String(phoneRaw || '').replace(/\D/g, '')) {
+    phoneRaw = prompt(`ما فيه رقم جوال مسجّل${who ? ' لـ ' + who : ''} — اكتب رقم الجوال:`, '05') || '';
+    if (!phoneRaw.replace(/\D/g, '').length || phoneRaw.replace(/\D/g, '').length < 9) return false;
+  }
+  window.open(`https://wa.me/${normalizePhone(phoneRaw)}?text=${encodeURIComponent(text)}`, '_blank');
+  return true;
+}
+const waCur = () => feat('currency_abbr_ar') || 'ريال';
+const waShop = () => state.company?.name_ar || '';
+function waSalesInvoiceText(f) {
+  const t = calcLineTotals(f);
+  const cust = f.customer_id ? state.parties.find(p => p.id === f.customer_id) : null;
+  const name = cust?.name || f.walkin_customer_name || '';
+  const paid = Number(f.paid_amount) || 0, due = t.grandTotal - paid;
+  const lines = f.lines.slice(0, 15).map(l => `• ${l.item_name} × ${l.quantity} = ${fmt(lineAmt(l) * (1 + Number(l.tax_percent || 0) / 100))}`).join('\n');
+  return [
+    `السلام عليكم${name ? ' ' + name : ''} 🌷`,
+    `شكراً لتعاملكم مع ${waShop()}`,
+    ``,
+    `🧾 فاتورة رقم: ${f.invoice_number}`,
+    `📅 التاريخ: ${f.invoice_date}`,
+    ``,
+    lines + (f.lines.length > 15 ? `\n… و${f.lines.length - 15} أصناف أخرى` : ''),
+    ``,
+    Number(t.discount) ? `الخصم: ${fmt(t.discount)} ${waCur()}` : null,
+    f.no_tax ? null : `الضريبة: ${fmt(t.taxTotal)} ${waCur()}`,
+    `*الإجمالي: ${fmt(t.grandTotal)} ${waCur()}*`,
+    `المدفوع: ${fmt(paid)} ${waCur()}`,
+    due > 0.005 ? `*المتبقي: ${fmt(due)} ${waCur()}*` : `✅ الفاتورة مسددة بالكامل`,
+    ``,
+    state.company?.phone || state.company?.mobile ? `للتواصل: ${[state.company?.phone, state.company?.mobile].filter(Boolean).join(' - ')}` : null,
+  ].filter(x => x !== null).join('\n');
+}
+function waStatementText(p, rows) {
+
+  let running = Number(p.opening_balance) || 0;
+  const all = (rows || []).map(r => { running += r.total - r.paid; return { ...r, running }; });
+  const tail = all.slice(-8);
+  return [
+    `السلام عليكم ${p.name} 🌷`,
+    `كشف حسابكم لدى ${waShop()}`,
+    ``,
+    tail.length ? `آخر الحركات:` : null,
+    ...tail.map(r => `• ${r.date} | ${r.opType} ${r.doc || ''}${r.total ? ` | ${fmt(r.total)}` : ''}${r.paid ? ` | دفع ${fmt(r.paid)}` : ''}`),
+    ``,
+    `*الرصيد الحالي: ${fmt(p.balance)} ${waCur()}*`,
+    Number(p.balance) > 0.005 && p.party_type !== 'supplier' ? `نأمل التكرم بالسداد في أقرب وقت، وشكراً لكم.` : null,
+  ].filter(x => x !== null).join('\n');
+}
+function waDebtReminderText(p) {
+  return [
+    `السلام عليكم ${p.name} 🌷`,
+    ``,
+    `نذكّركم بلطف بأن رصيدكم المستحق لدى ${waShop()} هو:`,
+    `*${fmt(p.balance)} ${waCur()}*`,
+    ``,
+    `نأمل التكرم بالسداد في أقرب وقت، ونشكر لكم حسن تعاملكم.`,
+    state.company?.iban ? `\nللتحويل البنكي — الآيبان:\n${state.company.iban}` : null,
+  ].filter(x => x !== null).join('\n');
 }
 // قائمة أصناف مردود الشراء: أصناف الفاتورة المستوردة، أو كل الأصناف لو الميزة مفعّلة وما فيه فاتورة
 function prSourceList(f) {
@@ -18160,6 +18338,13 @@ function bindAppEvents() {
     if (document.getElementById('statement-print')) {
       document.getElementById('statement-print').onclick = () => { window.print(); };
     }
+    if (document.getElementById('statement-whatsapp')) {
+      document.getElementById('statement-whatsapp').onclick = () => {
+        const party = state.parties.find(x => x.id === state.statementPartyId);
+        if (!party) return;
+        if (sendWhatsApp(party.mobile || party.phone, waStatementText(party, state.statementInvoices), party.name)) logActivity('إرسال كشف حساب واتساب', party.name);
+      };
+    }
   }
   if (state.showUsers) {
     document.getElementById('users-close').onclick = () => { state.showUsers = false; render(); };
@@ -18690,7 +18875,7 @@ function handleGlobalShortcuts(ev) {
 
   // Esc يشتغل حتى أثناء الكتابة — يقفل أي نافذة مفتوحة
   if (ev.key === 'Escape') {
-    const openModals = ['showOwnerDash','showWalkinPicker','showSalesPayDialog','showSalesForm','showPurchaseForm','showQuoteForm','showSalesReturnForm','showPurchaseReturnForm',
+    const openModals = ['showWaChooser','showOwnerDash','showWalkinPicker','showSalesPayDialog','showSalesForm','showPurchaseForm','showQuoteForm','showSalesReturnForm','showPurchaseReturnForm',
       'showReceiptVoucherForm','showPaymentVoucherForm','showSettlementVoucher','showCashDisbursement','showPartyForm',
       'showItemForm','showGlobalSearch','showQuickOpen','showDueReminders','showPerformanceReport','showSupplierPriceCompare',
       'showAccountStatement','showStatement','showAgingReport','showFiscalLock','showPaymentMethodsSettings','showAccountMapping'];
