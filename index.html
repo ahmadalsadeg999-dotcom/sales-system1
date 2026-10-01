@@ -117,6 +117,18 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // السيريال يُنشأ فقط بأداة المصمم (المفتاح السرّي عنده). البرنامج يحمل مفتاح التحقق فقط:
 // يقدر يفحص السيريال لكن ما يقدر ينشئه — وأي تعديل بالسيريال ولو حرف يبطله.
 // ============================================
+// يجيب كل نتائج استعلام على دفعات (Supabase يحدّ الطلب الواحد بـ 1000 صف افتراضياً)
+// makeQuery: دالة ترجع استعلام جديد بكل مرة، مثلاً: () => sb.from('items').select('*').order('id')
+async function fetchAllQ(makeQuery, pageSize = 1000) {
+  const all = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+    if (error) return { data: from === 0 ? null : all, error };
+    all.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return { data: all, error: null };
+}
 const LICENSE_PUBLIC_KEY_JWK = {"kty": "EC", "crv": "P-256", "x": "v43eNHt5v5w0SmpJwOJEHeiem5WCGAW5hB4SnSvse7Y", "y": "DBT9gWBXOJeilbFB_semdBqhhk3AubiT0ae8luuIOZ0"};
 function b64urlToBytes(str) {
   str = String(str || '').replace(/-/g, '+').replace(/_/g, '/');
@@ -1056,7 +1068,7 @@ async function loadItemRelations(itemId) {
 }
 // ---------- PARTIES (العملاء والموردين) ----------
 async function loadParties() {
-  const { data, error } = await sb.from('parties').select('*').order('created_at', { ascending: false });
+  const { data, error } = await fetchAllQ(() => sb.from('parties').select('*').order('created_at', { ascending: false }).order('id'));
   if (!error) state.parties = data || [];
 }
 
@@ -1082,7 +1094,7 @@ const emptyPartyForm = () => ({
 
 // ---------- PURCHASES (المشتريات) ----------
 async function loadPurchases() {
-  const { data, error } = await sb.from('purchase_invoices').select('*, parties(name)').order('created_at', { ascending: false });
+  const { data, error } = await fetchAllQ(() => sb.from('purchase_invoices').select('*, parties(name)').order('created_at', { ascending: false }).order('id'));
   if (!error) state.purchases = data || [];
 }
 
@@ -1468,7 +1480,7 @@ async function openQuoteById(id) {
 
 // ---------- SALES INVOICES (فواتير البيع) ----------
 async function loadSalesInvoices() {
-  const { data, error } = await sb.from('sales_invoices').select('*, parties(name)').order('created_at', { ascending: false });
+  const { data, error } = await fetchAllQ(() => sb.from('sales_invoices').select('*, parties(name)').order('created_at', { ascending: false }).order('id'));
   if (!error) state.salesInvoices = data || [];
 }
 function filteredSalesInvoices() {
@@ -1950,7 +1962,7 @@ async function loadItemAltNumbers(itemId) {
 // خريطة شاملة (item_id -> [أرقام بديلة]) تُحمّل مرة واحدة، تُستخدم بالبحث بقائمة اختيار الأصناف
 async function loadAllAltNumbersMap() {
   if (!feat('alternatives')) { state.itemAltNumbersMap = {}; return; }
-  const { data } = await sb.from('item_alternative_numbers').select('item_id, alt_number');
+  const { data } = await fetchAllQ(() => sb.from('item_alternative_numbers').select('item_id, alt_number').order('id'));
   const map = {};
   (data || []).forEach(r => { if (!map[r.item_id]) map[r.item_id] = []; map[r.item_id].push(r.alt_number); });
   state.itemAltNumbersMap = map;
@@ -2004,7 +2016,7 @@ async function openTransferById(id) {
 
 // ---------- WAREHOUSE STOCK REPORT (تقرير الكميات بالمستودعات) ----------
 async function loadWarehouseStockReport() {
-  const { data } = await sb.from('item_warehouse_stock').select('item_id, warehouse_id, qty');
+  const { data } = await fetchAllQ(() => sb.from('item_warehouse_stock').select('item_id, warehouse_id, qty').order('item_id').order('warehouse_id'));
   const map = new Map();
   (data||[]).forEach(row => {
     if (!map.has(row.item_id)) map.set(row.item_id, {});
@@ -2209,7 +2221,7 @@ function hasPerm(screenKey, action) {
 
 // ---------- MAIN APP ----------
 async function loadItems() {
-  const { data, error } = await sb.from('items').select('*').order('created_at', { ascending: false });
+  const { data, error } = await fetchAllQ(() => sb.from('items').select('*').order('created_at', { ascending: false }).order('id'));
   if (!error) state.items = data || [];
 }
 
@@ -13598,6 +13610,62 @@ function bindAppEvents() {
           if (!confirm(`المبلغ المدفوع (${fmt(f.paid_amount)}) أكبر من إجمالي الفاتورة (${fmt(t0.grandTotal)}) — تأكد إنك ما كتبت رقم غلط. متابعة؟`)) return;
         }
         if (!confirm('اعتماد الفاتورة ينقص المخزون تلقائياً ويربط رصيد العميل لو آجل، ولا يمكن التراجع من هنا. متابعة؟')) return;
+        // ===== الترحيل الآمن: كل التغييرات بعملية واحدة داخل قاعدة البيانات (دالة post_document) =====
+        {
+          const t = calcLineTotals(f);
+          const approveBtn = document.getElementById('sales-approve');
+          if (approveBtn) { approveBtn.disabled = true; }
+          let cogs = 0;
+          const stock = f.lines.map(l => {
+            const item = state.items.find(it => it.id === l.item_id);
+            if (item) cogs += l.quantity * Number(item.cost || 0);
+            return { item_id: l.item_id, warehouse_id: f.warehouse_id || null, delta: -l.quantity };
+          });
+          const due = t.grandTotal - (Number(f.paid_amount) || 0);
+          const parties = (f.customer_id && (f.invoice_type === 'آجل' || Math.abs(due) > 0.005)) ? [{ party_id: f.customer_id, delta: Math.round(due * 100) / 100 }] : [];
+          const jLines = [];
+          const payLines = (Array.isArray(f.payments) && f.payments.length ? f.payments : (Number(f.paid_amount) > 0 ? [{ method: f.payment_method, amount: Number(f.paid_amount) }] : []))
+            .filter(p => Number(p.amount) > 0)
+            .map(p => ({ account_code: cashOrBankAccount(p.method), debit: Number(p.amount), credit: 0, description: 'مقبوض - ' + (p.method || 'نقدي') + (p.ref ? ' #' + p.ref : '') }));
+          const paidTotal = payLines.reduce((s, l) => s + l.debit, 0);
+          payLines.forEach(l => jLines.push(l));
+          if (f.invoice_type === 'آجل') {
+            jLines.push({ account_code: getPartyAccountCode(f.customer_id,'customer'), debit: t.grandTotal - paidTotal, credit: 0, description: 'مستحق على العميل' });
+            jLines.push({ account_code: acc('sales_credit'), debit: 0, credit: t.subtotal - t.discount, description: 'مبيعات آجلة' });
+          } else {
+            if (due > 0 && f.customer_id) jLines.push({ account_code: getPartyAccountCode(f.customer_id,'customer'), debit: due, credit: 0, description: 'باقي غير مدفوع' });
+            jLines.push({ account_code: acc('sales_cash'), debit: 0, credit: t.subtotal - t.discount, description: 'مبيعات نقدية' });
+          }
+          jLines.push({ account_code: acc('output_vat'), debit: 0, credit: t.taxTotal, description: 'ضريبة مخرجات' });
+          if (cogs > 0) {
+            jLines.push({ account_code: acc('cogs'), debit: cogs, credit: 0, description: 'تكلفة البضاعة المباعة' });
+            jLines.push({ account_code: acc('inventory'), debit: 0, credit: cogs, description: 'خصم من المخزون' });
+          }
+          const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+          const payload = { doc_table: 'sales_invoices', doc_id: state.editingSalesId, stock, parties,
+            entry: { date: f.invoice_date, description: `فاتورة بيع ${f.invoice_number}`, source_type: 'sales_invoice', lines: jLines.map(l => ({ ...l, debit: round2(l.debit), credit: round2(l.credit) })) } };
+          // موازنة فرق التقريب (هللة) على سطر الإيراد
+          const dd = payload.entry.lines.reduce((s, l) => s + l.debit - l.credit, 0);
+          if (Math.abs(dd) > 0 && Math.abs(dd) < 0.05) { const rev = payload.entry.lines.find(l => l.credit > 0); if (rev) rev.credit = round2(rev.credit + dd); }
+          const { error: postErr } = await sb.rpc('post_document', { p: payload });
+          if (!postErr) {
+            if (!f.customer_id && due > 0.005) showToast(`تنبيه: يوجد مبلغ غير مدفوع ${fmt(due)} لعميل غير مسجّل — لن يُحفظ كدين قابل للمتابعة`, 'error');
+            state.salesForm.approved = true;
+            logActivity('اعتماد فاتورة بيع', f.invoice_number);
+            await loadParties(); await loadDocJournalNumbers('sales_invoice', state.editingSalesId); await loadItems(); await loadSalesInvoices();
+            showToast('تم اعتماد الفاتورة بنجاح');
+            render();
+            return;
+          }
+          const missingFn = postErr.code === 'PGRST202' || postErr.code === '42883' || /post_document/.test(postErr.message || '') && /not find|does not exist|schema cache/i.test(postErr.message || '');
+          if (!missingFn) {
+            if (approveBtn) approveBtn.disabled = false;
+            alert('لم يتم الاعتماد — لم يتغيّر أي شيء:\n\n' + postErr.message);
+            return;
+          }
+          // الدالة غير مثبّتة بعد (ملف 09 لم يُشغَّل) → نكمل بالطريقة القديمة
+          console.warn('post_document غير موجودة — شغّل ملف 09_الترحيل_الآمن.sql. استخدام الطريقة القديمة.');
+        }
         const t = calcLineTotals(f);
         let cogs = 0;
         const saveWarnings = [];
@@ -16914,14 +16982,11 @@ function bindAppEvents() {
           const clean = rows.map(r => { const {parties, items, warehouses, from, to, ...rest} = r; return rest; });
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clean), name);
         };
-        const [items, parties, purch, sales, quotes, sret, pret, sc, wh, transfers, rv, pv, pm, coa, je, jel, al] = await Promise.all([
-          sb.from('items').select('*'), sb.from('parties').select('*'), sb.from('purchase_invoices').select('*'),
-          sb.from('sales_invoices').select('*'), sb.from('quotations').select('*'), sb.from('sales_returns').select('*'),
-          sb.from('purchase_returns').select('*'), sb.from('stock_counts').select('*'), sb.from('warehouses').select('*'),
-          sb.from('warehouse_transfers').select('*'), sb.from('receipt_vouchers').select('*'), sb.from('payment_vouchers').select('*'),
-          sb.from('payment_methods').select('*'), sb.from('chart_of_accounts').select('*'), sb.from('journal_entries').select('*'),
-          sb.from('journal_entry_lines').select('*'), sb.from('activity_log').select('*').order('created_at',{ascending:false}).limit(500),
-        ]);
+        const all = async (t) => ({ data: await fetchAllRows(t).catch(() => []) });
+        const [items, parties, purch, sales, quotes, sret, pret, sc, wh, transfers, rv, pv, pm, coa, je, jel] = await Promise.all(
+          ['items','parties','purchase_invoices','sales_invoices','quotations','sales_returns','purchase_returns','stock_counts','warehouses',
+           'warehouse_transfers','receipt_vouchers','payment_vouchers','payment_methods','chart_of_accounts','journal_entries','journal_entry_lines'].map(all));
+        const al = await sb.from('activity_log').select('*').order('created_at',{ascending:false}).limit(500);
         addSheet('الأصناف', items.data);
         addSheet('العملاء والموردين', parties.data);
         addSheet('فواتير الشراء', purch.data);
@@ -16953,29 +17018,7 @@ function bindAppEvents() {
       document.getElementById('maint-json-backup-btn').onclick = async () => {
         state.maintenanceBusy = true; render();
         try {
-          const tableOrder = [
-            'warehouses','payment_methods','chart_of_accounts','company_settings',
-            'items','parties','item_warehouse_stock',
-            'quotations','quotation_items',
-            'purchase_invoices','purchase_invoice_items',
-            'sales_invoices','sales_invoice_items',
-            'sales_returns','sales_return_items',
-            'purchase_returns','purchase_return_items',
-            'stock_counts','stock_count_items',
-            'warehouse_transfers','warehouse_transfer_items',
-            'receipt_vouchers','payment_vouchers',
-            'journal_entries','journal_entry_lines',
-          ];
-          const tables = {};
-          for (const t of tableOrder) {
-            const { data } = await sb.from(t).select('*');
-            tables[t] = data || [];
-          }
-          const backupObj = {
-            system: 'نظام المبيعات والمخزون المتكامل', format_version: 1,
-            exported_at: new Date().toISOString(), exported_by: state.profile?.username || '—',
-            tables,
-          };
+          const backupObj = await buildBackupObject();
           const blob = new Blob([JSON.stringify(backupObj)], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -16985,7 +17028,8 @@ function bindAppEvents() {
           { const { error: bkErr } = await sb.from('backup_log').insert({ taken_by: state.session.user.id }); if (bkErr) console.error('فشل تسجيل عملية النسخ الاحتياطي بالسجل', bkErr); }
           const { data: backups } = await sb.from('backup_log').select('*').order('taken_at', { ascending: false }).limit(5);
           state.backupHistory = backups || [];
-          showToast('تم تحميل النسخة الاحتياطية التامة بنجاح');
+          const totalRows = Object.values(backupObj.counts).reduce((a, b) => a + b, 0);
+          showToast(`تم تحميل النسخة الاحتياطية التامة — ${totalRows} سجل من ${Object.keys(backupObj.counts).length} جدول` + (backupObj.skipped.length ? ` (تعذّر: ${backupObj.skipped.join('، ')})` : ''), backupObj.skipped.length ? 'error' : undefined);
         } catch (e) {
           showToast('حصل خطأ أثناء تجهيز النسخة الاحتياطية التامة', 'error');
         }
@@ -16996,41 +17040,59 @@ function bindAppEvents() {
       document.getElementById('maint-json-restore-file').onchange = (ev) => {
         const file = ev.target.files[0];
         if (!file) return;
-        if (!confirm('هذا استرجاع تام — راح يعيد كل البيانات بالضبط من الملف. الأفضل تسويها على نظام مصفّر حديثاً. متابعة؟')) { ev.target.value=''; return; }
+        if (!isAdmin()) { alert('الاسترجاع التام للمدير فقط'); ev.target.value=''; return; }
         const reader = new FileReader();
         reader.onload = async (e) => {
-          state.maintenanceBusy = true; render();
-          try {
-            const backupObj = JSON.parse(e.target.result);
-            if (!backupObj.tables) throw new Error('ملف غير صالح');
-            const tableOrder = [
-              'warehouses','payment_methods','chart_of_accounts','company_settings',
-              'items','parties','item_warehouse_stock',
-              'quotations','quotation_items',
-              'purchase_invoices','purchase_invoice_items',
-              'sales_invoices','sales_invoice_items',
-              'sales_returns','sales_return_items',
-              'purchase_returns','purchase_return_items',
-              'stock_counts','stock_count_items',
-              'warehouse_transfers','warehouse_transfer_items',
-              'receipt_vouchers','payment_vouchers',
-              'journal_entries','journal_entry_lines',
-            ];
-            let restoredCount = 0, failedTables = [];
-            for (const t of tableOrder) {
-              const rows = backupObj.tables[t];
-              if (!rows || rows.length === 0) continue;
-              const conflictCol = t === 'chart_of_accounts' ? 'code' : t === 'company_settings' ? 'id' : 'id';
-              const { error } = await sb.from(t).upsert(rows, { onConflict: conflictCol });
-              if (error) { failedTables.push(t); } else { restoredCount += rows.length; }
+          let backupObj;
+          try { backupObj = JSON.parse(e.target.result); if (!backupObj.tables) throw new Error('x'); }
+          catch (err) { alert('الملف غير صالح — اختر ملف "نسخة احتياطية تامة" (JSON) من نفس النظام'); ev.target.value=''; return; }
+          const tablesInFile = Object.keys(backupObj.tables).filter(t => (backupObj.tables[t]||[]).length);
+          const totalInFile = tablesInFile.reduce((n, t) => n + backupObj.tables[t].length, 0);
+          if (backupObj.project && backupObj.project !== currentProjectRef() && !confirm(`تنبيه: هذي النسخة مأخوذة من نسخة أخرى (${backupObj.project}).\nمتأكد تبي ترجعها هنا؟`)) { ev.target.value=''; return; }
+          const phrase = prompt(`استرجاع تام: ${totalInFile} سجل من ${tablesInFile.length} جدول (نسخة ${String(backupObj.exported_at||'').slice(0,10)}).\nالسجلات الموجودة بنفس الرقم تتحدّث، والناقصة تُضاف.\nالأفضل تسويه على نظام فارغ أو مصفّر.\n\nللتأكيد اكتب: استرجاع`);
+          if (phrase !== 'استرجاع') { ev.target.value=''; return; }
+          state.maintenanceBusy = true;
+          state.maintenanceLog = [{ type:'info', text:'جاري الاسترجاع... لا تغلق الصفحة' }];
+          render();
+          // جداول ما نرجعها: المستخدمين (حساباتهم تنشأ من جديد) والترخيص (السيريال خاص بكل نسخة) وسجل النسخ
+          const SKIP = new Set(['profiles','license_settings','backup_log']);
+          const order = [...BACKUP_TABLE_ORDER, ...tablesInFile.filter(t => !BACKUP_TABLE_ORDER.includes(t))].filter(t => !SKIP.has(t));
+          const myId = state.session?.user?.id;
+          const log = []; let restored = 0;
+          for (const t of order) {
+            let rows = backupObj.tables[t];
+            if (!rows || !rows.length) continue;
+            if (t === 'chart_of_accounts') rows = [...rows].sort((x, y) => String(x.code).length - String(y.code).length || String(x.code).localeCompare(String(y.code)));
+            const conflictCol = t === 'chart_of_accounts' ? 'code' : (rows[0].id !== undefined ? 'id' : undefined);
+            let ok = 0, failMsg = '';
+            for (let i = 0; i < rows.length; i += 500) {
+              let chunk = rows.slice(i, i + 500);
+              let { error } = await sb.from(t).upsert(chunk, conflictCol ? { onConflict: conflictCol } : undefined);
+              // مستخدم من النسخة القديمة غير موجود هنا (created_by...) → ننسب السجل للمدير الحالي ونعيد
+              if (error && error.code === '23503' && /user|profile/i.test(error.message + (error.details||''))) {
+                chunk = chunk.map(r => { const c = { ...r }; Object.keys(c).forEach(k => { if (/(_by|user_id)$/.test(k) && c[k]) c[k] = myId; }); return c; });
+                ({ error } = await sb.from(t).upsert(chunk, conflictCol ? { onConflict: conflictCol } : undefined));
+              }
+              if (error) { failMsg = error.message; break; }
+              ok += chunk.length;
             }
-            await loadItems(); await loadParties(); await loadWarehouses(); await loadPaymentMethods();
-            state.maintenanceLog = [{ type: failedTables.length?'error':'info', text: failedTables.length ? `تم استرجاع ${restoredCount} سجل، لكن فشل: ${failedTables.join('، ')}` : `تم الاسترجاع التام بنجاح — ${restoredCount} سجل` }];
-            showToast(failedTables.length ? 'الاسترجاع تم جزئياً، راجع السجل بالأسفل' : 'تم الاسترجاع التام بنجاح');
-          } catch (err) {
-            state.maintenanceLog = [{ type:'error', text: 'الملف غير صالح أو حصل خطأ أثناء القراءة: ' + err.message }];
-            showToast('فشل الاسترجاع — تأكد إن الملف نسخة احتياطية تامة صحيحة', 'error');
+            restored += ok;
+            log.push(failMsg ? { type:'error', text:`✗ ${t}: رجع ${ok} من ${rows.length} — ${failMsg}` } : { type:'info', text:`✓ ${t}: ${ok}` });
+            state.maintenanceLog = [{ type:'info', text:`جاري الاسترجاع... ${restored} / ${totalInFile}` }, ...log.slice().reverse()];
+            render();
           }
+          // ضبط عدّادات الأرقام التلقائية بعد إدخال سجلات بأرقامها
+          const { error: seqErr } = await sb.rpc('reset_sequences');
+          await loadItems(); await loadParties(); await loadWarehouses(); await loadPaymentMethods(); await loadSalesInvoices(); await loadPurchases(); await loadChartOfAccounts(); await loadCompany();
+          const failed = log.filter(l => l.type === 'error').length;
+          state.maintenanceLog = [
+            { type: failed ? 'error' : 'info', text: failed ? `انتهى الاسترجاع: ${restored} سجل — ${failed} جدول فيه مشكلة (التفاصيل بالأسفل)` : `✓ تم الاسترجاع التام: ${restored} سجل` },
+            ...(seqErr ? [{ type:'error', text:'تنبيه: ما انضبطت العدّادات — شغّل ملف 08_أدوات_الاسترجاع.sql ثم أعد الاسترجاع' }] : []),
+            { type:'info', text:'المستخدمين ما يُسترجعون — أنشئهم من شاشة المستخدمين، والترخيص يبقى كما هو.' },
+            ...log,
+          ];
+          logActivity('استرجاع تام من نسخة احتياطية', `${restored} سجل`);
+          showToast(failed ? 'الاسترجاع تم جزئياً — راجع السجل' : 'تم الاسترجاع التام بنجاح', failed ? 'error' : undefined);
           ev.target.value = '';
           state.maintenanceBusy = false; render();
         };
@@ -17092,9 +17154,9 @@ function bindAppEvents() {
         // نحدد بداية الفترة: من آخر إقفال سابق (لو موجود)، وإلا من البداية
         const prevClosing = state.fiscalClosings.length ? state.fiscalClosings[0] : null;
         const periodFrom = prevClosing ? prevClosing.closing_date : null;
-        let q = sb.from('journal_entry_lines').select('account_code, debit, credit, journal_entries!inner(entry_date, source_type)').lte('journal_entries.entry_date', closingDate).neq('journal_entries.source_type', 'closing');
-        if (periodFrom) q = q.gt('journal_entries.entry_date', periodFrom);
-        const { data: lines } = await q;
+        const mkQ = () => { let q = sb.from('journal_entry_lines').select('account_code, debit, credit, journal_entries!inner(entry_date, source_type)').lte('journal_entries.entry_date', closingDate).neq('journal_entries.source_type', 'closing').order('id'); if (periodFrom) q = q.gt('journal_entries.entry_date', periodFrom); return q; };
+        const { data: lines, error: linesErr } = await fetchAllQ(mkQ);
+        if (linesErr) { alert('تعذّر قراءة القيود: ' + linesErr.message); return; }
         const byAccount = {};
         (lines||[]).forEach(l => {
           if (!byAccount[l.account_code]) byAccount[l.account_code] = { debit: 0, credit: 0 };
@@ -18256,26 +18318,48 @@ function bindAppEvents() {
 // ---------- النسخ الاحتياطي ----------
 // نفس قائمة الجداول المستخدمة بزر "تحميل نسخة احتياطية تامة" اليدوي — نعيد استخدامها للنسخة التلقائية
 const BACKUP_TABLE_ORDER = [
-  'warehouses','payment_methods','chart_of_accounts','company_settings',
-  'items','parties','item_warehouse_stock',
+  // الإعدادات والتعريفات
+  'company_settings','license_settings','backup_settings','payment_methods','chart_of_accounts','warehouses','report_templates',
+  'profiles','permission_roles','permission_screens','role_permissions','user_permissions','info_panel_fields','role_info_panel_fields','user_info_panel_fields',
+  // الأصناف والأطراف
+  'items','item_alternative_numbers','item_vehicle_compatibility','item_relations','item_bundle_components','item_warehouse_stock','parties',
+  // المستندات
   'quotations','quotation_items',
-  'purchase_invoices','purchase_invoice_items',
-  'sales_invoices','sales_invoice_items',
-  'sales_returns','sales_return_items',
-  'purchase_returns','purchase_return_items',
-  'stock_counts','stock_count_items',
-  'warehouse_transfers','warehouse_transfer_items',
-  'receipt_vouchers','payment_vouchers',
-  'journal_entries','journal_entry_lines',
-  'employees','payroll_records','employee_leaves','eosb_settlements','fixed_assets',
+  'purchase_invoices','purchase_invoice_items','sales_invoices','sales_invoice_items',
+  'sales_returns','sales_return_items','purchase_returns','purchase_return_items',
+  'stock_counts','stock_count_items','warehouse_transfers','warehouse_transfer_items',
+  'opening_inventory_docs','opening_inventory_items',
+  'receipt_vouchers','payment_vouchers','settlement_vouchers','cash_disbursement_vouchers','cash_reconciliations',
+  // المحاسبة
+  'journal_entries','journal_entry_lines','fiscal_closings','fixed_assets',
+  // الموظفين
+  'employees','payroll_records','employee_leaves','eosb_settlements',
+  // أخرى
+  'crm_clients','crm_contact_log','activity_log','backup_log',
 ];
-async function buildBackupObject() {
-  const tables = {};
-  for (const t of BACKUP_TABLE_ORDER) {
-    try { const { data } = await sb.from(t).select('*'); tables[t] = data || []; }
-    catch(e) { tables[t] = []; }
+// يجيب كل صفوف الجدول على دفعات — Supabase يرجّع 1000 صف كحد أقصى بالطلب الواحد، فبدون هذا تنقص النسخة بصمت
+async function fetchAllRows(table, pageSize = 1000) {
+  const all = [];
+  let ordered = true;
+  for (let from = 0; ; from += pageSize) {
+    let q = sb.from(table).select('*').range(from, from + pageSize - 1);
+    if (ordered) q = q.order('id', { ascending: true });
+    let { data, error } = await q;
+    if (error && ordered && from === 0) { ordered = false; ({ data, error } = await sb.from(table).select('*').range(0, pageSize - 1)); }
+    if (error) throw new Error(`${table}: ${error.message}`);
+    all.push(...(data || []));
+    if (!data || data.length < pageSize) break;
   }
-  return { system: 'نظام المبيعات والمخزون المتكامل', format_version: 1, exported_at: new Date().toISOString(), tables };
+  return all;
+}
+async function buildBackupObject() {
+  const tables = {}, counts = {}, skipped = [];
+  for (const t of BACKUP_TABLE_ORDER) {
+    try { tables[t] = await fetchAllRows(t); counts[t] = tables[t].length; }
+    catch (e) { tables[t] = []; skipped.push(t); }
+  }
+  return { system: 'نظام المبيعات والمخزون المتكامل', format_version: 2, exported_at: new Date().toISOString(),
+           exported_by: state.profile?.username || '—', project: currentProjectRef(), counts, skipped, tables };
 }
 // نسخة احتياطية تلقائية: تبني الملف وترفعه لمكان تخزين Supabase (بدون تنزيل، بدون تدخل المستخدم)
 async function runAutoBackupToStorage() {
@@ -18286,6 +18370,15 @@ async function runAutoBackupToStorage() {
   if (error) return { success: false, error: error.message };
   await sb.from('backup_settings').update({ last_backup_at: new Date().toISOString(), last_backup_path: filename }).eq('id', 1);
   return { success: true, filename };
+}
+// تنبيه للمدير: لو إعداد Max rows بـ Supabase ما زال 1000، التقارير الكبيرة (ميزان المراجعة، كشوف الحسابات) تنقص بصمت
+async function checkApiRowLimit() {
+  try {
+    const { count } = await sb.from('journal_entry_lines').select('id', { count: 'exact', head: true });
+    if (!count || count <= 1000) return;
+    const { data } = await sb.from('journal_entry_lines').select('id');
+    if (data && data.length === 1000) showToast('⚠️ تنبيه للمدير: إعداد Max rows في Supabase = 1000 وعدد سطور القيود ' + count + ' — ارفعه إلى 100000 من Project Settings ← Data API، وإلا التقارير المحاسبية تنقص', 'error');
+  } catch (e) {}
 }
 async function checkAndRunAutoBackup() {
   try {
@@ -18479,7 +18572,8 @@ async function init() {
   state.session = data.session;
   if (state.session) { await loadProfile(); await loadItems(); await loadParties(); await loadPurchases(); await loadSalesInvoices(); await loadWarehouses(); await loadPaymentMethods(); state.homeCogs = await calcHomeNetProfit(); await loadAllAltNumbersMap(); }
   render();
-  if (state.session) checkAndRunAutoBackup(); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
+  if (state.session) checkAndRunAutoBackup();
+  if (state.session && isAdmin()) checkApiRowLimit(); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
   document.addEventListener('keydown', handleGlobalShortcuts);
   // يطبّق إعدادات الطباعة (حجم الورقة، الهامش، عدد النسخ) تلقائياً على أي طباعة تصير بالنظام، بغض النظر عن مكان الزر
   let printSizeStyleEl = null;
