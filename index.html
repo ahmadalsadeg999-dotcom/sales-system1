@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>نظام المبيعات - المخزون</title>
+<title>Coin Soft ERP — كوين سوفت</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#1B3352" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="نظام المبيعات" />
+<meta name="apple-mobile-web-app-title" content="Coin Soft" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
@@ -103,7 +103,7 @@ if (!APP_CONFIG.SUPABASE_URL || !APP_CONFIG.SUPABASE_KEY) {
   document.getElementById('root').innerHTML = `
     <div style="max-width:520px;margin:80px auto;padding:28px;border:2px solid #C0392B;border-radius:10px;background:#FFF5F4;font-family:Tahoma,sans-serif;direction:rtl;text-align:center;">
       <div style="font-size:42px;">⚠️</div>
-      <h2 style="color:#C0392B;margin:8px 0;">ملف الإعدادات config.js غير موجود</h2>
+      <h2 style="color:#C0392B;margin:8px 0;">Coin Soft ERP — ملف الإعدادات config.js غير موجود</h2>
       <p style="color:#333;line-height:1.8;">النظام يحتاج ملف <b>config.js</b> بجانب ملف index.html، وفيه رابط قاعدة البيانات ومفتاحها.<br>تواصل مع الدعم الفني.</p>
     </div>`;
   throw new Error('config.js missing or incomplete');
@@ -627,7 +627,7 @@ async function activateLicenseFromLockScreen() {
 // ============================================
 const TRANSLATIONS = {
   ar: {
-    system_name: 'نظام المبيعات', system_tagline: 'إدارة متكاملة للمخزون والمبيعات والمشتريات',
+    system_name: 'كوين سوفت ERP', system_tagline: 'نظام متكامل للمبيعات والمخزون والمحاسبة',
     feat_inventory: 'المخزون', feat_invoices: 'الفواتير', feat_customers: 'العملاء', feat_reports: 'التقارير',
     login_title: 'تسجيل الدخول', login_subtitle: 'أدخل بيانات حسابك للمتابعة',
     username: 'اسم المستخدم', password: 'كلمة المرور', login_btn: 'دخول', checking: '...جاري التحقق',
@@ -754,7 +754,7 @@ const TRANSLATIONS = {
     ar_fifo_note: 'المدفوعات تُخصَّم من أقدم الفواتير أولاً (FIFO) — الأسلوب المعياري لحساب الأعمار.',
   },
   en: {
-    system_name: 'Sales System', system_tagline: 'Integrated inventory, sales & purchasing management',
+    system_name: 'Coin Soft ERP', system_tagline: 'Integrated sales, inventory & accounting system',
     feat_inventory: 'Inventory', feat_invoices: 'Invoices', feat_customers: 'Customers', feat_reports: 'Reports',
     login_title: 'Sign In', login_subtitle: 'Enter your account details to continue',
     username: 'Username', password: 'Password', login_btn: 'Sign In', checking: '...Checking',
@@ -2371,7 +2371,7 @@ function renderApp() {
     </div>` : ''}
     <div style="border:1px solid #1B3352;border-radius:4px;box-shadow:0 6px 24px rgba(0,0,0,0.35);flex:1;display:flex;flex-direction:column;">
       <div class="win-title" style="border-radius:4px 4px 0 0;">
-        <span><img src="icon-192.png" style="height:20px;width:20px;vertical-align:middle;margin-left:8px;border-radius:5px;" onerror="this.style.display='none'" />برنامج مبيعات</span>
+        <span><img src="icon-192.png" style="height:20px;width:20px;vertical-align:middle;margin-left:8px;border-radius:5px;" onerror="this.style.display='none'" />Coin Soft ERP</span>
       </div>
       <div style="background:#fff;border-bottom:1px solid #A9A48C;display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:0 8px;position:relative;">
         <div style="padding:0 4px;">${langToggleBtn(false)}</div>
@@ -9571,7 +9571,7 @@ function renderPermMatrixModal() {
         <button id="perm-matrix-close" style="width:20px;height:16px;background:#d9d6cf;border:1px solid #6b6b6b;border-radius:2px;cursor:pointer;color:#333;font-size:10px;">✕</button>
       </div>
       <div style="background:${C.bgPanel};padding:8px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid ${C.border};flex-wrap:wrap;gap:8px;">
-        <div style="font-weight:bold;color:#333;">نظام المبيعات المتكامل</div>
+        <div style="font-weight:bold;color:#333;">Coin Soft ERP — كوين سوفت</div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
             <select id="perm-target-select-role" class="input" style="width:200px;padding:3px;font-size:12px;" ${state.permMatrixMode!=='role'?'disabled':''}>
@@ -18358,7 +18358,7 @@ async function buildBackupObject() {
     try { tables[t] = await fetchAllRows(t); counts[t] = tables[t].length; }
     catch (e) { tables[t] = []; skipped.push(t); }
   }
-  return { system: 'نظام المبيعات والمخزون المتكامل', format_version: 2, exported_at: new Date().toISOString(),
+  return { system: 'Coin Soft ERP', format_version: 2, exported_at: new Date().toISOString(),
            exported_by: state.profile?.username || '—', project: currentProjectRef(), counts, skipped, tables };
 }
 // نسخة احتياطية تلقائية: تبني الملف وترفعه لمكان تخزين Supabase (بدون تنزيل، بدون تدخل المستخدم)
