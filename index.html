@@ -323,6 +323,7 @@ let state = {
   showSalesPayDialog: false, salesPayConfirmed: false,
   showWalkinPicker: false, walkinList: [], walkinQuery: '', walkinLoading: false,
   showOwnerDash: false, ownerPeriod: 'today', ownerData: null, ownerLoading: false,
+  showShift: false, shift: null, shiftCalc: null, shiftTab: 'current', shiftHistory: [], shiftCount: {}, shiftBusy: false, shiftsAvailable: true,
   editingPmId: null,
   showFiscalLock: false, fiscalLockDateInput: '',
   showPermMatrix: false, permMatrixMode: 'role', permMatrixTargetId: '', permScreens: [], permRoles: [],
@@ -550,6 +551,7 @@ function render() {
     if (state.showSalesForm) bindSalesSanmarUI();
     if (state.showWalkinPicker) bindWalkinPicker();
     if (state.showOwnerDash) bindOwnerDash();
+    if (state.showShift) bindShiftModal();
     if (state.showPurchaseForm) bindPurchaseSanmarUI();
     if (state.showQuoteForm) bindQuoteSanmarUI();
   }
@@ -2483,6 +2485,7 @@ function renderApp() {
   ${state.showWalkinPicker ? renderWalkinPicker() : ''}
   ${state.showOwnerDash ? renderOwnerDash() : ''}
   ${state.showWaChooser ? renderWaChooser() : ''}
+  ${state.showShift ? renderShiftModal() : ''}
   ${state.itemPickerOpen ? renderItemPickerModal() : ''}
   ${state.showDesignerPanel ? renderDesignerPanelModal() : ''}
   ${state.showFiscalLock ? renderFiscalLockModal() : ''}
@@ -3584,6 +3587,197 @@ function bindOwnerDash() {
   document.querySelectorAll('[data-od-period]').forEach(b => { b.onclick = () => { if (state.ownerLoading) return; state.ownerPeriod = b.dataset.odPeriod; loadOwnerDash(); }; });
 }
 
+
+// =====================================================================
+// ورديات الكاشير
+// =====================================================================
+const SHIFT_DENOMS = [500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.25];
+async function loadMyOpenShift() {
+  const { data, error } = await sb.from('cashier_shifts').select('*').eq('user_id', state.session.user.id).is('closed_at', null).order('opened_at', { ascending: false }).limit(1);
+  if (error) { state.shiftsAvailable = !/cashier_shifts|relation|schema cache/i.test(error.message || ''); state.shift = null; return; }
+  state.shiftsAvailable = true;
+  state.shift = (data || [])[0] || null;
+}
+const isCashMethod = (m) => cashOrBankAccount(m || '') === acc('cash');
+async function computeShiftTotals(sh) {
+  const since = sh.opened_at, uid = sh.user_id, until = sh.closed_at || new Date().toISOString();
+  const q = (t, cols) => fetchAllQ(() => sb.from(t).select(cols).eq('created_by', uid).eq('approved', true).gte('created_at', since).lte('created_at', until).order('id'));
+  const [sales, rets, recs, pays] = await Promise.all([
+    q('sales_invoices', 'id, total, invoice_type, paid_amount, payment_method, payment_details'),
+    q('sales_returns', 'id, total, payment_method'),
+    q('receipt_vouchers', 'id, amount, payment_method'),
+    q('payment_vouchers', 'id, amount, payment_method'),
+  ]);
+  const byMethod = {}; let salesTotal = 0, creditSales = 0, salesCash = 0;
+  (sales.data || []).forEach(inv => {
+    salesTotal += Number(inv.total || 0);
+    const ps = Array.isArray(inv.payment_details) && inv.payment_details.length ? inv.payment_details : (Number(inv.paid_amount) > 0 ? [{ method: inv.payment_method || 'نقدي', amount: inv.paid_amount }] : []);
+    let paid = 0;
+    ps.forEach(p => { const a = Number(p.amount || 0); paid += a; const m = p.method || 'نقدي'; byMethod[m] = (byMethod[m] || 0) + a; if (isCashMethod(m)) salesCash += a; });
+    const due = Number(inv.total || 0) - paid; if (due > 0.005) creditSales += due;
+  });
+  const sumBy = (rows, k, cashOnly) => (rows || []).filter(r => !cashOnly || isCashMethod(r.payment_method)).reduce((s, r) => s + Number(r[k] || 0), 0);
+  const returnsTotal = sumBy(rets.data, 'total'), returnsCash = sumBy(rets.data, 'total', true);
+  const receiptsTotal = sumBy(recs.data, 'amount'), receiptsCash = sumBy(recs.data, 'amount', true);
+  const paymentsTotal = sumBy(pays.data, 'amount'), paymentsCash = sumBy(pays.data, 'amount', true);
+  const expected = Number(sh.opening_cash || 0) + salesCash + receiptsCash - returnsCash - paymentsCash;
+  return { salesCount: (sales.data || []).length, salesTotal, creditSales, salesCash, byMethod, returnsTotal, returnsCash, receiptsTotal, receiptsCash, paymentsTotal, paymentsCash, expected: Math.round(expected * 100) / 100 };
+}
+async function openShiftModal() {
+  state.showShift = true; state.shiftTab = 'current'; state.shiftCalc = null; state.shiftCount = {};
+  await loadMyOpenShift();
+  render();
+  if (state.shift) { state.shiftCalc = await computeShiftTotals(state.shift); render(); }
+}
+async function loadShiftHistory() {
+  const { data } = await sb.from('cashier_shifts').select('*').not('closed_at', 'is', null).order('closed_at', { ascending: false }).limit(60);
+  state.shiftHistory = data || [];
+}
+function shiftCountedTotal() {
+  const c = state.shiftCount || {};
+  if (c.manual !== undefined && c.manual !== '') return Number(c.manual) || 0;
+  return SHIFT_DENOMS.reduce((s, d) => s + d * (Number(c[d]) || 0), 0);
+}
+function renderShiftModal() {
+  const sh = state.shift, C = state.shiftCalc, cur = feat('currency_abbr_ar') || '';
+  const tab = state.shiftTab;
+  const row = (l, v, color, bold) => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #EEE;font-size:13px;${bold?'font-weight:800;':''}"><span>${l}</span><b class="mono" style="${color?'color:'+color+';':''}">${v}</b></div>`;
+  let body = '';
+  if (tab === 'history') {
+    body = `<div style="overflow:auto;max-height:60vh;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="background:#1B3352;color:#fff;">${['الموظف','فتح','إقفال','العهدة','المتوقع','الفعلي','الفرق'].map(h => `<th style="padding:6px;text-align:right;white-space:nowrap;">${h}</th>`).join('')}</tr></thead>
+      <tbody>${state.shiftHistory.map((h, i) => `<tr style="background:${i%2?'#F7F7F4':'#fff'};">
+        <td style="padding:6px;">${escapeHtml(h.username||'')}</td>
+        <td style="padding:6px;white-space:nowrap;" class="mono">${new Date(h.opened_at).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'})}</td>
+        <td style="padding:6px;white-space:nowrap;" class="mono">${new Date(h.closed_at).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'})}</td>
+        <td style="padding:6px;" class="mono">${fmt(h.opening_cash)}</td><td style="padding:6px;" class="mono">${fmt(h.expected_cash)}</td><td style="padding:6px;" class="mono">${fmt(h.counted_cash)}</td>
+        <td style="padding:6px;font-weight:700;color:${Math.abs(Number(h.difference))<0.01?'#0F6E56':Number(h.difference)<0?'#C0392B':'#BA7517'};" class="mono">${fmt(h.difference)}</td></tr>`).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:#888;">لا توجد ورديات مقفلة</td></tr>'}</tbody></table></div>`;
+  } else if (!sh) {
+    body = `<div style="text-align:center;padding:10px 0;">
+      <i class="ti ti-cash-register" style="font-size:46px;color:#1B5FA8;"></i>
+      <div style="font-weight:800;font-size:16px;margin:6px 0;">ما عندك وردية مفتوحة</div>
+      <div style="font-size:12.5px;color:#666;margin-bottom:14px;">اكتب المبلغ الموجود في درج الكاشير الآن (العهدة) ثم افتح الوردية</div>
+      <div style="display:flex;gap:8px;justify-content:center;align-items:center;">
+        <input id="shift-opening" class="input mono" style="max-width:160px;font-size:18px;text-align:center;" value="0" inputmode="decimal" />
+        <span style="font-size:13px;">${escapeHtml(cur)}</span>
+      </div>
+      <button id="shift-open-btn" class="btn primary" style="margin-top:14px;padding:10px 28px;font-size:14px;" ${state.shiftBusy?'disabled':''}><i class="ti ti-player-play"></i> فتح الوردية</button>
+    </div>`;
+  } else {
+    const counted = shiftCountedTotal();
+    const diff = C ? Math.round((counted - C.expected) * 100) / 100 : 0;
+    body = `
+      <div style="background:#E8F4EF;border:1px solid #0F6E56;border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+        <span>🟢 وردية مفتوحة منذ <b class="mono">${new Date(sh.opened_at).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'})}</b></span>
+        <span>العهدة: <b class="mono">${fmt(sh.opening_cash)}</b></span>
+      </div>
+      <style>.shift-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;} @media (max-width:600px){.shift-grid{grid-template-columns:1fr;}}</style>
+      <div class="shift-grid">
+        <div>
+          <div style="font-weight:800;font-size:13px;color:#1B3352;margin-bottom:4px;">ملخص الوردية ${C ? '' : '<span style="font-weight:400;color:#888;">(جاري الحساب...)</span>'}</div>
+          ${C ? `
+            ${row(`المبيعات (${C.salesCount} فاتورة)`, fmt(C.salesTotal))}
+            ${Object.entries(C.byMethod).map(([m, v]) => row(`&nbsp;&nbsp;• ${escapeHtml(m)}${isCashMethod(m)?' 💵':''}`, fmt(v))).join('')}
+            ${C.creditSales ? row('&nbsp;&nbsp;• آجل على العملاء', fmt(C.creditSales)) : ''}
+            ${C.receiptsTotal ? row('سندات قبض (نقدي)', fmt(C.receiptsCash)) : ''}
+            ${C.returnsTotal ? row('مردودات مبيعات (نقدي)', '− ' + fmt(C.returnsCash), '#C0392B') : ''}
+            ${C.paymentsTotal ? row('سندات صرف (نقدي)', '− ' + fmt(C.paymentsCash), '#C0392B') : ''}
+            ${row('العهدة الافتتاحية', fmt(sh.opening_cash))}
+            ${row('النقد المتوقع في الدرج', fmt(C.expected) + ' ' + escapeHtml(cur), '#1B5FA8', true)}` : ''}
+        </div>
+        <div>
+          <div style="font-weight:800;font-size:13px;color:#1B3352;margin-bottom:4px;">جرد الدرج</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;">
+            ${SHIFT_DENOMS.map(d => `<label style="display:flex;align-items:center;gap:4px;font-size:12px;"><span class="mono" style="width:38px;text-align:left;">${d}</span>×<input data-denom="${d}" class="input mono" style="padding:3px 5px;text-align:center;" inputmode="numeric" value="${escapeHtml(String(state.shiftCount[d]||''))}" /></label>`).join('')}
+          </div>
+          <div style="font-size:11.5px;color:#666;margin:8px 0 3px;">أو اكتب المبلغ الإجمالي مباشرة:</div>
+          <input id="shift-manual" class="input mono" style="text-align:center;font-size:15px;" inputmode="decimal" placeholder="المبلغ المعدود" value="${escapeHtml(String(state.shiftCount.manual ?? ''))}" />
+          <div id="shift-result" style="margin-top:10px;">
+            ${row('النقد المعدود', fmt(counted), null, true)}
+            ${C ? row('الفرق', (diff > 0 ? '+' : '') + fmt(diff) + (Math.abs(diff) < 0.01 ? ' ✅' : diff < 0 ? ' عجز' : ' زيادة'), Math.abs(diff) < 0.01 ? '#0F6E56' : diff < 0 ? '#C0392B' : '#BA7517', true) : ''}
+          </div>
+        </div>
+      </div>
+      <textarea id="shift-notes" class="input" rows="2" style="margin-top:10px;" placeholder="ملاحظات (اختياري) — مثلاً سبب العجز">${escapeHtml(state.shiftCount.notes || '')}</textarea>
+      <div style="display:flex;gap:8px;justify-content:space-between;margin-top:12px;flex-wrap:wrap;">
+        <button id="shift-refresh" class="btn"><i class="ti ti-refresh"></i> تحديث الملخص</button>
+        <button id="shift-close-btn" class="btn primary" style="background:#C0392B;border-color:#C0392B;" ${(!C || state.shiftBusy)?'disabled':''}><i class="ti ti-lock"></i> إقفال الوردية</button>
+      </div>`;
+  }
+  return `
+  <div id="shift-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:14px;z-index:40;">
+    <div style="background:#fff;border-radius:12px;width:100%;max-width:720px;max-height:94vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>وردية الكاشير — ${escapeHtml(state.profile?.display_name || state.profile?.username || '')}</span><button id="shift-x" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="display:flex;gap:4px;padding:10px 14px 0;">
+        <button data-shift-tab="current" class="btn" style="${tab==='current'?'background:#1B3352;color:#fff;':''}">الوردية الحالية</button>
+        <button data-shift-tab="history" class="btn" style="${tab==='history'?'background:#1B3352;color:#fff;':''}">سجل الورديات</button>
+      </div>
+      <div style="padding:12px 14px 16px;">${body}</div>
+    </div>
+  </div>`;
+}
+function printShiftReport(sh, C, counted, diff, notes) {
+  const cur = feat('currency_abbr_ar') || '';
+  const w = window.open('', '_blank', 'width=420,height=700');
+  if (!w) return;
+  const line = (l, v) => `<tr><td>${l}</td><td style="text-align:left;" class="m">${v}</td></tr>`;
+  w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><title>تقرير وردية</title><style>body{font-family:Tahoma,sans-serif;width:72mm;margin:0 auto;font-size:12px}h3{text-align:center;margin:6px 0}table{width:100%;border-collapse:collapse}td{padding:3px 0;border-bottom:1px dashed #bbb}.m{font-family:monospace;font-weight:bold}.t{font-size:14px;font-weight:bold}</style></head><body>
+    <h3>${escapeHtml(state.company?.name_ar || '')}</h3><div style="text-align:center;">تقرير إقفال وردية</div><br>
+    <table>${line('الموظف', escapeHtml(sh.username||''))}${line('الفتح', new Date(sh.opened_at).toLocaleString('en-GB'))}${line('الإقفال', new Date().toLocaleString('en-GB'))}
+    ${line('عدد الفواتير', C.salesCount)}${line('إجمالي المبيعات', fmt(C.salesTotal))}
+    ${Object.entries(C.byMethod).map(([m, v]) => line('• ' + escapeHtml(m), fmt(v))).join('')}
+    ${C.creditSales ? line('• آجل', fmt(C.creditSales)) : ''}${C.receiptsCash ? line('سندات قبض نقدي', fmt(C.receiptsCash)) : ''}
+    ${C.returnsCash ? line('مردودات نقدي', '-' + fmt(C.returnsCash)) : ''}${C.paymentsCash ? line('سندات صرف نقدي', '-' + fmt(C.paymentsCash)) : ''}
+    ${line('العهدة', fmt(sh.opening_cash))}${line('<span class="t">المتوقع</span>', fmt(C.expected) + ' ' + cur)}${line('<span class="t">المعدود</span>', fmt(counted) + ' ' + cur)}${line('<span class="t">الفرق</span>', fmt(diff))}</table>
+    ${notes ? `<p>ملاحظات: ${escapeHtml(notes)}</p>` : ''}<br><div style="display:flex;justify-content:space-between;"><span>توقيع الكاشير</span><span>توقيع المسؤول</span></div>
+    <script>window.onload=()=>{window.print();}<\/script></body></html>`);
+  w.document.close();
+}
+function bindShiftModal() {
+  const $ = id => document.getElementById(id);
+  const close = () => { state.showShift = false; render(); };
+  if ($('shift-x')) $('shift-x').onclick = close;
+  if ($('shift-overlay')) $('shift-overlay').onclick = close;
+  document.querySelectorAll('[data-shift-tab]').forEach(b => { b.onclick = async () => { state.shiftTab = b.dataset.shiftTab; if (state.shiftTab === 'history') await loadShiftHistory(); render(); }; });
+  if ($('shift-open-btn')) $('shift-open-btn').onclick = async () => {
+    const opening = Number($('shift-opening').value);
+    if (isNaN(opening) || opening < 0) { showToast('اكتب مبلغ العهدة صحيح', 'error'); return; }
+    state.shiftBusy = true; render();
+    const { data, error } = await sb.from('cashier_shifts').insert({ user_id: state.session.user.id, username: state.profile?.username || '', opening_cash: opening }).select().single();
+    state.shiftBusy = false;
+    if (error) { showToast(/one_open|duplicate/.test(error.message) ? 'عندك وردية مفتوحة مسبقاً' : 'تعذّر فتح الوردية: ' + error.message, 'error'); await loadMyOpenShift(); render(); return; }
+    state.shift = data; state.shiftCalc = await computeShiftTotals(data);
+    logActivity('فتح وردية', `العهدة ${fmt(opening)}`);
+    showToast('تم فتح الوردية ✅'); render();
+  };
+  const refreshResult = () => {
+    const box = $('shift-result'); if (!box || !state.shiftCalc) return;
+    const counted = shiftCountedTotal(); const diff = Math.round((counted - state.shiftCalc.expected) * 100) / 100;
+    const col = Math.abs(diff) < 0.01 ? '#0F6E56' : diff < 0 ? '#C0392B' : '#BA7517';
+    box.innerHTML = `<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #EEE;font-size:13px;font-weight:800;"><span>النقد المعدود</span><b class="mono">${fmt(counted)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #EEE;font-size:13px;font-weight:800;"><span>الفرق</span><b class="mono" style="color:${col};">${(diff > 0 ? '+' : '') + fmt(diff) + (Math.abs(diff) < 0.01 ? ' ✅' : diff < 0 ? ' عجز' : ' زيادة')}</b></div>`;
+  };
+  document.querySelectorAll('[data-denom]').forEach(inp => { inp.oninput = () => { state.shiftCount[inp.dataset.denom] = inp.value; if ($('shift-manual')) { $('shift-manual').value = ''; delete state.shiftCount.manual; } refreshResult(); }; });
+  if ($('shift-manual')) $('shift-manual').oninput = (ev) => { state.shiftCount.manual = ev.target.value; refreshResult(); };
+  if ($('shift-notes')) $('shift-notes').oninput = (ev) => { state.shiftCount.notes = ev.target.value; };
+  if ($('shift-refresh')) $('shift-refresh').onclick = async () => { state.shiftCalc = null; render(); state.shiftCalc = await computeShiftTotals(state.shift); render(); };
+  if ($('shift-close-btn')) $('shift-close-btn').onclick = async () => {
+    const sh = state.shift; if (!sh) return;
+    const C = await computeShiftTotals(sh); state.shiftCalc = C;
+    const counted = shiftCountedTotal(); const diff = Math.round((counted - C.expected) * 100) / 100;
+    if (!confirm(`إقفال الوردية:\nالنقد المتوقع: ${fmt(C.expected)}\nالنقد المعدود: ${fmt(counted)}\nالفرق: ${fmt(diff)}\n\nمتأكد؟ بعد الإقفال ما يمكن التعديل.`)) return;
+    state.shiftBusy = true; render();
+    const notes = state.shiftCount.notes || null;
+    const { error } = await sb.from('cashier_shifts').update({ closed_at: new Date().toISOString(), expected_cash: C.expected, counted_cash: counted, difference: diff, totals: C, notes }).eq('id', sh.id).is('closed_at', null);
+    state.shiftBusy = false;
+    if (error) { showToast('تعذّر إقفال الوردية: ' + error.message, 'error'); render(); return; }
+    logActivity('إقفال وردية', `المتوقع ${fmt(C.expected)} · المعدود ${fmt(counted)} · الفرق ${fmt(diff)}`);
+    if (confirm('تم إقفال الوردية ✅\n\nتبي تطبع تقرير الوردية؟')) printShiftReport(sh, C, counted, diff, notes);
+    state.shift = null; state.shiftCalc = null; state.shiftCount = {}; state.showShift = false;
+    render();
+  };
+}
+
 function homeShortcut(icon, label, target) {
   return `<button data-home-shortcut="${target}" style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:10px;padding:12px 14px;cursor:pointer;transition:background-color 0.15s ease;text-align:${state.lang==='en'?'left':'right'};" onmouseover="this.style.background='rgba(255,255,255,0.18)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'">
     <i class="ti ${icon}" style="font-size:19px;color:#fff;flex-shrink:0;"></i>
@@ -3652,6 +3846,7 @@ function renderHomeSection() {
               <div style="color:#B8C8DC;font-size:12px;font-weight:500;margin-bottom:12px;">${t('quick_shortcuts')}</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 ${(isAdmin() || canViewReports()) ? homeShortcut('ti-device-mobile-analytics', 'لوحة صاحب المحل', '__owner_dash__') : ''}
+          ${state.shiftsAvailable ? homeShortcut(state.shift ? 'ti-cash-register' : 'ti-player-play', state.shift ? 'الوردية (مفتوحة)' : 'فتح / إقفال الوردية', '__shift__') : ''}
           ${homeShortcut('ti-search', t('home_open_doc'), '__quick_open__')}
                 ${homeShortcut('ti-search-plus', t('home_search_full'), '__global_search__')}
                 ${homeShortcut('ti-file-invoice', t('sc_new_sale'), 'المبيعات')}
@@ -12249,6 +12444,7 @@ function bindAppEvents() {
     el.onclick = async () => {
       const target = el.dataset.homeShortcut;
       if (target === '__owner_dash__') { openOwnerDash(); return; }
+      if (target === '__shift__') { openShiftModal(); return; }
       if (target === '__quick_open__') {
         state.quickOpenType = 'فاتورة بيع'; state.quickOpenNumber = ''; state.quickOpenError = '';
         state.showQuickOpen = true;
@@ -18875,7 +19071,7 @@ function handleGlobalShortcuts(ev) {
 
   // Esc يشتغل حتى أثناء الكتابة — يقفل أي نافذة مفتوحة
   if (ev.key === 'Escape') {
-    const openModals = ['showWaChooser','showOwnerDash','showWalkinPicker','showSalesPayDialog','showSalesForm','showPurchaseForm','showQuoteForm','showSalesReturnForm','showPurchaseReturnForm',
+    const openModals = ['showShift','showWaChooser','showOwnerDash','showWalkinPicker','showSalesPayDialog','showSalesForm','showPurchaseForm','showQuoteForm','showSalesReturnForm','showPurchaseReturnForm',
       'showReceiptVoucherForm','showPaymentVoucherForm','showSettlementVoucher','showCashDisbursement','showPartyForm',
       'showItemForm','showGlobalSearch','showQuickOpen','showDueReminders','showPerformanceReport','showSupplierPriceCompare',
       'showAccountStatement','showStatement','showAgingReport','showFiscalLock','showPaymentMethodsSettings','showAccountMapping'];
@@ -18941,7 +19137,8 @@ async function init() {
   if (state.session) { await loadProfile(); await loadItems(); await loadParties(); await loadPurchases(); await loadSalesInvoices(); await loadWarehouses(); await loadPaymentMethods(); state.homeCogs = await calcHomeNetProfit(); await loadAllAltNumbersMap(); }
   render();
   if (state.session) checkAndRunAutoBackup();
-  if (state.session && isAdmin()) checkApiRowLimit(); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
+  if (state.session && isAdmin()) checkApiRowLimit();
+  if (state.session) loadMyOpenShift().then(() => render()); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
   document.addEventListener('keydown', handleGlobalShortcuts);
   // يطبّق إعدادات الطباعة (حجم الورقة، الهامش، عدد النسخ) تلقائياً على أي طباعة تصير بالنظام، بغض النظر عن مكان الزر
   let printSizeStyleEl = null;
