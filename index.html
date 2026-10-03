@@ -103,7 +103,7 @@
   .doc-list tbody tr:nth-child(odd) td { background:#FFFDF6; }
   .doc-list tbody tr:nth-child(even) td { background:#F4F1EA; }
   .doc-list tbody tr:hover td { background:#E8F0F9; }
-  .doc-list td { padding:8px 10px; border-bottom:1px solid #ECE8DC; white-space:nowrap; vertical-align:middle; }
+  .doc-list td { padding:8px 10px; border-bottom:1px solid #ECE8DC; white-space:nowrap; vertical-align:middle; text-align:right; }
   .doc-list td.name { white-space:normal; min-width:160px; }
   .doc-list td.num { font-family:'IBM Plex Mono',monospace; direction:ltr; }
   .doc-list td.code { font-family:'IBM Plex Mono',monospace; font-weight:600; color:#1B3352; direction:ltr; text-align:right; }
@@ -2766,20 +2766,14 @@ function renderQuotationsSection() {
           <button id="quote-filters-clear" class="btn" style="padding:8px 14px;">مسح الفلاتر</button>
         </div>` : ''}
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} عرض</div>
-        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-          <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${['رقم العرض','العميل','التاريخ','الإجمالي','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
-          </div>
-          ${list.map((p,i) => `
-            <div data-open-quote="${p.id}" style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.quote_number)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.quote_date)}</div>
-              <div style="padding:7px 8px;">${fmt(p.total)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.status==='محول لفاتورة'?'#E1F5EE':'#FAEEDA'};color:${p.status==='محول لفاتورة'?'#0F6E56':'#BA7517'};">${p.status}</span></div>
-            </div>`).join('')}
-          ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد عروض بعد</div>` : ''}
-        </div>
+        ${renderTableList({ attr:'data-open-quote', rows:list, empty:'لا توجد عروض بعد', cols:[
+          { h:'رقم العرض', cls:'code', v:p => escapeHtml(p.quote_number||'') },
+          { h:'التاريخ', cls:'num', v:p => escapeHtml(p.quote_date||'') },
+          { h:'العميل', cls:'name', v:p => escapeHtml(p.parties?.name || p.walkin_customer_name || '—') },
+          { h:'صالح حتى', cls:'num', v:p => { const exp = p.valid_until && p.valid_until < new Date().toISOString().slice(0,10) && p.status !== 'محول لفاتورة'; return p.valid_until ? `<span style="color:${exp?'#C0392B':'inherit'};">${escapeHtml(p.valid_until)}${exp?' (منتهي)':''}</span>` : '—'; } },
+          { h:'الإجمالي', cls:'num', v:p => `<b>${fmt(p.total)}</b>` },
+          { h:'الحالة', cls:'c', v:p => `<span class="doc-badge" style="background:${p.status==='محول لفاتورة'?'#E1F5EE':'#FAEEDA'};color:${p.status==='محول لفاتورة'?'#0F6E56':'#BA7517'};">${escapeHtml(p.status||'مسودة')}</span>` }],
+          footer: rows => _sumFoot(rows, 'total', 'الإجمالي', 4, 1) })}
       </div>
       ${state.showQuoteForm ? renderQuoteFormModal() : ''}`;
 }
@@ -4119,6 +4113,24 @@ function renderDocListTable(list, kind) {
     </div>`;
 }
 
+// جدول قوائم موحّد ومنسّق لكل المستندات (مرتجعات، سندات، عروض، جرد، تحويلات)
+// cols: [{ h, cls, v: (row) => html }]  — cls: 'code' | 'num' | 'c' | 'name' | ''
+function renderTableList({ attr, cols, rows, empty, footer }) {
+  const badgeApproved = (p) => `<span class="doc-badge" style="background:${p.approved ? '#E1F5EE' : '#FAEEDA'};color:${p.approved ? '#0F6E56' : '#BA7517'};">${p.approved ? t('status_approved') : t('status_draft')}</span>`;
+  const body = rows.map(p => `<tr ${attr}="${p.id}">${cols.map(c => `<td class="${c.cls || ''}">${c.v === 'status' ? badgeApproved(p) : c.v(p)}</td>`).join('')}</tr>`).join('');
+  return `
+    <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:auto;box-shadow:0 1px 3px rgba(27,51,82,0.06);max-height:calc(100vh - 260px);">
+      <table class="doc-list">
+        <thead><tr>${cols.map(c => `<th class="${c.cls === 'code' || c.cls === 'name' || !c.cls ? '' : c.cls}">${c.h}</th>`).join('')}</tr></thead>
+        <tbody>${body || `<tr><td colspan="${cols.length}" class="c" style="padding:22px;color:#6E6D5F;cursor:default;">${empty || 'لا توجد بيانات بعد'}</td></tr>`}</tbody>
+        ${rows.length && footer ? `<tfoot><tr>${footer(rows)}</tr></tfoot>` : ''}
+      </table>
+    </div>`;
+}
+const _pay = (m) => m ? `<span class="doc-pay">${escapeHtml(m)}</span>` : '<span style="color:#8B8A7A;">—</span>';
+const _sumFoot = (rows, key, label, colsBefore, colsAfter) => `<td colspan="${colsBefore}">${label} (${rows.length})</td><td class="num">${fmt(rows.reduce((a, p) => a + Number(p[key] || 0), 0))}</td>${colsAfter ? `<td colspan="${colsAfter}"></td>` : ''}`;
+const _note = (n) => n ? `<span style="color:#5F5E5A;">${escapeHtml(n)}</span>` : '<span style="color:#B5B3A8;">—</span>';
+
 function renderSalesSection() {
   const list = filteredSalesInvoices();
   const customers = state.parties.filter(p => p.party_type === 'customer');
@@ -5133,20 +5145,15 @@ function renderSalesReturnsSection() {
           <button id="sr-filters-clear" class="btn" style="padding:8px 14px;">مسح الفلاتر</button>
         </div>` : ''}
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند</div>
-        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-          <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${['رقم السند','العميل','التاريخ','الإجمالي','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
-          </div>
-          ${list.map((p,i) => `
-            <div data-open-sr="${p.id}" style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.return_number)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.return_date)}</div>
-              <div style="padding:7px 8px;">${fmt(p.total)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
-            </div>`).join('')}
-          ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
-        </div>
+        ${renderTableList({ attr:'data-open-sr', rows:list, empty:'لا توجد مردودات بعد', cols:[
+          { h:'رقم المردود', cls:'code', v:p => escapeHtml(p.return_number||'') },
+          { h:'التاريخ', cls:'num', v:p => escapeHtml(p.return_date||'') },
+          { h:'العميل', cls:'name', v:p => escapeHtml(p.parties?.name || p.walkin_customer_name || 'زبون نقدي') },
+          { h:'طريقة الرد', v:p => _pay(p.payment_method || (p.customer_id ? 'خصم من رصيد العميل' : 'نقدي')) },
+          { h:'ملاحظات', v:p => _note(p.notes) },
+          { h:'الإجمالي', cls:'num', v:p => `<b>${fmt(p.total)}</b>` },
+          { h:'الحالة', cls:'c', v:'status' }],
+          footer: rows => _sumFoot(rows, 'total', 'الإجمالي', 5, 1) })}
       </div>
       ${state.showSalesReturnForm ? renderSalesReturnFormModal() : ''}`;
 }
@@ -5295,20 +5302,15 @@ function renderPurchaseReturnsSection() {
           <button id="pr-filters-clear" class="btn" style="padding:8px 14px;">مسح الفلاتر</button>
         </div>` : ''}
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند</div>
-        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-          <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${['رقم السند','المورد','التاريخ','الإجمالي','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
-          </div>
-          ${list.map((p,i) => `
-            <div data-open-pr="${p.id}" style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.return_number)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.return_date)}</div>
-              <div style="padding:7px 8px;">${fmt(p.total)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
-            </div>`).join('')}
-          ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
-        </div>
+        ${renderTableList({ attr:'data-open-pr', rows:list, empty:'لا توجد مردودات بعد', cols:[
+          { h:'رقم المردود', cls:'code', v:p => escapeHtml(p.return_number||'') },
+          { h:'التاريخ', cls:'num', v:p => escapeHtml(p.return_date||'') },
+          { h:'المورد', cls:'name', v:p => escapeHtml(p.parties?.name || p.walkin_supplier_name || 'مورد نقدي') },
+          { h:'طريقة الرد', v:p => _pay(p.payment_method || (p.supplier_id ? 'خصم من رصيد المورد' : 'نقدي')) },
+          { h:'ملاحظات', v:p => _note(p.notes) },
+          { h:'الإجمالي', cls:'num', v:p => `<b>${fmt(p.total)}</b>` },
+          { h:'الحالة', cls:'c', v:'status' }],
+          footer: rows => _sumFoot(rows, 'total', 'الإجمالي', 5, 1) })}
       </div>
       ${state.showPurchaseReturnForm ? renderPurchaseReturnFormModal() : ''}`;
 }
@@ -5445,20 +5447,12 @@ function renderStockCountsSection() {
           <button id="new-sc-btn" class="btn primary" style="padding:8px 14px;">+ سند جرد جديد</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند</div>
-        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-          <div style="display:grid;grid-template-columns:1fr 1.1fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${['رقم السند','المستودع','التاريخ','ملاحظات','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
-          </div>
-          ${list.map((p,i) => `
-            <div data-open-sc="${p.id}" style="display:grid;grid-template-columns:1fr 1.1fr 1fr 1fr 0.8fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.count_number)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.warehouses?.name||'—')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.count_date)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.notes||'—')}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
-            </div>`).join('')}
-          ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
-        </div>
+        ${renderTableList({ attr:'data-open-sc', rows:list, empty:'لا توجد سندات جرد بعد', cols:[
+          { h:'رقم الجرد', cls:'code', v:p => escapeHtml(p.count_number||'') },
+          { h:'التاريخ', cls:'num', v:p => escapeHtml(p.count_date||'') },
+          { h:'المستودع', cls:'name', v:p => escapeHtml(p.warehouses?.name||'—') },
+          { h:'ملاحظات', v:p => _note(p.notes) },
+          { h:'الحالة', cls:'c', v:'status' }] })}
       </div>
       ${state.showStockCountForm ? renderStockCountFormModal() : ''}`;
 }
@@ -5602,20 +5596,13 @@ function renderTransfersSection() {
           <button id="new-tr-btn" class="btn primary" style="padding:8px 14px;">+ سند تحويل جديد</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند</div>
-        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-          <div style="display:grid;grid-template-columns:1fr 1.2fr 1.2fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${['رقم السند','من مستودع','إلى مستودع','التاريخ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
-          </div>
-          ${list.map((p,i) => `
-            <div data-open-tr="${p.id}" style="display:grid;grid-template-columns:1fr 1.2fr 1.2fr 1fr 0.8fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.transfer_number)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.from?.name||'—')}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.to?.name||'—')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.transfer_date)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
-            </div>`).join('')}
-          ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
-        </div>
+        ${renderTableList({ attr:'data-open-tr', rows:list, empty:'لا توجد تحويلات بعد', cols:[
+          { h:'رقم التحويل', cls:'code', v:p => escapeHtml(p.transfer_number||'') },
+          { h:'التاريخ', cls:'num', v:p => escapeHtml(p.transfer_date||'') },
+          { h:'من مستودع', cls:'name', v:p => escapeHtml(p.from?.name||'—') },
+          { h:'إلى مستودع', cls:'name', v:p => escapeHtml(p.to?.name||'—') },
+          { h:'ملاحظات', v:p => _note(p.notes) },
+          { h:'الحالة', cls:'c', v:'status' }] })}
       </div>
       ${state.showTransferForm ? renderTransferFormModal() : ''}`;
 }
@@ -6657,20 +6644,15 @@ function renderReceiptVouchersSection() {
           ${hasPerm('receipt_voucher','can_add') ? `<button id="new-rv-btn" class="btn primary" style="padding:8px 14px;">+ سند قبض جديد</button>` : ''}
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند قبض</div>
-        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-          <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${['رقم السند','العميل','التاريخ','المبلغ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
-          </div>
-          ${list.map((p,i) => `
-            <div data-open-rv="${p.id}" style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_number)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_date)}</div>
-              <div style="padding:7px 8px;">${fmt(p.amount)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
-            </div>`).join('')}
-          ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
-        </div>
+        ${renderTableList({ attr:'data-open-rv', rows:list, empty:'لا توجد سندات قبض بعد', cols:[
+          { h:'رقم السند', cls:'code', v:p => escapeHtml(p.voucher_number||'') },
+          { h:'التاريخ', cls:'num', v:p => escapeHtml(p.voucher_date||'') },
+          { h:'العميل', cls:'name', v:p => escapeHtml(p.parties?.name||'—') },
+          { h:'طريقة الدفع', v:p => _pay(p.payment_method) },
+          { h:'البيان', v:p => _note(p.notes) },
+          { h:'المبلغ', cls:'num', v:p => `<b style="color:#0F6E56;">${fmt(p.amount)}</b>` },
+          { h:'الحالة', cls:'c', v:'status' }],
+          footer: rows => _sumFoot(rows, 'amount', 'إجمالي المقبوض', 5, 1) })}
       </div>
       ${state.showReceiptVoucherForm ? renderVoucherFormModal('receipt') : ''}`;
 }
@@ -6685,20 +6667,14 @@ function renderSettlementVouchersSection() {
           ${hasPerm('settlement_voucher','can_add') ? `<button id="new-stv-btn" class="btn primary" style="padding:8px 14px;">+ سند تسوية جديد</button>` : ''}
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند تسوية</div>
-        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-          <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${['رقم السند','الطرف','التاريخ','المبلغ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
-          </div>
-          ${list.map((p,i) => `
-            <div data-open-stv="${p.id}" style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_number)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_date)}</div>
-              <div style="padding:7px 8px;">${fmt(p.amount)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
-            </div>`).join('')}
-          ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
-        </div>
+        ${renderTableList({ attr:'data-open-stv', rows:list, empty:'لا توجد سندات تسوية بعد', cols:[
+          { h:'رقم السند', cls:'code', v:p => escapeHtml(p.voucher_number||'') },
+          { h:'التاريخ', cls:'num', v:p => escapeHtml(p.voucher_date||'') },
+          { h:'الطرف', cls:'name', v:p => escapeHtml(p.parties?.name||'—') },
+          { h:'البيان', v:p => _note(p.notes || p.reason) },
+          { h:'المبلغ', cls:'num', v:p => `<b>${fmt(p.amount)}</b>` },
+          { h:'الحالة', cls:'c', v:'status' }],
+          footer: rows => _sumFoot(rows, 'amount', 'الإجمالي', 4, 1) })}
       </div>
       ${state.showSettlementVoucher ? renderSettlementVoucherModal() : ''}`;
 }
@@ -6713,20 +6689,15 @@ function renderPaymentVouchersSection() {
           ${hasPerm('payment_voucher','can_add') ? `<button id="new-pv-btn" class="btn primary" style="padding:8px 14px;">+ سند صرف جديد</button>` : ''}
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} سند صرف</div>
-        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-          <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${['رقم السند','المورد','التاريخ','المبلغ','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
-          </div>
-          ${list.map((p,i) => `
-            <div data-open-pv="${p.id}" style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_number)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.parties?.name||'—')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.voucher_date)}</div>
-              <div style="padding:7px 8px;">${fmt(p.amount)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
-            </div>`).join('')}
-          ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد سندات بعد</div>` : ''}
-        </div>
+        ${renderTableList({ attr:'data-open-pv', rows:list, empty:'لا توجد سندات صرف بعد', cols:[
+          { h:'رقم السند', cls:'code', v:p => escapeHtml(p.voucher_number||'') },
+          { h:'التاريخ', cls:'num', v:p => escapeHtml(p.voucher_date||'') },
+          { h:'المورد', cls:'name', v:p => escapeHtml(p.parties?.name||'—') },
+          { h:'طريقة الدفع', v:p => _pay(p.payment_method) },
+          { h:'البيان', v:p => _note(p.notes) },
+          { h:'المبلغ', cls:'num', v:p => `<b style="color:#C0392B;">${fmt(p.amount)}</b>` },
+          { h:'الحالة', cls:'c', v:'status' }],
+          footer: rows => _sumFoot(rows, 'amount', 'إجمالي المصروف', 5, 1) })}
       </div>
       ${state.showPaymentVoucherForm ? renderVoucherFormModal('payment') : ''}`;
 }
