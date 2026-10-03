@@ -171,7 +171,8 @@ async function applyLicenseFromSerial(serial) {
   state.licenseExpiryDate = r.data.e;
   if (today > r.data.e) { state.licenseExpired = true; state.licenseReason = 'expired'; return r; }
   const daysLeft = Math.ceil((new Date(r.data.e) - new Date(today)) / 86400000);
-  state.licenseWarningDays = daysLeft <= 14 ? daysLeft : null;
+  state.licenseWarningDays = (daysLeft <= 14 || r.data.t) ? daysLeft : null;
+  state.licenseTrial = !!r.data.t;
   return r;
 }
 
@@ -1117,7 +1118,7 @@ function filteredPurchases() {
 }
 
 function newPurchaseForm() {
-  return { invoice_number: '', invoice_type: 'نقدي', price_mode: 'قبل الضريبة', default_tax: '15', no_tax: false, supplier_id: '', walkin_supplier_name: '', supplier_ref: '', order_number: '', warehouse_id: defaultWarehouseId(), invoice_date: new Date().toISOString().slice(0,10), discount: '0', paid_amount: '0', notes: '', lines: [], approved: false, currency: 'ريال سعودي', exchange_rate: '1', additional_expenses: [], payments: [] };
+  return { invoice_number: '', invoice_type: 'نقدي', price_mode: 'قبل الضريبة', default_tax: String(vatRate()), no_tax: !taxOn(), supplier_id: '', walkin_supplier_name: '', supplier_ref: '', order_number: '', warehouse_id: defaultWarehouseId(), invoice_date: new Date().toISOString().slice(0,10), discount: '0', paid_amount: '0', notes: '', lines: [], approved: false, currency: 'ريال سعودي', exchange_rate: '1', additional_expenses: [], payments: [] };
 }
 
 async function openPurchaseById(id) {
@@ -1125,14 +1126,14 @@ async function openPurchaseById(id) {
   if (!inv) return;
   const { data: lineRows } = await sb.from('purchase_invoice_items').select('*, items(name, sku, unit)').eq('invoice_id', id);
   state.purchaseForm = {
-    invoice_number: inv.invoice_number, invoice_type: inv.invoice_type || 'نقدي', price_mode: 'قبل الضريبة', default_tax: '15', no_tax: !!inv.no_tax,
+    invoice_number: inv.invoice_number, invoice_type: inv.invoice_type || 'نقدي', price_mode: 'قبل الضريبة', default_tax: String(vatRate()), no_tax: !!inv.no_tax,
     supplier_id: inv.supplier_id, walkin_supplier_name: inv.walkin_supplier_name || '',
     supplier_ref: inv.supplier_ref || '', order_number: inv.order_number || '', warehouse_id: inv.warehouse_id || defaultWarehouseId(), invoice_date: inv.invoice_date,
     discount: String(inv.discount || 0), paid_amount: String(inv.paid_amount || 0), notes: inv.notes || '',
     approved: !!inv.approved, additional_expenses: Array.isArray(inv.additional_expenses) ? inv.additional_expenses : [], payments: Array.isArray(inv.payment_details) ? inv.payment_details : [],
     lines: (lineRows || []).map(l => ({
       item_id: l.item_id, item_name: l.items?.name || '', sku: l.items?.sku || '', unit: l.items?.unit || '',
-      quantity: Number(l.quantity), unit_cost: Number(l.unit_cost), tax_percent: Number(l.tax_percent || 15),
+      quantity: Number(l.quantity), unit_cost: Number(l.unit_cost), tax_percent: Number(taxPctOf(l)),
       sale_price: l.sale_price != null ? Number(l.sale_price) : null,
     })),
   };
@@ -1458,7 +1459,7 @@ function filteredQuotations() {
   return list;
 }
 function newQuoteForm() {
-  return { quote_number:'', customer_id:'', customer_ref:'', quote_date:new Date().toISOString().slice(0,10), valid_until:'', price_mode:'قبل الضريبة', default_tax:'15', no_tax:false, discount:'0', notes:'', lines:[], status:'مفتوح' };
+  return { quote_number:'', customer_id:'', customer_ref:'', quote_date:new Date().toISOString().slice(0,10), valid_until:'', price_mode:'قبل الضريبة', default_tax:String(vatRate()), no_tax:!taxOn(), discount:'0', notes:'', lines:[], status:'مفتوح' };
 }
 function calcLineTotals(f) {
   const subtotal = f.lines.reduce((s,l) => s + lineAmt(l), 0);
@@ -1466,7 +1467,7 @@ function calcLineTotals(f) {
   const net = subtotal - discount;
   // الضريبة تُحسب على المبلغ بعد خصم الفاتورة (يتوزع الخصم على الأسطر بنسبة قيمتها) — متطلب هيئة الزكاة
   const discRatio = subtotal > 0 ? Math.max(0, net) / subtotal : 1;
-  const taxTotal = f.lines.reduce((s,l) => s + (lineAmt(l)) * discRatio * (Number(l.tax_percent||15)/100), 0);
+  const taxTotal = f.lines.reduce((s,l) => s + (lineAmt(l)) * discRatio * (Number(taxPctOf(l))/100), 0);
   const grandTotal = net + taxTotal;
   return { subtotal, discount, net, taxTotal, grandTotal };
 }
@@ -1476,9 +1477,9 @@ async function openQuoteById(id) {
   const { data: lineRows } = await sb.from('quotation_items').select('*, items(name, sku, unit)').eq('quotation_id', id);
   state.quoteForm = {
     quote_number: q.quote_number, customer_id: q.customer_id, customer_ref: q.customer_ref||'', quote_date: q.quote_date,
-    valid_until: q.valid_until||'', price_mode:'قبل الضريبة', default_tax:'15', no_tax: !!q.no_tax,
+    valid_until: q.valid_until||'', price_mode:'قبل الضريبة', default_tax:String(vatRate()), no_tax: !!q.no_tax,
     discount: String(q.discount||0), notes: q.notes||'', status: q.status,
-    lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price), tax_percent:Number(l.tax_percent||15) })),
+    lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price), tax_percent:Number(taxPctOf(l)) })),
   };
   state.editingQuoteId = id;
   state.showQuoteForm = true;
@@ -1502,19 +1503,19 @@ function filteredSalesInvoices() {
   return list;
 }
 function newSalesForm() {
-  return { invoice_number:'', invoice_type:'نقدي', price_mode:'قبل الضريبة', default_tax:'15', no_tax:false, customer_id:'', walkin_customer_name:'', walkin_customer_tax_number:'', walkin_customer_address:'', cash_customer_mode:'walkin', customer_ref:'', order_number:'', warehouse_id: defaultWarehouseId(), quotation_id:null, quotation_number_display:'', invoice_date:new Date().toISOString().slice(0,10), discount:'0', paid_amount:'0', notes:'', lines:[], approved:false, sales_rep_id:'', customer_mobile:'', national_address:{}, payments:[] };
+  return { invoice_number:'', invoice_type:'نقدي', price_mode:'قبل الضريبة', default_tax:String(vatRate()), no_tax:!taxOn(), customer_id:'', walkin_customer_name:'', walkin_customer_tax_number:'', walkin_customer_address:'', cash_customer_mode:'walkin', customer_ref:'', order_number:'', warehouse_id: defaultWarehouseId(), quotation_id:null, quotation_number_display:'', invoice_date:new Date().toISOString().slice(0,10), discount:'0', paid_amount:'0', notes:'', lines:[], approved:false, sales_rep_id:'', customer_mobile:'', national_address:{}, payments:[] };
 }
 async function openSalesById(id) {
   const inv = state.salesInvoices.find(x => x.id === id);
   if (!inv) return;
   const { data: lineRows } = await sb.from('sales_invoice_items').select('*, items(name, sku, unit)').eq('invoice_id', id);
   state.salesForm = {
-    invoice_number: inv.invoice_number, invoice_type: inv.invoice_type||'نقدي', price_mode:'قبل الضريبة', default_tax:'15', no_tax: !!inv.no_tax,
+    invoice_number: inv.invoice_number, invoice_type: inv.invoice_type||'نقدي', price_mode:'قبل الضريبة', default_tax:String(vatRate()), no_tax: !!inv.no_tax,
     customer_id: inv.customer_id, walkin_customer_name: inv.walkin_customer_name||'', walkin_customer_tax_number: inv.walkin_customer_tax_number||'', walkin_customer_address: inv.walkin_customer_address||'', cash_customer_mode: inv.customer_id ? 'registered' : 'walkin', customer_ref: inv.customer_ref||'', order_number: inv.order_number||'', warehouse_id: inv.warehouse_id || defaultWarehouseId(), quotation_id: inv.quotation_id||null,
     quotation_number_display: '', invoice_date: inv.invoice_date, discount: String(inv.discount||0), paid_amount: String(inv.paid_amount||0),
     notes: inv.notes||'', approved: !!inv.approved,
     sales_rep_id: inv.sales_rep_id||'', customer_mobile: inv.customer_mobile||'', national_address: inv.customer_national_address||{}, payments: Array.isArray(inv.payment_details) ? inv.payment_details : [],
-    lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price), disc_pct:Number(l.discount_percent||0), tax_percent:Number(l.tax_percent||15) })),
+    lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price), disc_pct:Number(l.discount_percent||0), tax_percent:Number(taxPctOf(l)) })),
   };
   state.editingSalesId = id;
   state.showSalesForm = true;
@@ -1547,7 +1548,7 @@ async function openSalesReturnById(id) {
   state.salesReturnForm = {
     return_number: r.return_number, customer_id: r.customer_id, warehouse_id: r.warehouse_id || defaultWarehouseId(), return_date: r.return_date,
     discount: String(r.discount||0), notes: r.notes||'', approved: !!r.approved, payment_method: r.payment_method||'',
-    lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price), tax_percent:Number(l.tax_percent||15) })),
+    lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price), tax_percent:Number(taxPctOf(l)) })),
     sourceInvoiceItems: [],
   };
   state.editingSalesReturnId = id;
@@ -1581,7 +1582,7 @@ async function openPurchaseReturnById(id) {
   state.purchaseReturnForm = {
     return_number: r.return_number, supplier_id: r.supplier_id, warehouse_id: r.warehouse_id || defaultWarehouseId(), return_date: r.return_date,
     discount: String(r.discount||0), notes: r.notes||'', approved: !!r.approved, payment_method: r.payment_method||'',
-    lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_cost:Number(l.unit_cost), tax_percent:Number(l.tax_percent||15) })),
+    lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_cost:Number(l.unit_cost), tax_percent:Number(taxPctOf(l)) })),
     sourceInvoiceItems: [],
   };
   state.editingPurchaseReturnId = id;
@@ -1593,7 +1594,7 @@ function calcReturnTotals(f, priceKey) {
   const subtotal = f.lines.reduce((s,l) => s + l.quantity*l[priceKey], 0);
   const discount = Number(f.discount) || 0;
   const net = subtotal - discount;
-  const taxTotal = f.lines.reduce((s,l) => s + (l.quantity*l[priceKey]) * (Number(l.tax_percent||15)/100), 0);
+  const taxTotal = f.lines.reduce((s,l) => s + (l.quantity*l[priceKey]) * (Number(taxPctOf(l))/100), 0);
   const grandTotal = net + taxTotal;
   return { subtotal, discount, net, taxTotal, grandTotal };
 }
@@ -2381,7 +2382,7 @@ function renderApp() {
     ${state.licenseWarningDays !== null ? `
     <div class="no-print" style="background:#FDF6E8;border:1px solid #BA7517;border-radius:6px;padding:8px 14px;margin-bottom:10px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#3A3826;">
       <i class="ti ti-alert-triangle" style="color:#BA7517;font-size:16px;"></i>
-      <span>باقي <b>${state.licenseWarningDays}</b> ${state.licenseWarningDays===1?'يوم':'أيام'} على انتهاء الاشتراك (${escapeHtml(state.licenseExpiryDate)}) — ${escapeHtml(state.licenseContact || 'يرجى التواصل مع المصمم للتجديد')}</span>
+      <span>${state.licenseTrial ? '🧪 نسخة تجريبية — ' : ''}باقي <b>${state.licenseWarningDays}</b> ${state.licenseWarningDays===1?'يوم':'أيام'} على انتهاء ${state.licenseTrial ? 'التجربة' : 'الاشتراك'} (${escapeHtml(state.licenseExpiryDate)}) — ${escapeHtml(state.licenseContact || 'يرجى التواصل مع المصمم للتجديد')}</span>
     </div>` : ''}
     <div style="border:1px solid #1B3352;border-radius:4px;box-shadow:0 6px 24px rgba(0,0,0,0.35);flex:1;display:flex;flex-direction:column;">
       <div class="win-title" style="border-radius:4px 4px 0 0;">
@@ -2772,7 +2773,8 @@ function renderProPrintDoc(cfg) {
   const headTxt = c.print_table_header_text || '#fff';
   const bd = c.print_table_border_color || '#C9C4B0';
   const row = (ar, en, val, mono) => (val !== undefined && val !== null && val !== '') ? `<tr><td class="pp-k">${ar}<span>${en}</span></td><td class="pp-v${mono?' mono':''}">${escapeHtml(String(val))}</td></tr>` : '';
-  const heads = [['#',''],['رقم الصنف','Item No'],['الوصف','Description'],['الوحدة','Unit'],['الكمية','Qty'],[cfg.priceLabel?.[0]||'سعر الوحدة', cfg.priceLabel?.[1]||'Unit Price'],...(cfg.showDisc?[['خصم','Disc %']]:[]),['المبلغ الخاضع','Taxable Amt'],['الضريبة %','VAT %'],['مبلغ الضريبة','VAT Amt'],['الإجمالي','Total']];
+  const noVat = !!cfg.noVat;
+  const heads = [['#',''],['رقم الصنف','Item No'],['الوصف','Description'],['الوحدة','Unit'],['الكمية','Qty'],[cfg.priceLabel?.[0]||'سعر الوحدة', cfg.priceLabel?.[1]||'Unit Price'],...(cfg.showDisc?[['خصم','Disc %']]:[]),...(noVat?[]:[['المبلغ الخاضع','Taxable Amt'],['الضريبة %','VAT %'],['مبلغ الضريبة','VAT Amt']]),['الإجمالي','Total']];
   const cell = `padding:5px 4px;font-size:10.5px;border:1px solid ${bd};text-align:center;`;
   const tline = (ar, en, v, kind) => {
     const strong = kind === 'grand';
@@ -2825,7 +2827,7 @@ function renderProPrintDoc(cfg) {
           ${cfg.lines.map((l, idx) => { const sub = Number(l.qty||0) * Number(l.price||0) * (1 - (Number(l.disc)||0)/100); const tx = sub * (Number(l.tax||0)/100); return `<tr style="background:${idx%2?'#F7F5EF':'#fff'};">
             <td style="${cell}color:#777;">${idx+1}</td><td style="${cell}" class="mono">${escapeHtml(l.sku||'')}</td><td style="${cell}text-align:right;font-weight:600;">${escapeHtml(l.name||'')}</td><td style="${cell}">${escapeHtml(l.unit||'')}</td>
             <td style="${cell}" class="mono">${l.qty}</td><td style="${cell}" class="mono">${fmt(l.price)}</td>${cfg.showDisc?`<td style="${cell}">${Number(l.disc)||0}%</td>`:''}
-            <td style="${cell}" class="mono">${fmt(sub)}</td><td style="${cell}">${Number(l.tax||0)}%</td><td style="${cell}" class="mono">${fmt(tx)}</td><td style="${cell}font-weight:700;" class="mono">${fmt(sub+tx)}</td></tr>`; }).join('')}
+            ${noVat ? '' : `<td style="${cell}" class="mono">${fmt(sub)}</td><td style="${cell}">${Number(l.tax||0)}%</td><td style="${cell}" class="mono">${fmt(tx)}</td>`}<td style="${cell}font-weight:700;" class="mono">${fmt(sub+tx)}</td></tr>`; }).join('')}
         </tbody>
       </table>
       <div style="display:flex;justify-content:space-between;font-size:10px;color:#666;margin:3px 0 10px;"><span>عدد الأصناف: ${cfg.lines.length}</span><span>إجمالي الكميات: ${totalQty}</span></div>
@@ -2868,7 +2870,7 @@ function renderQuoteFormModal() {
         const cust = f.customer_id ? customers.find(x => x.id === f.customer_id) : null;
         const terms = [state.company?.quote_terms, f.notes].filter(Boolean);
         return {
-          titleAr: 'عرض سعر', titleEn: 'Quotation',
+          titleAr: 'عرض سعر', titleEn: 'Quotation', noVat: f.no_tax || !taxOn(),
           badges: [{ text: f.status || '' }],
           docTitle: ['بيانات العرض', 'Quotation Details'],
           docRows: [['رقم العرض','Quotation No', f.quote_number, true], ['تاريخ العرض','Date', f.quote_date, true], ['صالح حتى','Valid Until', f.valid_until, true], ['مرجع العميل','Customer Ref', f.customer_ref]],
@@ -2876,7 +2878,7 @@ function renderQuoteFormModal() {
           partyRows: [['اسم العميل','Customer', cust ? cust.name : (f.walkin_customer_name || '')], ['رقم العميل','Customer No', cust?.account_code || cust?.code, true], ['الرقم الضريبي','VAT No', cust?.tax_number, true], ['الجوال','Mobile', cust?.mobile || cust?.phone, true], ['العنوان','Address', partyAddressText(cust)]],
           lines: f.lines.map(l => ({ sku: l.sku, name: l.item_name, unit: l.unit, qty: l.quantity, price: l.unit_price, disc: l.disc_pct, tax: l.tax_percent })),
           showDisc: f.lines.some(l => Number(l.disc_pct) > 0),
-          totals: [['الإجمالي قبل الخصم','Subtotal', fmt(tot.subtotal)], Number(tot.discount) ? ['الخصم','Discount', fmt(tot.discount), 'neg'] : null, ['الإجمالي الخاضع للضريبة','Taxable Amount', fmt(tot.net)], f.no_tax ? null : ['ضريبة القيمة المضافة','VAT', fmt(tot.taxTotal)], ['إجمالي العرض','Total', fmt(tot.grandTotal), 'grand']],
+          totals: [['الإجمالي قبل الخصم','Subtotal', fmt(tot.subtotal)], Number(tot.discount) ? ['الخصم','Discount', fmt(tot.discount), 'neg'] : null, (f.no_tax || !taxOn()) ? (Number(tot.discount) ? ['الصافي','Net', fmt(tot.net)] : null) : ['الإجمالي الخاضع للضريبة','Taxable Amount', fmt(tot.net)], (f.no_tax || !taxOn()) ? null : ['ضريبة القيمة المضافة','VAT', fmt(tot.taxTotal)], ['إجمالي العرض','Total', fmt(tot.grandTotal), 'grand']],
           words: numberToArabicWords(tot.grandTotal),
           notesHtml: terms.length ? `<div style="border:1px solid #C9C4B0;border-radius:6px;padding:7px 10px;font-size:10.5px;line-height:1.7;margin-bottom:8px;"><b style="color:${state.company?.print_table_header_bg||'#1B3352'};">الشروط والملاحظات / Terms:</b><br>${terms.map(x => escapeHtml(x).replace(/\n/g,'<br>')).join('<br>')}</div>` : '',
           signatures: ['العميل / Customer','المندوب / Sales','الختم / Stamp'],
@@ -2901,7 +2903,7 @@ function renderQuoteFormModal() {
           <div class="sx-nav mono">${renderNumberNavHtml('quote', f.quote_number, state.editingQuoteId, state.quotations, 'quote_number', v => v.parties?.name)}</div>
           <label class="sx-lbl">تصنيف العرض</label>
           <div style="display:flex;gap:2px;">
-            <select id="qt-tax-class" class="sx-in" ${dis}><option value="tax" ${!f.no_tax?'selected':''}>عرض سعر ضريبي</option><option value="none" ${f.no_tax?'selected':''}>عرض سعر بدون ضريبة</option></select>
+            <select id="qt-tax-class" class="sx-in" ${dis || (!taxOn() ? 'disabled title="الضريبة موقوفة من إعدادات النظام"' : '')}><option value="tax" ${!f.no_tax?'selected':''}>عرض سعر ضريبي</option><option value="none" ${f.no_tax?'selected':''}>عرض سعر بدون ضريبة</option></select>
             <input id="qt-no-tax" type="checkbox" style="display:none;" ${f.no_tax?'checked':''} />
           </div>
           <label class="sx-lbl">تاريخ العرض</label>
@@ -3151,6 +3153,7 @@ function buildZatcaTLV(sellerName, vatNumber, timestampISO, totalWithVat, vatAmo
 async function renderQRInto(elementId, tlvBase64) {
   const el = document.getElementById(elementId);
   if (!el) return;
+  if (!zatcaOn()) { el.style.display = 'none'; return; } // رمز QR هيئة الزكاة للسعودية فقط
   if (typeof QRCode === 'undefined') {
     console.error('مكتبة QRCode ما تحمّلت (تأكد من الاتصال بالإنترنت أو أعد تحميل الصفحة)');
     return;
@@ -3166,7 +3169,7 @@ function calcPurchaseTotals(f) {
   const discount = Number(f.discount) || 0;
   const net = subtotal - discount;
   const discRatio = subtotal > 0 ? Math.max(0, net) / subtotal : 1; // الضريبة بعد خصم الفاتورة
-  const taxTotal = f.lines.reduce((s, l) => s + (l.quantity * l.unit_cost) * discRatio * (Number(l.tax_percent||15) / 100), 0);
+  const taxTotal = f.lines.reduce((s, l) => s + (l.quantity * l.unit_cost) * discRatio * (Number(taxPctOf(l)) / 100), 0);
   const grandTotal = net + taxTotal;
   const paid = Number(f.paid_amount) || 0;
   const due = grandTotal - paid;
@@ -3191,7 +3194,7 @@ function renderPurchaseFormModal() {
         const wh = (state.warehouses||[]).find(w => w.id === f.warehouse_id);
         const cur = tot.isForeign ? f.currency : '';
         return {
-          titleAr: 'فاتورة مشتريات', titleEn: 'Purchase Invoice',
+          titleAr: 'فاتورة مشتريات', titleEn: 'Purchase Invoice', noVat: f.no_tax || !taxOn(),
           badges: [!f.approved ? { text: 'مسودة', color: '#C0392B' } : null, { text: (f.invoice_type||'') + (f.invoice_type === 'آجل' ? ' Credit' : ' Cash') }],
           docTitle: ['بيانات الفاتورة', 'Invoice Details'],
           docRows: [['رقم الفاتورة','Invoice No', f.invoice_number, true], ['تاريخ الفاتورة','Invoice Date', f.invoice_date, true], ['رقم فاتورة المورد','Supplier Inv No', f.supplier_ref, true], ['رقم الطلبية','PO No', f.order_number, true], ['المستودع','Warehouse', wh?.name], ['العملة','Currency', tot.isForeign ? `${f.currency} (سعر الصرف ${f.exchange_rate})` : ''], ['طريقة الدفع','Payment', f.invoice_type === 'آجل' && !(Number(f.paid_amount) > 0) ? 'آجل' : f.payment_method]],
@@ -3199,7 +3202,7 @@ function renderPurchaseFormModal() {
           partyRows: [['اسم المورد','Supplier', sup ? sup.name : (f.walkin_supplier_name || '')], ['رقم المورد','Supplier No', sup?.account_code || sup?.code, true], ['الرقم الضريبي','VAT No', sup?.tax_number || f.walkin_supplier_tax_number, true], ['الجوال','Mobile', sup?.mobile || sup?.phone, true], ['العنوان','Address', partyAddressText(sup)]],
           lines: f.lines.map(l => ({ sku: l.sku, name: l.item_name, unit: l.unit, qty: l.quantity, price: l.unit_cost, tax: l.tax_percent })),
           priceLabel: ['تكلفة الوحدة', 'Unit Cost'],
-          totals: [['الإجمالي قبل الخصم','Subtotal', fmt(tot.subtotal)], Number(tot.discount) ? ['الخصم','Discount', fmt(tot.discount), 'neg'] : null, ['الإجمالي الخاضع للضريبة','Taxable Amount', fmt(tot.net)], f.no_tax ? null : ['ضريبة القيمة المضافة','VAT', fmt(tot.taxTotal)], ['الإجمالي','Grand Total', fmt(tot.grandTotal), 'grand'], tot.isForeign ? ['المعادل بالريال','Total in SAR', fmt(tot.grandTotalSAR)] : null, ['المدفوع','Paid', fmt(tot.paid)], ['المتبقي للمورد','Balance Due', fmt(tot.due), 'due']],
+          totals: [['الإجمالي قبل الخصم','Subtotal', fmt(tot.subtotal)], Number(tot.discount) ? ['الخصم','Discount', fmt(tot.discount), 'neg'] : null, (f.no_tax || !taxOn()) ? (Number(tot.discount) ? ['الصافي','Net', fmt(tot.net)] : null) : ['الإجمالي الخاضع للضريبة','Taxable Amount', fmt(tot.net)], (f.no_tax || !taxOn()) ? null : ['ضريبة القيمة المضافة','VAT', fmt(tot.taxTotal)], ['الإجمالي','Grand Total', fmt(tot.grandTotal), 'grand'], tot.isForeign ? ['المعادل بالريال','Total in SAR', fmt(tot.grandTotalSAR)] : null, ['المدفوع','Paid', fmt(tot.paid)], ['المتبقي للمورد','Balance Due', fmt(tot.due), 'due']],
           currency: cur,
           payments: f.payments || [],
           words: tot.isForeign ? '' : numberToArabicWords(tot.grandTotal),
@@ -3233,7 +3236,7 @@ function renderPurchaseFormModal() {
           <div class="sx-nav mono">${renderNumberNavHtml('pi', f.invoice_number, state.editingPurchaseId, state.purchases, 'invoice_number', v => v.parties?.name)}</div>
           <label class="sx-lbl">تصنيف الفاتورة</label>
           <div style="display:flex;gap:2px;">
-            <select id="pi-tax-class" class="sx-in" ${dis}><option value="tax" ${!f.no_tax?'selected':''}>فاتورة ضريبية</option><option value="none" ${f.no_tax?'selected':''}>فاتورة بدون ضريبة</option></select>
+            <select id="pi-tax-class" class="sx-in" ${dis || (!taxOn() ? 'disabled title="الضريبة موقوفة من إعدادات النظام"' : '')}><option value="tax" ${!f.no_tax?'selected':''}>فاتورة ضريبية</option><option value="none" ${f.no_tax?'selected':''}>فاتورة بدون ضريبة</option></select>
             <input id="pi-no-tax" type="checkbox" style="display:none;" ${f.no_tax?'checked':''} />
           </div>
           <label class="sx-lbl">العملة</label>
@@ -3846,7 +3849,6 @@ function renderHomeSection() {
               <div style="color:#B8C8DC;font-size:12px;font-weight:500;margin-bottom:12px;">${t('quick_shortcuts')}</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 ${(isAdmin() || canViewReports()) ? homeShortcut('ti-device-mobile-analytics', 'لوحة صاحب المحل', '__owner_dash__') : ''}
-          ${state.shiftsAvailable ? homeShortcut(state.shift ? 'ti-cash-register' : 'ti-player-play', state.shift ? 'الوردية (مفتوحة)' : 'فتح / إقفال الوردية', '__shift__') : ''}
           ${homeShortcut('ti-search', t('home_open_doc'), '__quick_open__')}
                 ${homeShortcut('ti-search-plus', t('home_search_full'), '__global_search__')}
                 ${homeShortcut('ti-file-invoice', t('sc_new_sale'), 'المبيعات')}
@@ -4198,7 +4200,7 @@ function bindPurchaseSanmarUI() {
   const f = state.purchaseForm; const $ = id => document.getElementById(id);
   if ($('pi-tax-class')) $('pi-tax-class').onchange = (ev) => {
     const none = ev.target.value === 'none';
-    if (!none && f.no_tax) { f.no_tax = false; f.default_tax = '15'; f.lines.forEach(l => { if (!Number(l.tax_percent)) l.tax_percent = 15; }); render(); return; }
+    if (!none && f.no_tax) { f.no_tax = false; f.default_tax = String(vatRate()); f.lines.forEach(l => { if (!Number(l.tax_percent)) l.tax_percent = 15; }); render(); return; }
     const cb = $('pi-no-tax'); if (cb) { cb.checked = none; cb.dispatchEvent(new Event('change')); }
   };
   if ($('pi-supplier-code')) $('pi-supplier-code').onkeydown = (ev) => {
@@ -4221,7 +4223,7 @@ function bindQuoteSanmarUI() {
   const locked = f.status === 'محول لفاتورة';
   if ($('qt-tax-class')) $('qt-tax-class').onchange = (ev) => {
     const none = ev.target.value === 'none';
-    if (!none && f.no_tax) { f.no_tax = false; f.default_tax = '15'; f.lines.forEach(l => { if (!Number(l.tax_percent)) l.tax_percent = 15; }); render(); return; }
+    if (!none && f.no_tax) { f.no_tax = false; f.default_tax = String(vatRate()); f.lines.forEach(l => { if (!Number(l.tax_percent)) l.tax_percent = 15; }); render(); return; }
     const cb = $('qt-no-tax'); if (cb) { cb.checked = none; cb.dispatchEvent(new Event('change')); }
   };
   if ($('qt-customer-code')) $('qt-customer-code').onkeydown = (ev) => {
@@ -4395,7 +4397,7 @@ function bindSalesSanmarUI() {
   if ($('si-tax-class')) $('si-tax-class').onchange = (ev) => {
     const v = ev.target.value;
     if (v === 'none') { f.no_tax = true; f.default_tax = '0'; f.lines.forEach(l => l.tax_percent = 0); }
-    else if (f.no_tax) { f.no_tax = false; f.default_tax = '15'; f.lines.forEach(l => { if (!Number(l.tax_percent)) l.tax_percent = 15; }); }
+    else if (f.no_tax) { f.no_tax = false; f.default_tax = String(vatRate()); f.lines.forEach(l => { if (!Number(l.tax_percent)) l.tax_percent = 15; }); }
     render();
   };
   if ($('si-quote-number')) $('si-quote-number').onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); $('si-import-quote')?.click(); } };
@@ -4553,8 +4555,8 @@ function renderSalesFormModal() {
           const rep = f.sales_rep_id ? (state.salesReps||[]).find(r => r.id === f.sales_rep_id) : null;
           const main = c.print_table_header_bg || '#1B3352';
           const standard = !f.no_tax && !!(cust?.tax_number || f.walkin_customer_tax_number);
-          const titleAr = f.no_tax ? 'فاتورة مبيعات' : standard ? 'فاتورة ضريبية' : 'فاتورة ضريبية مبسطة';
-          const titleEn = f.no_tax ? 'Sales Invoice' : standard ? 'Tax Invoice' : 'Simplified Tax Invoice';
+          const titleAr = (f.no_tax || !taxOn()) ? 'فاتورة مبيعات' : !zatcaOn() ? 'فاتورة ضريبية' : standard ? 'فاتورة ضريبية' : 'فاتورة ضريبية مبسطة';
+          const titleEn = (f.no_tax || !taxOn()) ? 'Sales Invoice' : !zatcaOn() ? 'Tax Invoice' : standard ? 'Tax Invoice' : 'Simplified Tax Invoice';
           const na = f.national_address || {};
           const addr = [
             na.building_no || cust?.building_number ? 'مبنى ' + (na.building_no || cust?.building_number) : '',
@@ -4662,7 +4664,7 @@ function renderSalesFormModal() {
             </div>` : ''}
           </div>
           <label class="sx-lbl">تصنيف الفاتورة</label>
-          <select id="si-tax-class" class="sx-in" ${dis}>
+          <select id="si-tax-class" class="sx-in" ${dis || (!taxOn() ? 'disabled title="الضريبة موقوفة من إعدادات النظام"' : '')}>
             <option value="simplified" ${taxClass==='simplified'?'selected':''}>فاتورة ضريبية مبسطة</option>
             <option value="standard" ${taxClass==='standard'?'selected':''}>فاتورة ضريبية</option>
             <option value="none" ${taxClass==='none'?'selected':''}>فاتورة بدون ضريبة</option>
@@ -4723,7 +4725,7 @@ function renderSalesFormModal() {
               </tr></thead>
               <tbody>
                 ${f.lines.map((l,idx) => {
-                  const sub = lineAmt(l), tx = sub*(Number(l.tax_percent||15)/100);
+                  const sub = lineAmt(l), tx = sub*(Number(taxPctOf(l))/100);
                   const lp = lineProfits[idx];
                   return `<tr data-sales-line-focus="${l.item_id}" class="${state.activeBarItemId===l.item_id?'sx-sel':''}">
                     <td class="sx-rm">${idx+1}</td>
@@ -4846,7 +4848,8 @@ function renderSalesFormModal() {
           const main = c.print_table_header_bg || '#1B3352';
           const headTxt = c.print_table_header_text || '#fff';
           const bd = c.print_table_border_color || '#C9C4B0';
-          const heads = [['#',''],['رقم الصنف','Item No'],['الوصف','Description'],['الوحدة','Unit'],['الكمية','Qty'],['سعر الوحدة','Unit Price'],...(showLineDisc?[['خصم','Disc %']]:[]),['المبلغ الخاضع','Taxable Amt'],['الضريبة %','VAT %'],['مبلغ الضريبة','VAT Amt'],['الإجمالي','Total']];
+          const noVat = f.no_tax || !taxOn();
+          const heads = [['#',''],['رقم الصنف','Item No'],['الوصف','Description'],['الوحدة','Unit'],['الكمية','Qty'],['سعر الوحدة','Unit Price'],...(showLineDisc?[['خصم','Disc %']]:[]),...(noVat?[]:[['المبلغ الخاضع','Taxable Amt'],['الضريبة %','VAT %'],['مبلغ الضريبة','VAT Amt']]),['الإجمالي','Total']];
           const cell = `padding:5px 4px;font-size:10.5px;border:1px solid ${bd};text-align:center;`;
           return `
         <table style="width:100%;border-collapse:collapse;">
@@ -4860,9 +4863,9 @@ function renderSalesFormModal() {
               <td style="${cell}" class="mono">${l.quantity}</td>
               <td style="${cell}" class="mono">${fmt(l.unit_price)}</td>
               ${showLineDisc?`<td style="${cell}">${Number(l.disc_pct)||0}%</td>`:''}
-              <td style="${cell}" class="mono">${fmt(sub)}</td>
+              ${noVat ? '' : `<td style="${cell}" class="mono">${fmt(sub)}</td>
               <td style="${cell}">${Number(l.tax_percent||0)}%</td>
-              <td style="${cell}" class="mono">${fmt(tx)}</td>
+              <td style="${cell}" class="mono">${fmt(tx)}</td>`}
               <td style="${cell}font-weight:700;" class="mono">${fmt(sub+tx)}</td></tr>`; }).join('')}
           </tbody>
         </table>
@@ -4890,8 +4893,8 @@ function renderSalesFormModal() {
           <table style="width:100%;border-collapse:collapse;border:1px solid #C9C4B0;border-radius:6px;overflow:hidden;">
             ${line('الإجمالي قبل الخصم', 'Subtotal', fmt(tot.subtotal))}
             ${Number(tot.discount) ? line('الخصم', 'Discount', fmt(tot.discount), false, '#C0392B') : ''}
-            ${line('الإجمالي الخاضع للضريبة', 'Taxable Amount', fmt(tot.net))}
-            ${f.no_tax ? '' : line('ضريبة القيمة المضافة', 'VAT', fmt(tot.taxTotal))}
+            ${(f.no_tax || !taxOn()) ? (Number(tot.discount) ? line('الصافي', 'Net', fmt(tot.net)) : '') : line('الإجمالي الخاضع للضريبة', 'Taxable Amount', fmt(tot.net))}
+            ${(f.no_tax || !taxOn()) ? '' : line('ضريبة القيمة المضافة', 'VAT', fmt(tot.taxTotal))}
             ${line('الإجمالي المستحق', 'Grand Total', fmt(tot.grandTotal) + ' <span style="font-size:10px;">' + escapeHtml(feat('currency_abbr_ar')||'') + '</span>', true)}
             ${line('المدفوع', 'Paid', fmt(Number(f.paid_amount)||0))}
             ${line('المتبقي', 'Balance Due', fmt(due), false, due > 0.005 ? '#C0392B' : '#0F6E56')}
@@ -5027,7 +5030,7 @@ function renderSalesFormModal() {
               </tr>
             </thead>
             <tbody>
-              ${f.lines.map((l,i) => { const sub = lineAmt(l); const taxAmt = sub*(Number(l.tax_percent||15)/100); return `<tr style="background:${i%2?'#FAF9F6':'#fff'};border-bottom:1px solid #F0EEE6;"><td style="padding:8px;">${escapeHtml(l.item_name)}</td><td style="padding:8px;text-align:center;" class="mono">${l.quantity}</td><td style="padding:8px;text-align:center;" class="mono">${fmt(l.unit_price)}</td><td style="padding:8px;text-align:center;" class="mono">${l.tax_percent||15}%</td><td style="padding:8px;text-align:left;font-weight:600;" class="mono">${fmt(sub+taxAmt)}</td></tr>`; }).join('')}
+              ${f.lines.map((l,i) => { const sub = lineAmt(l); const taxAmt = sub*(Number(taxPctOf(l))/100); return `<tr style="background:${i%2?'#FAF9F6':'#fff'};border-bottom:1px solid #F0EEE6;"><td style="padding:8px;">${escapeHtml(l.item_name)}</td><td style="padding:8px;text-align:center;" class="mono">${l.quantity}</td><td style="padding:8px;text-align:center;" class="mono">${fmt(l.unit_price)}</td><td style="padding:8px;text-align:center;" class="mono">${taxPctOf(l)}%</td><td style="padding:8px;text-align:left;font-weight:600;" class="mono">${fmt(sub+taxAmt)}</td></tr>`; }).join('')}
             </tbody>
           </table>
 
@@ -5169,7 +5172,7 @@ function renderSalesReturnFormModal() {
             </tr></thead>
             <tbody>
               ${f.lines.map((l,idx) => {
-                const lineSub = lineAmt(l), lineTax = lineSub*(Number(l.tax_percent||15)/100);
+                const lineSub = lineAmt(l), lineTax = lineSub*(Number(taxPctOf(l))/100);
                 const bg = idx%2?'#F4F1EA':'#FFFDF6';
                 return `<tr>
               <td style="padding:7px 6px;background:${bg};color:#8B8A7A;font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${idx+1}</td>
@@ -5179,7 +5182,7 @@ function renderSalesReturnFormModal() {
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${l.quantity}</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(l.unit_price)}</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(lineSub)}</td>
-              <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${l.tax_percent||15}%</td>
+              <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${taxPctOf(l)}%</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(lineTax)}</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;font-weight:500;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(lineSub+lineTax)}</td>
               <td style="padding:4px;background:${bg};border-bottom:1px solid #E4E2DA;">${f.approved ? '' : `<button data-remove-sr-line="${idx}" class="no-print" style="border:none;background:none;color:#C0392B;cursor:pointer;font-size:14px;">✕</button>`}</td>
@@ -5331,7 +5334,7 @@ function renderPurchaseReturnFormModal() {
             </tr></thead>
             <tbody>
               ${f.lines.map((l,idx) => {
-                const lineSub = l.quantity*l.unit_cost, lineTax = lineSub*(Number(l.tax_percent||15)/100);
+                const lineSub = l.quantity*l.unit_cost, lineTax = lineSub*(Number(taxPctOf(l))/100);
                 const bg = idx%2?'#F4F1EA':'#FFFDF6';
                 return `<tr>
               <td style="padding:7px 6px;background:${bg};color:#8B8A7A;font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${idx+1}</td>
@@ -5341,7 +5344,7 @@ function renderPurchaseReturnFormModal() {
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${l.quantity}</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(l.unit_cost)}</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(lineSub)}</td>
-              <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${l.tax_percent||15}%</td>
+              <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${taxPctOf(l)}%</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(lineTax)}</td>
               <td class="mono" style="padding:7px 6px;background:${bg};font-size:11.5px;font-weight:500;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(lineSub+lineTax)}</td>
               <td style="padding:4px;background:${bg};border-bottom:1px solid #E4E2DA;">${f.approved ? '' : `<button data-remove-pr-line="${idx}" class="no-print" style="border:none;background:none;color:#C0392B;cursor:pointer;font-size:14px;">✕</button>`}</td>
@@ -6875,13 +6878,14 @@ function renderAccountMappingModal() {
       const bg = i%2?'#F4F1EA':'#FFFDF6';
       let input;
       if (f.type === 'bool') input = `<input type="checkbox" data-feat-key="${f.key}" ${v?'checked':''} style="width:16px;height:16px;cursor:pointer;" />`;
+      else if (f.type === 'select') input = `<select data-feat-key="${f.key}" class="input" style="max-width:100%;padding:3px 6px;font-weight:700;">${f.options.map(([k, l]) => `<option value="${k}" ${String(v)===k?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select>`;
       else if (f.type === 'int') input = `<input type="number" data-feat-key="${f.key}" min="${f.min}" max="${f.max}" class="input mono" style="max-width:90px;padding:3px 6px;text-align:center;" value="${escapeHtml(String(v ?? ''))}" />`;
       else if (f.type === 'num') input = `<input type="number" step="0.01" min="0" data-feat-key="${f.key}" class="input mono" style="max-width:140px;padding:3px 6px;text-align:center;" value="${escapeHtml(String(v ?? ''))}" />`;
       else if (f.type === 'date') input = `<input type="date" data-feat-key="${f.key}" class="input mono" style="max-width:160px;padding:3px 6px;" value="${escapeHtml(String(v ?? ''))}" />`;
       else input = `<input type="text" data-feat-key="${f.key}" class="input" style="max-width:160px;padding:3px 6px;text-align:center;" value="${escapeHtml(String(v ?? ''))}" />`;
       return `<tr style="background:${bg};">
         <td style="padding:6px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(f.label)}</td>
-        <td style="padding:4px 10px;border-bottom:1px solid #E4E2DA;text-align:center;width:200px;">${input}</td>
+        <td style="padding:4px 10px;border-bottom:1px solid #E4E2DA;text-align:center;width:${f.type==='select'?'360':'200'}px;">${input}</td>
       </tr>`;
     }).join('');
     body = `
@@ -11402,6 +11406,8 @@ function acc(key) {
 }
 // ---------- مميزات النظام: مفاتيح تشغيل/إيقاف وقيم عامة (النظام ← إعدادات النظام ← مميزات النظام) ----------
 const SYSTEM_FEATURES = [
+  { key:'tax_mode', type:'select', def:'saudi', label:'نظام الضريبة', options:[['saudi','السعودية — ضريبة 15% مع رمز QR هيئة الزكاة'],['none','بدون ضريبة (مثلاً محل غير مسجّل ضريبياً)'],['custom','ضريبة بنسبة أخرى (بدون رمز QR السعودي)']] },
+  { key:'vat_rate', type:'num', def:15, label:'نسبة الضريبة % (تُستخدم مع "ضريبة بنسبة أخرى")' },
   { key:'allow_below_cost', type:'bool', def:false, label:'السماح بالبيع بأقل من التكلفة' },
   { key:'allow_negative_stock', type:'bool', def:false, label:'السماح بالبيع والصنف رصيده صفر (رصيد سالب)' },
   { key:'pr_without_invoice', type:'bool', def:false, label:'إصدار سند مردود مشتريات بدون فاتورة مشتريات' },
@@ -11445,6 +11451,13 @@ function feat(key) {
   if (key === 'fiscal_end') return new Date().getFullYear() + '-12-31';
   return f.def;
 }
+// ---------- نظام الضريبة حسب بلد العميل ----------
+function taxMode() { const m = feat('tax_mode'); return ['saudi','none','custom'].includes(m) ? m : 'saudi'; }
+function taxOn() { return taxMode() !== 'none'; }
+function zatcaOn() { return taxMode() === 'saudi'; }
+function vatRate() { const m = taxMode(); return m === 'none' ? 0 : m === 'custom' ? (Number(feat('vat_rate')) || 0) : 15; }
+// نسبة ضريبة السطر: لو محددة (حتى لو صفر) نستخدمها، وإلا النسبة الافتراضية
+function taxPctOf(l) { const v = l && l.tax_percent; return (v === null || v === undefined || v === '') ? vatRate() : Number(v) || 0; }
 function currentFeatures() {
   const m = {};
   SYSTEM_FEATURES.forEach(f => { m[f.key] = feat(f.key); });
@@ -11633,9 +11646,10 @@ function waDebtReminderText(p) {
 // قائمة أصناف مردود الشراء: أصناف الفاتورة المستوردة، أو كل الأصناف لو الميزة مفعّلة وما فيه فاتورة
 function prSourceList(f) {
   if (f.sourceInvoiceItems.length || !feat('pr_without_invoice')) return f.sourceInvoiceItems;
-  return state.items.filter(it => it.active !== false).map(it => ({ item_id: it.id, item_name: it.name, sku: it.sku, unit: it.unit, quantity: Infinity, unit_cost: Number(it.cost || 0), tax_percent: 15 }));
+  return state.items.filter(it => it.active !== false).map(it => ({ item_id: it.id, item_name: it.name, sku: it.sku, unit: it.unit, quantity: Infinity, unit_cost: Number(it.cost || 0), tax_percent: vatRate() }));
 }
 function menuFeatureOk(target) {
+  if (target === '__vat_report__') return taxOn();
   if (['__warehouses__','__transfers__','__warehouse_stock_report__'].includes(target)) return !!feat('multi_warehouse');
   if (target === '__barcode_labels__') return !!feat('barcode');
   return true;
@@ -13403,8 +13417,8 @@ function bindAppEvents() {
         };
         const lineRows = f.lines.map(l => {
           const sub = l.quantity * l.unit_cost;
-          const tax = sub * (Number(l.tax_percent||15) / 100);
-          return { item_id: l.item_id, quantity: l.quantity, unit_cost: l.unit_cost, line_total: sub, tax_percent: l.tax_percent||15, tax_amount: tax, total_with_tax: sub + tax, sale_price: (l.sale_price != null && !isNaN(Number(l.sale_price))) ? Number(l.sale_price) : null };
+          const tax = sub * (Number(taxPctOf(l)) / 100);
+          return { item_id: l.item_id, quantity: l.quantity, unit_cost: l.unit_cost, line_total: sub, tax_percent: taxPctOf(l), tax_amount: tax, total_with_tax: sub + tax, sale_price: (l.sale_price != null && !isNaN(Number(l.sale_price))) ? Number(l.sale_price) : null };
         });
 
         if (state.editingPurchaseId) {
@@ -13671,7 +13685,7 @@ function bindAppEvents() {
         if (f.lines.length === 0) { alert('أضف صنف واحد على الأقل'); return; }
         const t = calcLineTotals(f);
         const headerPayload = { customer_id:f.customer_id, customer_ref:f.customer_ref||null, quote_date:f.quote_date, valid_until:f.valid_until||null, discount:t.discount, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal, no_tax:!!f.no_tax };
-        const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(l.tax_percent||15)/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, tax_percent:l.tax_percent||15, tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
+        const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(taxPctOf(l))/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, tax_percent:taxPctOf(l), tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
         if (state.editingQuoteId) {
           const { error } = await sb.from('quotations').update(headerPayload).eq('id', state.editingQuoteId);
           if (error) { alert('خطأ بالحفظ:\n'+error.message); return; }
@@ -13875,7 +13889,7 @@ function bindAppEvents() {
         state.salesForm.discount = String(quote.discount || 0);
         state.salesForm.no_tax = !!quote.no_tax;
         state.salesForm.quotation_id = quote.id;
-        state.salesForm.lines = (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price), tax_percent:Number(l.tax_percent||15) }));
+        state.salesForm.lines = (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price), tax_percent:Number(taxPctOf(l)) }));
         render();
       };
     }
@@ -14124,7 +14138,7 @@ function bindAppEvents() {
         setBtnLoading(document.getElementById('sales-save'), true, 'جاري الحفظ');
         const t = calcLineTotals(f);
         const headerPayload = { invoice_type:f.invoice_type, customer_id:f.customer_id||null, walkin_customer_name: !f.customer_id ? (f.walkin_customer_name||null) : null, walkin_customer_tax_number: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_tax_number||null) : null, walkin_customer_address: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_address||null) : null, customer_ref:f.customer_ref||null, order_number:f.order_number||null, warehouse_id: f.warehouse_id||null, payment_method: f.payment_method||null, quotation_id:f.quotation_id||null, invoice_date:f.invoice_date, discount:t.discount, paid_amount:Number(f.paid_amount)||0, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal, no_tax:!!f.no_tax, sales_rep_id: f.sales_rep_id||null, customer_mobile: f.customer_mobile||null, payment_details: (f.payments||[]).length ? f.payments : null, customer_national_address: f.national_address && Object.values(f.national_address).some(Boolean) ? f.national_address : null };
-        const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(l.tax_percent||15)/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, discount_percent:Number(l.disc_pct)||0, tax_percent:l.tax_percent||15, tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
+        const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(taxPctOf(l))/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, discount_percent:Number(l.disc_pct)||0, tax_percent:taxPctOf(l), tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
         if (state.editingSalesId) {
           const { error } = await sb.from('sales_invoices').update(headerPayload).eq('id', state.editingSalesId);
           if (error) { alert('خطأ بالحفظ:\n'+error.message); setBtnLoading(document.getElementById('sales-save'), false); return; }
@@ -14414,7 +14428,7 @@ function bindAppEvents() {
         const { data: lineRows } = await sb.from('sales_invoice_items').select('*, items(name, sku, unit)').eq('invoice_id', inv.id);
         state.salesReturnForm.customer_id = inv.customer_id;
         state.salesReturnForm.discount = '0';
-        const importedLines = (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price)*(1-(Number(l.discount_percent)||0)/100), tax_percent:Number(l.tax_percent||15) }));
+        const importedLines = (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price)*(1-(Number(l.discount_percent)||0)/100), tax_percent:Number(taxPctOf(l)) }));
         state.salesReturnForm.lines = importedLines;
         state.salesReturnForm.sourceInvoiceItems = importedLines.map(l => ({ ...l }));
         status.textContent = '';
@@ -14457,7 +14471,7 @@ function bindAppEvents() {
         if (f.lines.length === 0) { alert('أضف صنف واحد على الأقل'); return; }
         const t = calcReturnTotals(f, 'unit_price');
         const headerPayload = { customer_id:f.customer_id, warehouse_id:f.warehouse_id||null, return_date:f.return_date, payment_method:f.payment_method||null, discount:t.discount, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal };
-        const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(l.tax_percent||15)/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, tax_percent:l.tax_percent||15, tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
+        const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(taxPctOf(l))/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, tax_percent:taxPctOf(l), tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
         if (state.editingSalesReturnId) {
           const { error } = await sb.from('sales_returns').update(headerPayload).eq('id', state.editingSalesReturnId);
           if (error) { alert('خطأ بالحفظ:\n'+error.message); return; }
@@ -14609,7 +14623,7 @@ function bindAppEvents() {
         const { data: lineRows } = await sb.from('purchase_invoice_items').select('*, items(name, sku, unit)').eq('invoice_id', inv.id);
         state.purchaseReturnForm.supplier_id = inv.supplier_id;
         state.purchaseReturnForm.discount = '0';
-        const importedLines = (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_cost:Number(l.unit_cost), tax_percent:Number(l.tax_percent||15) }));
+        const importedLines = (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_cost:Number(l.unit_cost), tax_percent:Number(taxPctOf(l)) }));
         state.purchaseReturnForm.lines = importedLines;
         state.purchaseReturnForm.sourceInvoiceItems = importedLines.map(l => ({ ...l }));
         status.textContent = '';
@@ -14654,7 +14668,7 @@ function bindAppEvents() {
         if (f.lines.length === 0) { alert('أضف صنف واحد على الأقل'); return; }
         const t = calcReturnTotals(f, 'unit_cost');
         const headerPayload = { supplier_id:f.supplier_id, warehouse_id:f.warehouse_id||null, return_date:f.return_date, payment_method:f.payment_method||null, discount:t.discount, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal };
-        const lineRows = f.lines.map(l => { const sub=l.quantity*l.unit_cost, tax=sub*(Number(l.tax_percent||15)/100); return { item_id:l.item_id, quantity:l.quantity, unit_cost:l.unit_cost, tax_percent:l.tax_percent||15, tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
+        const lineRows = f.lines.map(l => { const sub=l.quantity*l.unit_cost, tax=sub*(Number(taxPctOf(l))/100); return { item_id:l.item_id, quantity:l.quantity, unit_cost:l.unit_cost, tax_percent:taxPctOf(l), tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
         if (state.editingPurchaseReturnId) {
           const { error } = await sb.from('purchase_returns').update(headerPayload).eq('id', state.editingPurchaseReturnId);
           if (error) { alert('خطأ بالحفظ:\n'+error.message); return; }
@@ -16115,6 +16129,7 @@ function bindAppEvents() {
       const f = SYSTEM_FEATURES.find(x => x.key === inp.dataset.featKey);
       const read = () => {
         if (f.type === 'bool') return inp.checked;
+        if (f.type === 'select') return inp.value;
         if (f.type === 'int') { let n = parseInt(inp.value, 10); if (isNaN(n)) n = f.def; return Math.max(f.min, Math.min(f.max, n)); }
         if (f.type === 'num') return Number(inp.value) || 0;
         return inp.value.trim();
@@ -18191,7 +18206,7 @@ function bindAppEvents() {
       const { data, error } = await sb.from('items').insert({ sku, name, unit, cost, price, qty: 0, active: true }).select().single();
       if (error) { errEl.textContent = 'فشل إنشاء الصنف: ' + error.message; return; }
       state.items.push(data);
-      state.purchaseForm.lines.push({ item_id: data.id, sku: data.sku, item_name: data.name, unit: data.unit, quantity: qty, unit_cost: cost, tax_percent: 15 });
+      state.purchaseForm.lines.push({ item_id: data.id, sku: data.sku, item_name: data.name, unit: data.unit, quantity: qty, unit_cost: cost, tax_percent: vatRate() });
       state.showQuickNewItem = false;
       showToast(`تم إنشاء "${name}" وإضافته للفاتورة`);
       render();
@@ -19137,8 +19152,7 @@ async function init() {
   if (state.session) { await loadProfile(); await loadItems(); await loadParties(); await loadPurchases(); await loadSalesInvoices(); await loadWarehouses(); await loadPaymentMethods(); state.homeCogs = await calcHomeNetProfit(); await loadAllAltNumbersMap(); }
   render();
   if (state.session) checkAndRunAutoBackup();
-  if (state.session && isAdmin()) checkApiRowLimit();
-  if (state.session) loadMyOpenShift().then(() => render()); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
+  if (state.session && isAdmin()) checkApiRowLimit(); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
   document.addEventListener('keydown', handleGlobalShortcuts);
   // يطبّق إعدادات الطباعة (حجم الورقة، الهامش، عدد النسخ) تلقائياً على أي طباعة تصير بالنظام، بغض النظر عن مكان الزر
   let printSizeStyleEl = null;
