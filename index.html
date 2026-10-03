@@ -90,6 +90,26 @@
     #si-lines-table th { background: #1B3352 !important; color: #fff !important; padding: 4px !important; border-color: #333 !important; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   }
+
+  /* محاذاة الأعمدة في كل القوائم: الأرقام بخانات LTR كانت تنزاح يسار الخانة فتبان غير متوازنة مع العناوين */
+  div[style*="grid-template-columns"] > .mono { text-align: right; display: block; }
+  div[style*="display:grid"][style*="cursor:pointer"]:hover { background: #E8F0F9 !important; }
+  /* جدول المستندات الموحّد */
+  .doc-list { width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px; }
+  .doc-list thead th { position:sticky; top:0; background:linear-gradient(180deg,#3D6389,#1B3352); color:#fff; font-weight:600; font-size:11.5px; padding:9px 10px; text-align:right; white-space:nowrap; border-left:1px solid rgba(255,255,255,.12); }
+  .doc-list thead th.num, .doc-list td.num { text-align:center; }
+  .doc-list thead th.c, .doc-list td.c { text-align:center; }
+  .doc-list tbody tr { cursor:pointer; }
+  .doc-list tbody tr:nth-child(odd) td { background:#FFFDF6; }
+  .doc-list tbody tr:nth-child(even) td { background:#F4F1EA; }
+  .doc-list tbody tr:hover td { background:#E8F0F9; }
+  .doc-list td { padding:8px 10px; border-bottom:1px solid #ECE8DC; white-space:nowrap; vertical-align:middle; }
+  .doc-list td.name { white-space:normal; min-width:160px; }
+  .doc-list td.num { font-family:'IBM Plex Mono',monospace; direction:ltr; }
+  .doc-list td.code { font-family:'IBM Plex Mono',monospace; font-weight:600; color:#1B3352; direction:ltr; text-align:right; }
+  .doc-list tfoot td { background:#EDEFF3; font-weight:700; padding:9px 10px; border-top:2px solid #1B3352; }
+  .doc-badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:11px; font-weight:600; }
+  .doc-pay { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; background:#EEF2F7; color:#2C4A6E; margin-inline-end:4px; }
 </style>
 </head>
 <body>
@@ -3045,20 +3065,7 @@ function renderPurchasesSection() {
           <button id="purchase-filters-clear" class="btn" style="padding:8px 14px;">مسح الفلاتر</button>
         </div>` : ''}
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} فاتورة</div>
-        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-          <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${['رقم الفاتورة','المورد','التاريخ','الإجمالي','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
-          </div>
-          ${list.map((p, i) => `
-            <div data-open-purchase="${p.id}" style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:${i % 2 ? '#F4F1EA' : '#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.invoice_number)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.parties?.name || p.walkin_supplier_name || 'مورد نقدي')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.invoice_date)}</div>
-              <div style="padding:7px 8px;">${fmt(p.total)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
-            </div>`).join('')}
-          ${list.length === 0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد فواتير بعد</div>` : ''}
-        </div>
+        ${renderDocListTable(list, 'purchase')}
       </div>
       ${state.showPurchaseForm ? renderPurchaseFormModal() : ''}`;
 }
@@ -3150,10 +3157,26 @@ function buildZatcaTLV(sellerName, vatNumber, timestampISO, totalWithVat, vatAmo
   return btoa(binary);
 }
 
-async function renderQRInto(elementId, tlvBase64) {
+// هل يظهر رمز QR؟ ونوعه: zatca (هيئة الزكاة) أو text (بيانات الفاتورة كنص يقرأه أي جوال)
+function qrKind() {
+  const m = feat('qr_mode');
+  if (m === 'hide') return null;
+  if (zatcaOn()) return 'zatca';
+  return m === 'show' ? 'text' : null;
+}
+function invoiceQrText(f, t, docLabel) {
+  const c = state.company || {};
+  const cur = feat('currency_abbr_ar') || '';
+  return [c.name_ar || '', docLabel + ': ' + (f.invoice_number || ''), 'التاريخ: ' + (f.invoice_date || ''),
+          t.taxTotal ? 'الضريبة: ' + fmt(t.taxTotal) + ' ' + cur : null, 'الإجمالي: ' + fmt(t.grandTotal) + ' ' + cur,
+          c.tax_number ? 'الرقم الضريبي: ' + c.tax_number : null].filter(Boolean).join('\n');
+}
+async function renderQRInto(elementId, tlvBase64, plainText) {
   const el = document.getElementById(elementId);
   if (!el) return;
-  if (!zatcaOn()) { el.style.display = 'none'; return; } // رمز QR هيئة الزكاة للسعودية فقط
+  const kind = qrKind();
+  if (!kind || (kind === 'text' && !plainText)) { el.style.display = 'none'; return; }
+  if (kind === 'text') tlvBase64 = plainText;
   if (typeof QRCode === 'undefined') {
     console.error('مكتبة QRCode ما تحمّلت (تأكد من الاتصال بالإنترنت أو أعد تحميل الصفحة)');
     return;
@@ -4057,6 +4080,45 @@ function renderDashboardSectionOld() {
       </div>`;
 }
 
+function docPayLabels(p) {
+  const pays = Array.isArray(p.payment_details) && p.payment_details.length ? p.payment_details.filter(x => Number(x.amount) > 0) : [];
+  if (pays.length) return pays.map(x => `<span class="doc-pay">${escapeHtml(x.method || 'نقدي')}</span>`).join('');
+  if (Number(p.paid_amount) > 0) return `<span class="doc-pay">${escapeHtml(p.payment_method || 'نقدي')}</span>`;
+  return p.invoice_type === 'آجل' ? '<span style="color:#8B8A7A;">—</span>' : `<span class="doc-pay">${escapeHtml(p.payment_method || 'نقدي')}</span>`;
+}
+function renderDocListTable(list, kind) {
+  const isSale = kind === 'sales';
+  const rows = list.map(p => {
+    const total = Number(p.total || 0), paid = Number(p.paid_amount || 0), due = Math.max(0, Math.round((total - paid) * 100) / 100);
+    const party = isSale ? (p.parties?.name || p.walkin_customer_name || 'زبون نقدي') : (p.parties?.name || p.walkin_supplier_name || 'مورد نقدي');
+    const credit = p.invoice_type === 'آجل';
+    return `<tr ${isSale ? 'data-open-sales' : 'data-open-purchase'}="${p.id}">
+      <td class="code">${escapeHtml(p.invoice_number || '')}</td>
+      <td class="num">${escapeHtml(p.invoice_date || '')}</td>
+      <td class="name">${escapeHtml(party)}</td>
+      <td class="c"><span class="doc-badge" style="background:${credit ? '#FDF0E1' : '#E6F1FB'};color:${credit ? '#B26A12' : '#1B5FA8'};">${escapeHtml(p.invoice_type || 'نقدي')}</span></td>
+      <td>${docPayLabels(p)}</td>
+      <td class="num" style="font-weight:700;">${fmt(total)}</td>
+      <td class="num">${fmt(paid)}</td>
+      <td class="num" style="color:${due > 0.005 ? '#C0392B' : '#0F6E56'};font-weight:600;">${fmt(due)}</td>
+      <td class="c"><span class="doc-badge" style="background:${p.approved ? '#E1F5EE' : '#FAEEDA'};color:${p.approved ? '#0F6E56' : '#BA7517'};">${p.approved ? t('status_approved') : t('status_draft')}</span></td>
+    </tr>`;
+  }).join('');
+  const sum = (k) => list.reduce((a, p) => a + Number(p[k] || 0), 0);
+  const totDue = list.reduce((a, p) => a + Math.max(0, Number(p.total || 0) - Number(p.paid_amount || 0)), 0);
+  return `
+    <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:auto;box-shadow:0 1px 3px rgba(27,51,82,0.06);max-height:calc(100vh - 260px);">
+      <table class="doc-list">
+        <thead><tr>
+          <th>رقم الفاتورة</th><th class="num">التاريخ</th><th>${isSale ? 'العميل' : 'المورد'}</th><th class="c">النوع</th><th>طريقة الدفع</th>
+          <th class="num">الإجمالي</th><th class="num">المدفوع</th><th class="num">المتبقي</th><th class="c">الحالة</th>
+        </tr></thead>
+        <tbody>${rows || `<tr><td colspan="9" class="c" style="padding:22px;color:#6E6D5F;cursor:default;">لا توجد فواتير بعد</td></tr>`}</tbody>
+        ${list.length ? `<tfoot><tr><td colspan="5">الإجمالي (${list.length} فاتورة)</td><td class="num">${fmt(sum('total'))}</td><td class="num">${fmt(sum('paid_amount'))}</td><td class="num" style="color:#C0392B;">${fmt(totDue)}</td><td></td></tr></tfoot>` : ''}
+      </table>
+    </div>`;
+}
+
 function renderSalesSection() {
   const list = filteredSalesInvoices();
   const customers = state.parties.filter(p => p.party_type === 'customer');
@@ -4086,20 +4148,7 @@ function renderSalesSection() {
           <button id="sales-filters-clear" class="btn" style="padding:8px 14px;">مسح الفلاتر</button>
         </div>` : ''}
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} فاتورة</div>
-        <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-          <div style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${['رقم الفاتورة','العميل','التاريخ','الإجمالي','الحالة'].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
-          </div>
-          ${list.map((p,i) => `
-            <div data-open-sales="${p.id}" style="display:grid;grid-template-columns:1fr 1.3fr 1fr 1fr 0.8fr;background:${i%2?'#F4F1EA':'#FFFDF6'};font-size:12.5px;align-items:center;cursor:pointer;">
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.invoice_number)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(p.parties?.name || p.walkin_customer_name || 'زبون نقدي')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(p.invoice_date)}</div>
-              <div style="padding:7px 8px;">${fmt(p.total)}</div>
-              <div style="padding:4px 8px;"><span style="padding:3px 8px;border-radius:10px;font-size:11px;background:${p.approved?'#E1F5EE':'#FAEEDA'};color:${p.approved?'#0F6E56':'#BA7517'};">${p.approved?t('status_approved'):t('status_draft')}</span></div>
-            </div>`).join('')}
-          ${list.length===0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">لا توجد فواتير بعد</div>` : ''}
-        </div>
+        ${renderDocListTable(list, 'sales')}
       </div>
       ${state.showSalesForm ? renderSalesFormModal() : ''}`;
 }
@@ -11412,6 +11461,10 @@ const SYSTEM_FEATURES = [
       ['sudan_vat','🇸🇩 السودان — ضريبة 17% (بدون QR)'],
       ['none','🌍 دولة أخرى — بدون ضريبة (بدون QR)'],
       ['custom','🌍 دولة أخرى — ضريبة بنسبة أكتبها (بدون QR)']] },
+  { key:'qr_mode', type:'select', def:'auto', label:'▦ رمز QR في الفاتورة', options:[
+      ['auto','تلقائي حسب الدولة (السعودية: رمز هيئة الزكاة — غيرها: بدون)'],
+      ['show','إظهار دائماً (غير السعودية: رمز فيه بيانات الفاتورة)'],
+      ['hide','إخفاء دائماً']] },
   { key:'vat_rate', type:'num', def:15, label:'نسبة الضريبة % (لخيار "ضريبة بنسبة أكتبها" أو لتعديل نسبة السودان)' },
   { key:'allow_below_cost', type:'bool', def:false, label:'السماح بالبيع بأقل من التكلفة' },
   { key:'allow_negative_stock', type:'bool', def:false, label:'السماح بالبيع والصنف رصيده صفر (رصيد سالب)' },
@@ -13190,7 +13243,7 @@ function bindAppEvents() {
       const f = state.purchaseForm;
       const t = calcPurchaseTotals(f);
       const tlv = buildZatcaTLV(state.company.name_ar || '', state.company.tax_number || '', new Date().toISOString(), t.grandTotal, t.taxTotal);
-      renderQRInto('pi-qr-canvas', tlv);
+      renderQRInto('pi-qr-canvas', tlv, invoiceQrText(state.purchaseForm, t, 'فاتورة شراء'));
     }
     document.querySelectorAll('[data-purchase-tab]').forEach(btn => {
       btn.onclick = () => { state.purchaseActiveTab = btn.dataset.purchaseTab; render(); };
@@ -13815,21 +13868,21 @@ function bindAppEvents() {
       const t = calcLineTotals(f);
       const c = state.company || {};
       const tlv = buildZatcaTLV(c.name_ar||'', c.tax_number||'', new Date().toISOString(), t.grandTotal, t.taxTotal);
-      renderQRInto('si-qr-canvas', tlv);
+      renderQRInto('si-qr-canvas', tlv, invoiceQrText(f, t, 'فاتورة'));
     }
     if (document.getElementById('si-qr-canvas-preview')) {
       const f = state.salesForm;
       const t = calcLineTotals(f);
       const c = state.company || {};
       const tlv = buildZatcaTLV(c.name_ar||'', c.tax_number||'', new Date().toISOString(), t.grandTotal, t.taxTotal);
-      renderQRInto('si-qr-canvas-preview', tlv);
+      renderQRInto('si-qr-canvas-preview', tlv, invoiceQrText(f, t, 'فاتورة'));
     }
     if (document.getElementById('si-qr-canvas-tpl3')) {
       const f = state.salesForm;
       const t = calcLineTotals(f);
       const c = state.company || {};
       const tlv = buildZatcaTLV(c.name_ar||'', c.tax_number||'', new Date().toISOString(), t.grandTotal, t.taxTotal);
-      renderQRInto('si-qr-canvas-tpl3', tlv);
+      renderQRInto('si-qr-canvas-tpl3', tlv, invoiceQrText(f, t, 'فاتورة'));
     }
     document.getElementById('sales-next').onclick = () => {
       const list = filteredSalesInvoices();
