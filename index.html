@@ -4661,6 +4661,51 @@ async function postReturnAtomic(kind, f, t, returnCost) {
 function bindReturnSanmarUI(px) {
   const isS = px === 'sr';
   const f = isS ? state.salesReturnForm : state.purchaseReturnForm; const $ = id => document.getElementById(id);
+  const srcList = () => isS ? f.sourceInvoiceItems : prSourceList(f);
+  // كتابة الكمية تعلّم الصنف تلقائياً، وأي كمية أكبر من المتاح تتلوّن بالأحمر
+  document.querySelectorAll('[data-ret-pick-qty]').forEach(inp => {
+    inp.oninput = () => {
+      const max = inp.dataset.max === '' ? Infinity : Number(inp.dataset.max);
+      const v = Number(inp.value);
+      const bad = inp.value !== '' && (isNaN(v) || v < 0 || v > max);
+      inp.style.background = bad ? '#FDE2E1' : '#fff'; inp.style.color = bad ? '#C0392B' : '';
+      const cb = document.querySelector(`[data-ret-pick="${inp.dataset.retPickQty}"]`); if (cb) cb.checked = v > 0 && !bad;
+    };
+    inp.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); document.querySelector('[data-ret-act="picked"]')?.click(); } };
+  });
+  document.querySelectorAll('[data-ret-pick]').forEach(cb => { cb.onchange = () => {
+    const q = document.querySelector(`[data-ret-pick-qty="${cb.dataset.retPick}"]`);
+    if (cb.checked && q && !(Number(q.value) > 0)) { q.value = q.dataset.max === '' ? '1' : q.dataset.max; q.dispatchEvent(new Event('input')); }
+  }; });
+  const addLines = (picks) => {
+    const errs = [];
+    picks.forEach(({ id, qty }) => {
+      const it = srcList().find(x => x.item_id === id); if (!it) return;
+      const ex = f.lines.find(l => l.item_id === id);
+      const already = ex ? ex.quantity : 0;
+      if (it.quantity !== Infinity && already + qty > it.quantity) { errs.push(`${it.item_name}: المتاح ${roundQty(it.quantity - already)} فقط`); return; }
+      if (!isS) { const stock = Number((state.items.find(x => x.id === id) || {}).qty || 0); if (already + qty > stock) { errs.push(`${it.item_name}: رصيد المخزون ${stock} فقط`); return; } }
+      if (ex) ex.quantity = roundQty(already + qty);
+      else f.lines.push({ item_id: id, item_name: it.item_name, sku: it.sku, unit: it.unit, quantity: roundQty(qty), [isS ? 'unit_price' : 'unit_cost']: it[isS ? 'unit_price' : 'unit_cost'], tax_percent: it.tax_percent });
+    });
+    if (errs.length) alert('⛔ لم تُضَف هذه الأصناف — الكمية أكبر من المسموح:\n\n' + errs.join('\n'));
+    render();
+  };
+  document.querySelectorAll('[data-ret-act]').forEach(b => { b.onclick = () => {
+    if (b.dataset.retAct === 'all') {
+      if (f.lines.length && !confirm('استبدال الأصناف الحالية بكامل الفاتورة؟')) return;
+      f.lines = [];
+      addLines(srcList().filter(it => it.quantity !== Infinity && it.quantity > 0).map(it => ({ id: it.item_id, qty: it.quantity })));
+      return;
+    }
+    const overs = [...document.querySelectorAll('[data-ret-pick-qty]')].filter(q => { const m = q.dataset.max === '' ? Infinity : Number(q.dataset.max); return q.value !== '' && Number(q.value) > m; });
+    if (overs.length) { showToast('⛔ كمية المردود أكبر من المتاح في الفاتورة — صحّح الخانات الحمراء', 'error'); overs[0].focus(); return; }
+    const picks = [...document.querySelectorAll('[data-ret-pick]:checked')].map(cb => {
+      const q = document.querySelector(`[data-ret-pick-qty="${cb.dataset.retPick}"]`); return { id: cb.dataset.retPick, qty: Number(q?.value) || 0 };
+    }).filter(x => x.qty > 0);
+    if (!picks.length) { showToast('حدد صنفاً واكتب كمية المردود', 'error'); return; }
+    addLines(picks);
+  }; });
   document.querySelectorAll('[data-ret-tab]').forEach(b => { b.onclick = () => { state.retSxTab = b.dataset.retTab; render(); }; });
   if ($(px + '-notes')) $(px + '-notes').oninput = (ev) => { f.notes = ev.target.value; };
   if ($(px + '-invoice-number')) $(px + '-invoice-number').onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); $(px + '-import-invoice')?.click(); } };
@@ -5128,7 +5173,7 @@ function renderSalesFormModal() {
           </select>
           <label class="sx-lbl">عرض أسعار</label>
           <div style="display:flex;gap:2px;">
-            <input id="si-quote-number" class="sx-in mono" placeholder="Q-0001" title="اكتب رقم عرض السعر واضغط Enter" ${dis} />
+            <input id="si-quote-number" class="sx-in mono" placeholder="رقم العرض" title="اكتب رقم عرض السعر واضغط Enter" ${dis} />
             <button id="si-import-quote" type="button" style="display:none;"></button>
           </div>
 
@@ -5596,7 +5641,7 @@ function renderSalesReturnFormModal() {
           <div class="sx-nav mono">${renderNumberNavHtml('sr', f.return_number, state.editingSalesReturnId, state.salesReturns, 'return_number', v => v.parties?.name)}</div>
           <label class="sx-lbl">فاتورة البيع</label>
           <div style="display:flex;gap:2px;">
-            <input id="sr-invoice-number" class="sx-in mono" placeholder="S-0001 + Enter" title="اكتب رقم الفاتورة الأصلية واضغط Enter لجلب أصنافها" ${dis} />
+            <input id="sr-invoice-number" class="sx-in mono" placeholder="رقم الفاتورة + Enter" title="اكتب رقم الفاتورة الأصلية واضغط Enter لجلب أصنافها" ${dis} />
             <button id="sr-import-invoice" type="button" class="sx-in" style="width:auto;padding:0 10px;cursor:pointer;font-weight:700;" ${dis}>جلب</button>
           </div>
           <label class="sx-lbl">تاريخ المردود</label>
@@ -5626,6 +5671,26 @@ function renderSalesReturnFormModal() {
             <div id="sr-item-info" style="display:none;padding:4px 10px;background:#E1F5EE;color:#0F6E56;font-size:12px;font-weight:600;"></div>
             ${!f.approved && src.length === 0 ? `<div style="padding:10px 12px;background:#FDF6E8;color:#7A5410;font-size:12.5px;border-bottom:1px solid #E8D7B0;">⬆️ اكتب رقم فاتورة البيع الأصلية بالأعلى واضغط Enter — الأصناف تنحصر بأصناف تلك الفاتورة.</div>` : ''}
             <button id="sr-add-line" type="button" style="display:none;"></button>
+            ${!f.approved && src.length ? `
+            <div style="border-bottom:2px solid #1B3352;background:#FFFDF2;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;flex-wrap:wrap;">
+                <b style="font-size:12.5px;color:#1B3352;">اختر الأصناف المرتجعة وحدد الكمية (لا تزيد عن المتاح — السعر من الفاتورة ولا يُعدَّل)</b>
+                <div style="display:flex;gap:6px;">
+                  <button type="button" data-ret-act="picked" class="sx-in" style="width:auto;padding:0 12px;cursor:pointer;font-weight:700;background:#E1F5EE;">إضافة المحدد للمردود</button>
+                  <button type="button" data-ret-act="all" class="sx-in" style="width:auto;padding:0 12px;cursor:pointer;">إرجاع كامل الفاتورة</button>
+                </div>
+              </div>
+              <table class="sx-grid" style="margin-bottom:0;">
+                <thead><tr><th style="width:28px;">✓</th><th style="width:130px;">رقم الصنف</th><th>اسم الصنف</th><th style="width:110px;">المتاح للإرجاع</th><th style="width:110px;">كمية المردود</th><th style="width:90px;">السعر</th></tr></thead>
+                <tbody>${src.map(it => { const already = (f.lines.find(l => l.item_id === it.item_id) || {}).quantity || 0; const avail = it.quantity === Infinity ? '—' : Math.max(0, it.quantity - already); return `<tr>
+                  <td class="sx-rm"><input type="checkbox" data-ret-pick="${it.item_id}" ${avail === 0 ? 'disabled' : ''}></td>
+                  <td class="mono" style="text-align:center;">${escapeHtml(it.sku||'')}</td>
+                  <td>${escapeHtml(it.item_name)}${already ? ` <span style="color:#0F6E56;font-size:11px;">(مضاف ${already})</span>` : ''}</td>
+                  <td class="sx-num" style="font-weight:700;">${avail}</td>
+                  <td><input data-ret-pick-qty="${it.item_id}" data-max="${avail === '—' ? '' : avail}" class="mono" style="background:#fff;" placeholder="0" ${avail === 0 ? 'disabled' : ''}></td>
+                  <td class="sx-num">${fmt(it.unit_price)}</td></tr>`; }).join('')}</tbody>
+              </table>
+            </div>` : ''}
             <table class="sx-grid">
               <thead><tr>
                 <th style="width:28px;">ر.م</th><th style="width:130px;">رقم الصنف</th><th>اسم الصنف</th><th style="width:60px;">الوحدة</th>
@@ -5653,9 +5718,9 @@ function renderSalesReturnFormModal() {
                   <td><select id="sr-item-select" style="width:100%;height:20px;border:1px solid #ACA899;font-size:12px;font-family:inherit;"><option value="">اختر صنف من الفاتورة...</option>${src.map(it => `<option value="${it.item_id}">${escapeHtml(it.item_name)} (${escapeHtml(it.sku)})</option>`).join('')}</select><span id="sr-entry-name" style="display:none;"></span></td>
                   <td id="sr-entry-unit" style="text-align:center;"></td>
                   <td><input id="sr-item-qty" class="mono" /></td>
-                  <td><input id="sr-item-price" class="mono" /></td>
+                  <td><input id="sr-item-price" class="mono" readonly tabindex="-1" style="background:#F0EDE2;color:#555;" title="السعر من الفاتورة الأصلية — لا يُعدَّل" /></td>
                   <td></td>
-                  <td><input id="sr-item-tax" class="mono" value="${escapeHtml(String(vatRate()))}" /></td>
+                  <td><input id="sr-item-tax" class="mono" readonly tabindex="-1" style="background:#F0EDE2;color:#555;" value="${escapeHtml(String(vatRate()))}" /></td>
                   <td></td><td></td><td></td>
                 </tr>` : ''}
                 ${Array.from({length: Math.max(0, 8 - f.lines.length)}).map(() => `<tr><td class="sx-rm"></td>${'<td></td>'.repeat(10)}</tr>`).join('')}
@@ -5772,7 +5837,7 @@ function renderPurchaseReturnFormModal() {
           <div class="sx-nav mono">${renderNumberNavHtml('pr', f.return_number, state.editingPurchaseReturnId, state.purchaseReturns, 'return_number', v => v.parties?.name)}</div>
           <label class="sx-lbl">فاتورة الشراء</label>
           <div style="display:flex;gap:2px;">
-            <input id="pr-invoice-number" class="sx-in mono" placeholder="P-0001 + Enter" title="اكتب رقم الفاتورة الأصلية واضغط Enter لجلب أصنافها" ${dis} />
+            <input id="pr-invoice-number" class="sx-in mono" placeholder="رقم الفاتورة + Enter" title="اكتب رقم الفاتورة الأصلية واضغط Enter لجلب أصنافها" ${dis} />
             <button id="pr-import-invoice" type="button" class="sx-in" style="width:auto;padding:0 10px;cursor:pointer;font-weight:700;" ${dis}>جلب</button>
           </div>
           <label class="sx-lbl">تاريخ المردود</label>
@@ -5802,6 +5867,26 @@ function renderPurchaseReturnFormModal() {
             <div id="pr-item-info" style="display:none;padding:4px 10px;background:#E1F5EE;color:#0F6E56;font-size:12px;font-weight:600;"></div>
             ${!f.approved && src.length === 0 ? `<div style="padding:10px 12px;background:#FDF6E8;color:#7A5410;font-size:12.5px;border-bottom:1px solid #E8D7B0;">⬆️ اكتب رقم فاتورة الشراء الأصلية بالأعلى واضغط Enter — الأصناف تنحصر بأصناف تلك الفاتورة.</div>` : ''}
             <button id="pr-add-line" type="button" style="display:none;"></button>
+            ${!f.approved && src.length ? `
+            <div style="border-bottom:2px solid #1B3352;background:#FFFDF2;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;flex-wrap:wrap;">
+                <b style="font-size:12.5px;color:#1B3352;">اختر الأصناف المرتجعة وحدد الكمية (لا تزيد عن المتاح — السعر من الفاتورة ولا يُعدَّل)</b>
+                <div style="display:flex;gap:6px;">
+                  <button type="button" data-ret-act="picked" class="sx-in" style="width:auto;padding:0 12px;cursor:pointer;font-weight:700;background:#E1F5EE;">إضافة المحدد للمردود</button>
+                  <button type="button" data-ret-act="all" class="sx-in" style="width:auto;padding:0 12px;cursor:pointer;">إرجاع كامل الفاتورة</button>
+                </div>
+              </div>
+              <table class="sx-grid" style="margin-bottom:0;">
+                <thead><tr><th style="width:28px;">✓</th><th style="width:130px;">رقم الصنف</th><th>اسم الصنف</th><th style="width:110px;">المتاح للإرجاع</th><th style="width:110px;">كمية المردود</th><th style="width:90px;">السعر</th></tr></thead>
+                <tbody>${src.map(it => { const already = (f.lines.find(l => l.item_id === it.item_id) || {}).quantity || 0; const avail = it.quantity === Infinity ? '—' : Math.max(0, it.quantity - already); return `<tr>
+                  <td class="sx-rm"><input type="checkbox" data-ret-pick="${it.item_id}" ${avail === 0 ? 'disabled' : ''}></td>
+                  <td class="mono" style="text-align:center;">${escapeHtml(it.sku||'')}</td>
+                  <td>${escapeHtml(it.item_name)}${already ? ` <span style="color:#0F6E56;font-size:11px;">(مضاف ${already})</span>` : ''}</td>
+                  <td class="sx-num" style="font-weight:700;">${avail}</td>
+                  <td><input data-ret-pick-qty="${it.item_id}" data-max="${avail === '—' ? '' : avail}" class="mono" style="background:#fff;" placeholder="0" ${avail === 0 ? 'disabled' : ''}></td>
+                  <td class="sx-num">${fmt(it.unit_cost)}</td></tr>`; }).join('')}</tbody>
+              </table>
+            </div>` : ''}
             <table class="sx-grid">
               <thead><tr>
                 <th style="width:28px;">ر.م</th><th style="width:130px;">رقم الصنف</th><th>اسم الصنف</th><th style="width:60px;">الوحدة</th>
@@ -5829,9 +5914,9 @@ function renderPurchaseReturnFormModal() {
                   <td><select id="pr-item-select" style="width:100%;height:20px;border:1px solid #ACA899;font-size:12px;font-family:inherit;"><option value="">اختر صنف من الفاتورة...</option>${src.map(it => `<option value="${it.item_id}">${escapeHtml(it.item_name)} (${escapeHtml(it.sku)})</option>`).join('')}</select><span id="pr-entry-name" style="display:none;"></span></td>
                   <td id="pr-entry-unit" style="text-align:center;"></td>
                   <td><input id="pr-item-qty" class="mono" /></td>
-                  <td><input id="pr-item-cost" class="mono" /></td>
+                  <td><input id="pr-item-cost" class="mono" readonly tabindex="-1" style="background:#F0EDE2;color:#555;" title="السعر من الفاتورة الأصلية — لا يُعدَّل" /></td>
                   <td></td>
-                  <td><input id="pr-item-tax" class="mono" value="${escapeHtml(String(vatRate()))}" /></td>
+                  <td><input id="pr-item-tax" class="mono" readonly tabindex="-1" style="background:#F0EDE2;color:#555;" value="${escapeHtml(String(vatRate()))}" /></td>
                   <td></td><td></td><td></td>
                 </tr>` : ''}
                 ${Array.from({length: Math.max(0, 8 - f.lines.length)}).map(() => `<tr><td class="sx-rm"></td>${'<td></td>'.repeat(10)}</tr>`).join('')}
@@ -11610,7 +11695,7 @@ function newEmployeeForm() {
     basic_salary:'', housing_allowance:'0', transport_allowance:'0', iban:'', status:'نشط', warehouse_id:'', notes:'' };
 }
 function nextEmployeeNumber() {
-  const maxNum = state.employees.reduce((max,e) => { const m=(e.employee_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+  const maxNum = state.employees.reduce((max,e) => { const m=(e.employee_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
   return `EMP-${String(maxNum+1).padStart(4,'0')}`;
 }
 function empDaysUntilIdExpiry(dateStr) {
@@ -11806,8 +11891,8 @@ async function postJournalEntry(entryDate, description, sourceType, sourceId, li
     return null;
   }
   const { data: lastEntries } = await sb.from('journal_entries').select('entry_number').order('created_at', { ascending: false }).limit(50);
-  const maxNum = (lastEntries||[]).reduce((max,e) => { const m=(e.entry_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-  const entryNumber = `JE-${String(maxNum+1).padStart(5,'0')}`;
+  const maxNum = (lastEntries||[]).reduce((max,e) => { const m=(e.entry_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+  const entryNumber = String(maxNum+1);
   const { data: entry, error } = await sb.from('journal_entries').insert({
     entry_number: entryNumber, voucher_number: voucherNumber||null, entry_date: entryDate, description, source_type: sourceType, source_id: sourceId,
     total_debit: totalDebit, total_credit: totalCredit, created_by: state.session?.user?.id,
@@ -12167,8 +12252,8 @@ function cashOrBankAccount(paymentMethod) {
 }
 
 function nextDocNumber(list, field, prefix, pad) {
-  const maxNum = list.reduce((max, p) => { const m = (p[field]||'').match(/-(\d+)$/); return m ? Math.max(max, parseInt(m[1], 10)) : max; }, 0);
-  return `${prefix}-${String(maxNum + 1).padStart(pad, '0')}`;
+  const maxNum = list.reduce((max, p) => { const m = (p[field]||'').match(/(\d+)$/); return m ? Math.max(max, parseInt(m[1], 10)) : max; }, 0);
+  return String(maxNum + 1); // ترقيم بالأرقام فقط (بدون حروف) — يكمل من آخر رقم حتى لو القديم فيه حروف
 }
 
 function openItemPicker(ctx) {
@@ -13901,10 +13986,10 @@ function bindAppEvents() {
         } else {
           // فاتورة جديدة: تُحفظ كمسودة فقط، بدون أي تأثير على المخزون أو رصيد المورد بعد
           const maxNum = state.purchases.reduce((max, p) => {
-            const m = (p.invoice_number || '').match(/-(\d+)$/);
+            const m = (p.invoice_number || '').match(/(\d+)$/);
             return m ? Math.max(max, parseInt(m[1], 10)) : max;
           }, 0);
-          const invoiceNumber = `P-${String(maxNum + 1).padStart(4, '0')}`;
+          const invoiceNumber = String(maxNum+1);
           const { data: invoice, error } = await sb.from('purchase_invoices').insert({
             invoice_number: invoiceNumber, ...headerPayload, created_by: state.session.user.id,
           }).select().single();
@@ -14163,8 +14248,8 @@ function bindAppEvents() {
           const { error: qLinesError } = await sb.from('quotation_items').insert(lineRows.map(l => ({ ...l, quotation_id: state.editingQuoteId })));
           if (qLinesError) { alert('خطأ بحفظ أصناف العرض:\n'+qLinesError.message); return; }
         } else {
-          const maxNum = state.quotations.reduce((max,q) => { const m=(q.quote_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-          const quoteNumber = `Q-${String(maxNum+1).padStart(4,'0')}`;
+          const maxNum = state.quotations.reduce((max,q) => { const m=(q.quote_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+          const quoteNumber = String(maxNum+1);
           const { data, error } = await sb.from('quotations').insert({ quote_number:quoteNumber, ...headerPayload, created_by: state.session.user.id }).select().single();
           if (error) { alert('خطأ بالحفظ:\n'+error.message); return; }
           const { error: qLinesError2 } = await sb.from('quotation_items').insert(lineRows.map(l => ({ ...l, quotation_id: data.id })));
@@ -14616,8 +14701,8 @@ function bindAppEvents() {
           const { error: linesError } = await sb.from('sales_invoice_items').insert(lineRows.map(l => ({ ...l, invoice_id: state.editingSalesId })));
           if (linesError) { alert('خطأ بحفظ أصناف الفاتورة:\n'+linesError.message); setBtnLoading(document.getElementById('sales-save'), false); return; }
         } else {
-          const maxNum = state.salesInvoices.reduce((max,p) => { const m=(p.invoice_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-          const invoiceNumber = `S-${String(maxNum+1).padStart(4,'0')}`;
+          const maxNum = state.salesInvoices.reduce((max,p) => { const m=(p.invoice_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+          const invoiceNumber = String(maxNum+1);
           const { data, error } = await sb.from('sales_invoices').insert({ invoice_number:invoiceNumber, ...headerPayload, created_by: state.session.user.id }).select().single();
           if (error) { alert('خطأ بحفظ الفاتورة:\n'+error.message); setBtnLoading(document.getElementById('sales-save'), false); return; }
           const { error: linesError2 } = await sb.from('sales_invoice_items').insert(lineRows.map(l => ({ ...l, invoice_id: data.id })));
@@ -14915,7 +15000,7 @@ function bindAppEvents() {
           .filter(l => l.quantity > 0);
         const totalReturned = Object.values(returned).reduce((a, b) => a + b, 0);
         if (!importedLines.length) { status.textContent = '⛔ كل أصناف هذه الفاتورة تم إرجاعها سابقاً'; return; }
-        state.salesReturnForm.lines = importedLines;
+        state.salesReturnForm.lines = [];
         state.salesReturnForm.sourceInvoiceItems = importedLines.map(l => ({ ...l }));
         status.textContent = `✓ فاتورة ${inv.invoice_number}` + (totalReturned ? ` — تم خصم كميات مرتجعة سابقاً (${totalReturned})` : '') + (invDisc ? ` — الأسعار بعد خصم الفاتورة` : '');
         render();
@@ -14946,7 +15031,7 @@ function bindAppEvents() {
         const alreadyReturning = existingLine ? existingLine.quantity : 0;
         if (alreadyReturning + qty > srcItem.quantity) { alert(`ما تقدر ترجّع أكثر من الكمية الأصلية بالفاتورة (${srcItem.quantity})`); return; }
         if (existingLine) { existingLine.quantity += qty; }
-        else { state.salesReturnForm.lines.push({ item_id:itemId, item_name:srcItem.item_name, sku:srcItem.sku, unit:srcItem.unit, quantity:qty, unit_price:price, tax_percent:taxPct }); }
+        else { state.salesReturnForm.lines.push({ item_id:itemId, item_name:srcItem.item_name, sku:srcItem.sku, unit:srcItem.unit, quantity:qty, unit_price:srcItem.unit_price, tax_percent:srcItem.tax_percent ?? taxPct }); }
         render();
       };
     }
@@ -14967,8 +15052,8 @@ function bindAppEvents() {
           const { error: rLinesError } = await sb.from('sales_return_items').insert(lineRows.map(l => ({ ...l, return_id: state.editingSalesReturnId })));
           if (rLinesError) { alert('خطأ بحفظ أصناف المردود:\n'+rLinesError.message); return; }
         } else {
-          const maxNum = state.salesReturns.reduce((max,p) => { const m=(p.return_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-          const returnNumber = `SR-${String(maxNum+1).padStart(4,'0')}`;
+          const maxNum = state.salesReturns.reduce((max,p) => { const m=(p.return_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+          const returnNumber = String(maxNum+1);
           const { data, error } = await (async () => { let r = await sb.from('sales_returns').insert({ return_number:returnNumber, ...headerPayload, created_by: state.session.user.id }).select().single(); if (r.error && /source_invoice/.test(r.error.message)) { state.returnLinkColumns = false; delete headerPayload.source_invoice_id; delete headerPayload.source_invoice_number; r = await sb.from('sales_returns').insert({ return_number:returnNumber, ...headerPayload, created_by: state.session.user.id }).select().single(); } return r; })();
           if (error) { alert('خطأ بالحفظ:\n'+error.message); return; }
           const { error: rLinesError2 } = await sb.from('sales_return_items').insert(lineRows.map(l => ({ ...l, return_id: data.id })));
@@ -15141,7 +15226,7 @@ function bindAppEvents() {
           .filter(l => l.quantity > 0);
         const totalReturned = Object.values(returned).reduce((a, b) => a + b, 0);
         if (!importedLines.length) { status.textContent = '⛔ كل أصناف هذه الفاتورة تم إرجاعها سابقاً'; return; }
-        state.purchaseReturnForm.lines = importedLines;
+        state.purchaseReturnForm.lines = [];
         state.purchaseReturnForm.sourceInvoiceItems = importedLines.map(l => ({ ...l }));
         status.textContent = `✓ فاتورة ${inv.invoice_number}` + (totalReturned ? ` — تم خصم كميات مرتجعة سابقاً (${totalReturned})` : '') + (invDisc ? ` — الأسعار بعد خصم الفاتورة` : '');
         render();
@@ -15174,7 +15259,7 @@ function bindAppEvents() {
         const alreadyReturning = existingLine ? existingLine.quantity : 0;
         if (alreadyReturning + qty > srcItem.quantity) { alert(`ما تقدر ترجّع أكثر من الكمية الأصلية بالفاتورة (${srcItem.quantity})`); return; }
         if (existingLine) { existingLine.quantity += qty; }
-        else { state.purchaseReturnForm.lines.push({ item_id:itemId, item_name:srcItem.item_name, sku:srcItem.sku, unit:srcItem.unit, quantity:qty, unit_cost:cost, tax_percent:taxPct }); }
+        else { state.purchaseReturnForm.lines.push({ item_id:itemId, item_name:srcItem.item_name, sku:srcItem.sku, unit:srcItem.unit, quantity:qty, unit_cost:srcItem.unit_cost, tax_percent:srcItem.tax_percent ?? taxPct }); }
         render();
       };
     }
@@ -15195,8 +15280,8 @@ function bindAppEvents() {
           const { error: prLinesError } = await sb.from('purchase_return_items').insert(lineRows.map(l => ({ ...l, return_id: state.editingPurchaseReturnId })));
           if (prLinesError) { alert('خطأ بحفظ أصناف المردود:\n'+prLinesError.message); return; }
         } else {
-          const maxNum = state.purchaseReturns.reduce((max,p) => { const m=(p.return_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-          const returnNumber = `PR-${String(maxNum+1).padStart(4,'0')}`;
+          const maxNum = state.purchaseReturns.reduce((max,p) => { const m=(p.return_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+          const returnNumber = String(maxNum+1);
           const { data, error } = await (async () => { let r = await sb.from('purchase_returns').insert({ return_number:returnNumber, ...headerPayload, created_by: state.session.user.id }).select().single(); if (r.error && /source_invoice/.test(r.error.message)) { state.returnLinkColumns = false; delete headerPayload.source_invoice_id; delete headerPayload.source_invoice_number; r = await sb.from('purchase_returns').insert({ return_number:returnNumber, ...headerPayload, created_by: state.session.user.id }).select().single(); } return r; })();
           if (error) { alert('خطأ بالحفظ:\n'+error.message); return; }
           const { error: prLinesError2 } = await sb.from('purchase_return_items').insert(lineRows.map(l => ({ ...l, return_id: data.id })));
@@ -15396,8 +15481,8 @@ function bindAppEvents() {
           const { error: scLinesError } = await sb.from('stock_count_items').insert(lineRows.map(l => ({ ...l, count_id: state.editingStockCountId })));
           if (scLinesError) { alert('خطأ بحفظ أصناف الجرد:\n'+scLinesError.message); return; }
         } else {
-          const maxNum = state.stockCounts.reduce((max,p) => { const m=(p.count_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-          const countNumber = `SC-${String(maxNum+1).padStart(4,'0')}`;
+          const maxNum = state.stockCounts.reduce((max,p) => { const m=(p.count_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+          const countNumber = String(maxNum+1);
           const { data, error } = await sb.from('stock_counts').insert({ count_number:countNumber, ...headerPayload, created_by: state.session.user.id }).select().single();
           if (error) { alert('خطأ بالحفظ:\n'+error.message); return; }
           const { error: scLinesError2 } = await sb.from('stock_count_items').insert(lineRows.map(l => ({ ...l, count_id: data.id })));
@@ -15566,8 +15651,8 @@ function bindAppEvents() {
           const { error: trLinesError } = await sb.from('warehouse_transfer_items').insert(lineRows.map(l => ({ ...l, transfer_id: state.editingTransferId })));
           if (trLinesError) { alert('خطأ بحفظ أصناف التحويل:\n'+trLinesError.message); return; }
         } else {
-          const maxNum = state.transfers.reduce((max,p) => { const m=(p.transfer_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-          const transferNumber = `WT-${String(maxNum+1).padStart(4,'0')}`;
+          const maxNum = state.transfers.reduce((max,p) => { const m=(p.transfer_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+          const transferNumber = String(maxNum+1);
           const { data, error } = await sb.from('warehouse_transfers').insert({ transfer_number:transferNumber, ...headerPayload, created_by: state.session.user.id }).select().single();
           if (error) { alert('خطأ بالحفظ:\n'+error.message); return; }
           const { error: trLinesError2 } = await sb.from('warehouse_transfer_items').insert(lineRows.map(l => ({ ...l, transfer_id: data.id })));
@@ -15743,7 +15828,7 @@ function bindAppEvents() {
         const prefix = payload.party_type === 'customer' ? 'C' : payload.party_type === 'supplier' ? 'S' : 'O';
         const sameType = state.parties.filter(p => p.party_type === payload.party_type);
         const maxNum = sameType.reduce((max, p) => {
-          const m = (p.code || '').match(/-(\d+)$/);
+          const m = (p.code || '').match(/(\d+)$/);
           return m ? Math.max(max, parseInt(m[1], 10)) : max;
         }, 0);
         payload.code = `${prefix}-${String(maxNum + 1).padStart(4, '0')}`;
@@ -15918,8 +16003,8 @@ function bindAppEvents() {
         if (state.editingReceiptVoucherId) {
           { const { error: svErr } = await sb.from('receipt_vouchers').update(payload).eq('id', state.editingReceiptVoucherId); if (svErr) { showToast('فشل حفظ التعديلات', 'error'); return; } }
         } else {
-          const maxNum = state.receiptVouchers.reduce((max,p) => { const m=(p.voucher_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-          const voucherNumber = `RV-${String(maxNum+1).padStart(4,'0')}`;
+          const maxNum = state.receiptVouchers.reduce((max,p) => { const m=(p.voucher_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+          const voucherNumber = String(maxNum+1);
           const { data, error } = await sb.from('receipt_vouchers').insert({ voucher_number:voucherNumber, ...payload, created_by: state.session.user.id }).select().single();
           if (error) { alert('خطأ:\n'+error.message); return; }
           state.editingReceiptVoucherId = data.id;
@@ -16033,8 +16118,8 @@ function bindAppEvents() {
         if (state.editingPaymentVoucherId) {
           { const { error: svErr2 } = await sb.from('payment_vouchers').update(payload).eq('id', state.editingPaymentVoucherId); if (svErr2) { showToast('فشل حفظ التعديلات', 'error'); return; } }
         } else {
-          const maxNum = state.paymentVouchers.reduce((max,p) => { const m=(p.voucher_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-          const voucherNumber = `PV-${String(maxNum+1).padStart(4,'0')}`;
+          const maxNum = state.paymentVouchers.reduce((max,p) => { const m=(p.voucher_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+          const voucherNumber = String(maxNum+1);
           const { data, error } = await sb.from('payment_vouchers').insert({ voucher_number:voucherNumber, ...payload, created_by: state.session.user.id }).select().single();
           if (error) { alert('خطأ:\n'+error.message); return; }
           state.editingPaymentVoucherId = data.id;
@@ -18871,8 +18956,8 @@ function bindAppEvents() {
           const total = calcOpeningInvTotal(f);
           let docId = state.editingOpeningInvId;
           if (!docId) {
-            const maxNum = state.openingInvDocs.reduce((max,d) => { const m=(d.doc_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-            const docNumber = `OI-${String(maxNum+1).padStart(4,'0')}`;
+            const maxNum = state.openingInvDocs.reduce((max,d) => { const m=(d.doc_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+            const docNumber = String(maxNum+1);
             const { data, error } = await sb.from('opening_inventory_docs').insert({ doc_number:docNumber, doc_date:f.doc_date, warehouse_id:f.warehouse_id, notes:f.notes||null, created_by: state.session.user.id }).select().single();
             if (error) { alert('خطأ بالحفظ:\n'+error.message); setBtnLoading(document.getElementById('oif-save-approve'), false); return; }
             docId = data.id;
@@ -19402,8 +19487,8 @@ function bindAppEvents() {
               await adjustWarehouseStock(data.id, whId, openingQty);
               // نسجّل الكمية الافتتاحية كسند جرد معتمد تلقائياً — عشان توثّق بكشف حركة الصنف وما تصير "كمية بدون مصدر"
               const { data: lastCounts } = await sb.from('stock_counts').select('count_number').order('created_at', { ascending: false }).limit(50);
-              const maxNum = (lastCounts||[]).reduce((max,c) => { const m=(c.count_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
-              const countNumber = `SC-${String(maxNum+1).padStart(4,'0')}`;
+              const maxNum = (lastCounts||[]).reduce((max,c) => { const m=(c.count_number||'').match(/(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
+              const countNumber = String(maxNum+1);
               const { data: sc, error: scErr } = await sb.from('stock_counts').insert({
                 count_number: countNumber, warehouse_id: whId, count_date: new Date().toISOString().slice(0,10),
                 notes: 'رصيد افتتاحي تلقائي عند إنشاء الصنف', approved: true, created_by: state.session.user.id,
