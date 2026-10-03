@@ -1571,7 +1571,7 @@ async function openSalesReturnById(id) {
   const { data: lineRows } = await sb.from('sales_return_items').select('*, items(name, sku, unit)').eq('return_id', id);
   state.salesReturnForm = {
     return_number: r.return_number, customer_id: r.customer_id, warehouse_id: r.warehouse_id || defaultWarehouseId(), return_date: r.return_date,
-    discount: String(r.discount||0), notes: r.notes||'', approved: !!r.approved, payment_method: r.payment_method||'',
+    discount: String(r.discount||0), notes: r.notes||'', approved: !!r.approved, payment_method: r.payment_method||'', source_invoice_id: r.source_invoice_id||null, source_invoice_number: r.source_invoice_number||'',
     lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price), tax_percent:Number(taxPctOf(l)) })),
     sourceInvoiceItems: [],
   };
@@ -1605,7 +1605,7 @@ async function openPurchaseReturnById(id) {
   const { data: lineRows } = await sb.from('purchase_return_items').select('*, items(name, sku, unit)').eq('return_id', id);
   state.purchaseReturnForm = {
     return_number: r.return_number, supplier_id: r.supplier_id, warehouse_id: r.warehouse_id || defaultWarehouseId(), return_date: r.return_date,
-    discount: String(r.discount||0), notes: r.notes||'', approved: !!r.approved, payment_method: r.payment_method||'',
+    discount: String(r.discount||0), notes: r.notes||'', approved: !!r.approved, payment_method: r.payment_method||'', source_invoice_id: r.source_invoice_id||null, source_invoice_number: r.source_invoice_number||'',
     lines: (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_cost:Number(l.unit_cost), tax_percent:Number(taxPctOf(l)) })),
     sourceInvoiceItems: [],
   };
@@ -4620,6 +4620,44 @@ function bindPurchaseSanmarUI() {
   bindGridEntry({ sku:'pi-quick-sku', sel:'pi-item-select', qty:'pi-item-qty', price:'pi-item-cost', add:'pi-add-line', name:'pi-entry-name', unit:'pi-entry-unit', extra:['pi-item-sale','pi-item-tax'], lines: () => state.purchaseForm.lines.map(l => [l.item_id, l.quantity]),
     autofocus: (state.purchaseActiveTab || 'معلومات الفاتورة') === 'معلومات الفاتورة' && !f.approved });
 }
+// ترحيل المردود كعملية واحدة بقاعدة البيانات (نفس دالة post_document لفاتورة البيع)
+// يرجّع true لو تم، false لو فشل (ما تغيّر شيء)، null لو الدالة غير مثبّتة (نكمل بالطريقة القديمة)
+async function postReturnAtomic(kind, f, t, returnCost) {
+  const isS = kind === 'sales';
+  const docId = isS ? state.editingSalesReturnId : state.editingPurchaseReturnId;
+  const partyId = isS ? f.customer_id : f.supplier_id;
+  const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+  const stock = f.lines.map(l => ({ item_id: l.item_id, warehouse_id: f.warehouse_id || null, delta: isS ? l.quantity : -l.quantity }));
+  const parties = (!f.payment_method && partyId) ? [{ party_id: partyId, delta: r2(-t.grandTotal) }] : [];
+  let lines;
+  if (isS) {
+    const creditAccount = f.payment_method ? cashOrBankAccount(f.payment_method) : getPartyAccountCode(f.customer_id, 'customer');
+    lines = [
+      { account_code: acc('sales_returns'), debit: r2(t.subtotal - t.discount), credit: 0, description: 'مردودات مبيعات' },
+      { account_code: acc('output_vat'), debit: r2(t.taxTotal), credit: 0, description: 'رجوع ضريبة مخرجات' },
+      { account_code: creditAccount, debit: 0, credit: r2(t.grandTotal), description: f.payment_method ? 'استرجاع نقدي - ' + f.payment_method : 'خصم من مستحق العميل' },
+    ];
+    if (returnCost > 0) lines.push({ account_code: acc('inventory'), debit: r2(returnCost), credit: 0, description: 'رجوع للمخزون' }, { account_code: acc('cogs'), debit: 0, credit: r2(returnCost), description: 'خصم من تكلفة المبيعات' });
+  } else {
+    const debitAccount = f.payment_method ? cashOrBankAccount(f.payment_method) : getPartyAccountCode(f.supplier_id, 'supplier');
+    lines = [
+      { account_code: debitAccount, debit: r2(t.grandTotal), credit: 0, description: f.payment_method ? 'استرداد نقدي - ' + f.payment_method : 'خصم من مستحق المورد' },
+      { account_code: acc('inventory'), debit: 0, credit: r2(t.subtotal - t.discount), description: 'خصم من المخزون' },
+      { account_code: acc('input_vat'), debit: 0, credit: r2(t.taxTotal), description: 'رجوع ضريبة مدخلات' },
+    ];
+  }
+  const dd = lines.reduce((a, l) => a + l.debit - l.credit, 0);
+  if (Math.abs(dd) > 0 && Math.abs(dd) < 0.05) { const L = lines.find(l => l.credit > 0); if (L) L.credit = r2(L.credit + dd); }
+  const { error } = await sb.rpc('post_document', { p: {
+    doc_table: isS ? 'sales_returns' : 'purchase_returns', doc_id: docId, stock, parties,
+    entry: { date: f.return_date, description: (isS ? 'مردود بيع ' : 'مردود شراء ') + f.return_number, source_type: isS ? 'sales_return' : 'purchase_return', lines } } });
+  if (!error) return true;
+  const missing = error.code === 'PGRST202' || error.code === '42883' || (/post_document/.test(error.message || '') && /not find|does not exist|schema cache/i.test(error.message || ''));
+  if (missing) return null;
+  alert('لم يتم الاعتماد — لم يتغيّر أي شيء:\n\n' + error.message);
+  return false;
+}
+
 function bindReturnSanmarUI(px) {
   const isS = px === 'sr';
   const f = isS ? state.salesReturnForm : state.purchaseReturnForm; const $ = id => document.getElementById(id);
@@ -14858,13 +14896,30 @@ function bindAppEvents() {
         const { data: inv, error } = await sb.from('sales_invoices').select('*').eq('invoice_number', num).maybeSingle();
         if (error || !inv) { status.textContent = 'ما لقيت فاتورة بهذا الرقم'; return; }
         const { data: lineRows } = await sb.from('sales_invoice_items').select('*, items(name, sku, unit)').eq('invoice_id', inv.id);
+        if (!inv.approved) { status.textContent = '⚠️ الفاتورة غير مرحّلة — رحّلها أولاً قبل عمل مردود عليها'; return; }
         state.salesReturnForm.customer_id = inv.customer_id;
         state.salesReturnForm.discount = '0';
-        const importedLines = (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_price:Number(l.unit_price)*(1-(Number(l.discount_percent)||0)/100), tax_percent:Number(taxPctOf(l)) }));
+        state.salesReturnForm.source_invoice_id = inv.id;
+        state.salesReturnForm.source_invoice_number = inv.invoice_number;
+        // الكميات المرتجعة سابقاً من نفس الفاتورة (بمردودات أخرى) — ما نسمح نرجّعها مرة ثانية
+        const returned = {};
+        { let q = sb.from('sales_returns').select('id').eq('source_invoice_id', inv.id); const { data: prev, error: prevErr } = await q;
+          const prevIds = (prev || []).map(r => r.id).filter(id => id !== state.editingSalesReturnId);
+          if (!prevErr && prevIds.length) { const { data: pl } = await sb.from('sales_return_items').select('item_id, quantity').in('return_id', prevIds); (pl || []).forEach(l => { returned[l.item_id] = (returned[l.item_id] || 0) + Number(l.quantity || 0); }); } }
+        // خصم الفاتورة الإجمالي يتوزّع على الأسعار — عشان ما يُسترد أكثر مما دُفع فعلاً
+        const invSub = Number(inv.subtotal || 0), invDisc = Number(inv.discount || 0);
+        const ratio = invSub > 0 ? Math.max(0, invSub - invDisc) / invSub : 1;
+        const importedLines = (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'',
+            quantity: Math.max(0, Number(l.quantity) - (returned[l.item_id] || 0)),
+            unit_price: Math.round(Number(l.unit_price)*(1-(Number(l.discount_percent)||0)/100) * ratio * 10000) / 10000, tax_percent:Number(taxPctOf(l)) }))
+          .filter(l => l.quantity > 0);
+        const totalReturned = Object.values(returned).reduce((a, b) => a + b, 0);
+        if (!importedLines.length) { status.textContent = '⛔ كل أصناف هذه الفاتورة تم إرجاعها سابقاً'; return; }
         state.salesReturnForm.lines = importedLines;
         state.salesReturnForm.sourceInvoiceItems = importedLines.map(l => ({ ...l }));
-        status.textContent = '';
+        status.textContent = `✓ فاتورة ${inv.invoice_number}` + (totalReturned ? ` — تم خصم كميات مرتجعة سابقاً (${totalReturned})` : '') + (invDisc ? ` — الأسعار بعد خصم الفاتورة` : '');
         render();
+        const st2 = document.getElementById('sr-import-status'); if (st2) st2.textContent = status.textContent;
       };
     }
     if (document.getElementById('sr-item-select')) document.getElementById('sr-item-select').onchange = (ev) => {
@@ -14899,10 +14954,11 @@ function bindAppEvents() {
     if (document.getElementById('sr-save')) {
       document.getElementById('sr-save').onclick = async () => {
         const f = state.salesReturnForm;
-        if (!f.customer_id) { alert('اختر العميل'); return; }
+        if (!f.customer_id && !f.payment_method) { alert('مردود زبون نقدي (بدون عميل مسجّل): اختر طريقة الرد (الصندوق أو البنك)'); return; }
         if (f.lines.length === 0) { alert('أضف صنف واحد على الأقل'); return; }
         const t = calcReturnTotals(f, 'unit_price');
-        const headerPayload = { customer_id:f.customer_id, warehouse_id:f.warehouse_id||null, return_date:f.return_date, payment_method:f.payment_method||null, discount:t.discount, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal };
+        const headerPayload = { customer_id:f.customer_id||null, warehouse_id:f.warehouse_id||null, return_date:f.return_date, payment_method:f.payment_method||null, discount:t.discount, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal };
+        if (f.source_invoice_id && state.returnLinkColumns !== false) { headerPayload.source_invoice_id = f.source_invoice_id; headerPayload.source_invoice_number = f.source_invoice_number || null; }
         const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(taxPctOf(l))/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, tax_percent:taxPctOf(l), tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
         if (state.editingSalesReturnId) {
           const { error } = await sb.from('sales_returns').update(headerPayload).eq('id', state.editingSalesReturnId);
@@ -14913,7 +14969,7 @@ function bindAppEvents() {
         } else {
           const maxNum = state.salesReturns.reduce((max,p) => { const m=(p.return_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
           const returnNumber = `SR-${String(maxNum+1).padStart(4,'0')}`;
-          const { data, error } = await sb.from('sales_returns').insert({ return_number:returnNumber, ...headerPayload, created_by: state.session.user.id }).select().single();
+          const { data, error } = await (async () => { let r = await sb.from('sales_returns').insert({ return_number:returnNumber, ...headerPayload, created_by: state.session.user.id }).select().single(); if (r.error && /source_invoice/.test(r.error.message)) { state.returnLinkColumns = false; delete headerPayload.source_invoice_id; delete headerPayload.source_invoice_number; r = await sb.from('sales_returns').insert({ return_number:returnNumber, ...headerPayload, created_by: state.session.user.id }).select().single(); } return r; })();
           if (error) { alert('خطأ بالحفظ:\n'+error.message); return; }
           const { error: rLinesError2 } = await sb.from('sales_return_items').insert(lineRows.map(l => ({ ...l, return_id: data.id })));
           if (rLinesError2) { alert('خطأ بحفظ أصناف المردود:\n'+rLinesError2.message); return; }
@@ -14928,7 +14984,20 @@ function bindAppEvents() {
       document.getElementById('sr-approve').onclick = async () => {
         const f = state.salesReturnForm;
         if (!(await checkFiscalPeriodAllowed(f.return_date))) return;
+        if (!f.customer_id && !f.payment_method) { alert('مردود زبون نقدي: اختر طريقة الرد (الصندوق أو البنك) ثم احفظ'); return; }
         if (!confirm('اعتماد سند المردود يزيد المخزون تلقائياً، وينقص رصيد العميل فقط لو كان مردود آجل (بدون طريقة دفع محددة). متابعة؟')) return;
+        {
+          const t0 = calcReturnTotals(f, 'unit_price');
+          const cost0 = f.lines.reduce((a, l) => a + l.quantity * Number((state.items.find(it => it.id === l.item_id) || {}).cost || 0), 0);
+          const ok = await postReturnAtomic('sales', f, t0, cost0);
+          if (ok === false) return;
+          if (ok === true) {
+            state.salesReturnForm.approved = true;
+            logActivity('اعتماد مردود بيع', f.return_number);
+            await loadParties(); await loadDocJournalNumbers('sales_return', state.editingSalesReturnId); await loadItems(); await loadSalesReturns();
+            showToast('تم اعتماد المردود بنجاح'); render(); return;
+          }
+        }
         const t = calcReturnTotals(f, 'unit_price');
         let returnCost = 0;
         const saveWarnings = [];
@@ -15053,13 +15122,30 @@ function bindAppEvents() {
         const { data: inv, error } = await sb.from('purchase_invoices').select('*').eq('invoice_number', num).maybeSingle();
         if (error || !inv) { status.textContent = 'ما لقيت فاتورة بهذا الرقم'; return; }
         const { data: lineRows } = await sb.from('purchase_invoice_items').select('*, items(name, sku, unit)').eq('invoice_id', inv.id);
+        if (!inv.approved) { status.textContent = '⚠️ الفاتورة غير مرحّلة — رحّلها أولاً قبل عمل مردود عليها'; return; }
         state.purchaseReturnForm.supplier_id = inv.supplier_id;
         state.purchaseReturnForm.discount = '0';
-        const importedLines = (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'', quantity:Number(l.quantity), unit_cost:Number(l.unit_cost), tax_percent:Number(taxPctOf(l)) }));
+        state.purchaseReturnForm.source_invoice_id = inv.id;
+        state.purchaseReturnForm.source_invoice_number = inv.invoice_number;
+        // الكميات المرتجعة سابقاً من نفس الفاتورة (بمردودات أخرى) — ما نسمح نرجّعها مرة ثانية
+        const returned = {};
+        { let q = sb.from('purchase_returns').select('id').eq('source_invoice_id', inv.id); const { data: prev, error: prevErr } = await q;
+          const prevIds = (prev || []).map(r => r.id).filter(id => id !== state.editingPurchaseReturnId);
+          if (!prevErr && prevIds.length) { const { data: pl } = await sb.from('purchase_return_items').select('item_id, quantity').in('return_id', prevIds); (pl || []).forEach(l => { returned[l.item_id] = (returned[l.item_id] || 0) + Number(l.quantity || 0); }); } }
+        // خصم الفاتورة الإجمالي يتوزّع على الأسعار — عشان ما يُسترد أكثر مما دُفع فعلاً
+        const invSub = Number(inv.subtotal || 0), invDisc = Number(inv.discount || 0);
+        const ratio = invSub > 0 ? Math.max(0, invSub - invDisc) / invSub : 1;
+        const importedLines = (lineRows||[]).map(l => ({ item_id:l.item_id, item_name:l.items?.name||'', sku:l.items?.sku||'', unit:l.items?.unit||'',
+            quantity: Math.max(0, Number(l.quantity) - (returned[l.item_id] || 0)),
+            unit_cost: Math.round(Number(l.unit_cost) * ratio * 10000) / 10000, tax_percent:Number(taxPctOf(l)) }))
+          .filter(l => l.quantity > 0);
+        const totalReturned = Object.values(returned).reduce((a, b) => a + b, 0);
+        if (!importedLines.length) { status.textContent = '⛔ كل أصناف هذه الفاتورة تم إرجاعها سابقاً'; return; }
         state.purchaseReturnForm.lines = importedLines;
         state.purchaseReturnForm.sourceInvoiceItems = importedLines.map(l => ({ ...l }));
-        status.textContent = '';
+        status.textContent = `✓ فاتورة ${inv.invoice_number}` + (totalReturned ? ` — تم خصم كميات مرتجعة سابقاً (${totalReturned})` : '') + (invDisc ? ` — الأسعار بعد خصم الفاتورة` : '');
         render();
+        const st2 = document.getElementById('pr-import-status'); if (st2) st2.textContent = status.textContent;
       };
     }
     if (document.getElementById('pr-item-select')) document.getElementById('pr-item-select').onchange = (ev) => {
@@ -15096,10 +15182,11 @@ function bindAppEvents() {
     if (document.getElementById('pr-save')) {
       document.getElementById('pr-save').onclick = async () => {
         const f = state.purchaseReturnForm;
-        if (!f.supplier_id) { alert('اختر المورد'); return; }
+        if (!f.supplier_id && !f.payment_method) { alert('مردود لمورد غير مسجّل: اختر طريقة الاسترداد (الصندوق أو البنك)'); return; }
         if (f.lines.length === 0) { alert('أضف صنف واحد على الأقل'); return; }
         const t = calcReturnTotals(f, 'unit_cost');
-        const headerPayload = { supplier_id:f.supplier_id, warehouse_id:f.warehouse_id||null, return_date:f.return_date, payment_method:f.payment_method||null, discount:t.discount, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal };
+        const headerPayload = { supplier_id:f.supplier_id||null, warehouse_id:f.warehouse_id||null, return_date:f.return_date, payment_method:f.payment_method||null, discount:t.discount, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal };
+        if (f.source_invoice_id && state.returnLinkColumns !== false) { headerPayload.source_invoice_id = f.source_invoice_id; headerPayload.source_invoice_number = f.source_invoice_number || null; }
         const lineRows = f.lines.map(l => { const sub=l.quantity*l.unit_cost, tax=sub*(Number(taxPctOf(l))/100); return { item_id:l.item_id, quantity:l.quantity, unit_cost:l.unit_cost, tax_percent:taxPctOf(l), tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
         if (state.editingPurchaseReturnId) {
           const { error } = await sb.from('purchase_returns').update(headerPayload).eq('id', state.editingPurchaseReturnId);
@@ -15110,7 +15197,7 @@ function bindAppEvents() {
         } else {
           const maxNum = state.purchaseReturns.reduce((max,p) => { const m=(p.return_number||'').match(/-(\d+)$/); return m?Math.max(max,parseInt(m[1],10)):max; }, 0);
           const returnNumber = `PR-${String(maxNum+1).padStart(4,'0')}`;
-          const { data, error } = await sb.from('purchase_returns').insert({ return_number:returnNumber, ...headerPayload, created_by: state.session.user.id }).select().single();
+          const { data, error } = await (async () => { let r = await sb.from('purchase_returns').insert({ return_number:returnNumber, ...headerPayload, created_by: state.session.user.id }).select().single(); if (r.error && /source_invoice/.test(r.error.message)) { state.returnLinkColumns = false; delete headerPayload.source_invoice_id; delete headerPayload.source_invoice_number; r = await sb.from('purchase_returns').insert({ return_number:returnNumber, ...headerPayload, created_by: state.session.user.id }).select().single(); } return r; })();
           if (error) { alert('خطأ بالحفظ:\n'+error.message); return; }
           const { error: prLinesError2 } = await sb.from('purchase_return_items').insert(lineRows.map(l => ({ ...l, return_id: data.id })));
           if (prLinesError2) { alert('خطأ بحفظ أصناف المردود:\n'+prLinesError2.message); return; }
@@ -15134,7 +15221,18 @@ function bindAppEvents() {
             return;
           }
         }
+        if (!f.supplier_id && !f.payment_method) { alert('مردود لمورد غير مسجّل: اختر طريقة الاسترداد ثم احفظ'); return; }
         if (!confirm('اعتماد سند المردود ينقص المخزون تلقائياً، وينقص المستحق للمورد فقط لو كان مردود آجل (بدون طريقة دفع محددة). متابعة؟')) return;
+        {
+          const ok = await postReturnAtomic('purchase', f, calcReturnTotals(f, 'unit_cost'), 0);
+          if (ok === false) return;
+          if (ok === true) {
+            state.purchaseReturnForm.approved = true;
+            logActivity('اعتماد مردود شراء', f.return_number);
+            await loadParties(); await loadDocJournalNumbers('purchase_return', state.editingPurchaseReturnId); await loadItems(); await loadPurchaseReturns();
+            showToast('تم اعتماد المردود بنجاح'); render(); return;
+          }
+        }
         const t = calcReturnTotals(f, 'unit_cost');
         for (const l of f.lines) {
           const item = state.items.find(it => it.id === l.item_id);
