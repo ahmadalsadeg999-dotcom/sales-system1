@@ -11406,8 +11406,13 @@ function acc(key) {
 }
 // ---------- مميزات النظام: مفاتيح تشغيل/إيقاف وقيم عامة (النظام ← إعدادات النظام ← مميزات النظام) ----------
 const SYSTEM_FEATURES = [
-  { key:'tax_mode', type:'select', def:'saudi', label:'نظام الضريبة', options:[['saudi','السعودية — ضريبة 15% مع رمز QR هيئة الزكاة'],['none','بدون ضريبة (مثلاً محل غير مسجّل ضريبياً)'],['custom','ضريبة بنسبة أخرى (بدون رمز QR السعودي)']] },
-  { key:'vat_rate', type:'num', def:15, label:'نسبة الضريبة % (تُستخدم مع "ضريبة بنسبة أخرى")' },
+  { key:'tax_mode', type:'select', def:'saudi', label:'🌍 الدولة ونظام الضريبة', options:[
+      ['saudi','🇸🇦 السعودية — ضريبة 15% + رمز QR هيئة الزكاة'],
+      ['sudan_none','🇸🇩 السودان — بدون ضريبة (بدون QR)'],
+      ['sudan_vat','🇸🇩 السودان — ضريبة 17% (بدون QR)'],
+      ['none','🌍 دولة أخرى — بدون ضريبة (بدون QR)'],
+      ['custom','🌍 دولة أخرى — ضريبة بنسبة أكتبها (بدون QR)']] },
+  { key:'vat_rate', type:'num', def:15, label:'نسبة الضريبة % (لخيار "ضريبة بنسبة أكتبها" أو لتعديل نسبة السودان)' },
   { key:'allow_below_cost', type:'bool', def:false, label:'السماح بالبيع بأقل من التكلفة' },
   { key:'allow_negative_stock', type:'bool', def:false, label:'السماح بالبيع والصنف رصيده صفر (رصيد سالب)' },
   { key:'pr_without_invoice', type:'bool', def:false, label:'إصدار سند مردود مشتريات بدون فاتورة مشتريات' },
@@ -11452,10 +11457,10 @@ function feat(key) {
   return f.def;
 }
 // ---------- نظام الضريبة حسب بلد العميل ----------
-function taxMode() { const m = feat('tax_mode'); return ['saudi','none','custom'].includes(m) ? m : 'saudi'; }
+function taxMode() { const m = feat('tax_mode'); return m === 'sudan_none' ? 'none' : m === 'sudan_vat' ? 'custom' : (['saudi','none','custom'].includes(m) ? m : 'saudi'); }
 function taxOn() { return taxMode() !== 'none'; }
 function zatcaOn() { return taxMode() === 'saudi'; }
-function vatRate() { const m = taxMode(); return m === 'none' ? 0 : m === 'custom' ? (Number(feat('vat_rate')) || 0) : 15; }
+function vatRate() { const m = taxMode(); if (m === 'none') return 0; if (m === 'saudi') return 15; if (feat('tax_mode') === 'sudan_vat') return Number((state.company?.system_features || {}).vat_rate) || 17; return Number(feat('vat_rate')) || 0; }
 // نسبة ضريبة السطر: لو محددة (حتى لو صفر) نستخدمها، وإلا النسبة الافتراضية
 function taxPctOf(l) { const v = l && l.tax_percent; return (v === null || v === undefined || v === '') ? vatRate() : Number(v) || 0; }
 function currentFeatures() {
@@ -16134,7 +16139,16 @@ function bindAppEvents() {
         if (f.type === 'num') return Number(inp.value) || 0;
         return inp.value.trim();
       };
-      inp.onchange = () => { state.featuresDraft[f.key] = read(); };
+      inp.onchange = () => {
+        state.featuresDraft[f.key] = read();
+        if (f.key === 'tax_mode') {
+          const v = state.featuresDraft.tax_mode;
+          if (v === 'saudi') Object.assign(state.featuresDraft, { currency_name:'ريال سعودي', currency_sub:'هللة', currency_abbr_ar:'ر.س', currency_abbr_en:'SAR', vat_rate:15 });
+          else if (v === 'sudan_none' || v === 'sudan_vat') Object.assign(state.featuresDraft, { currency_name:'جنيه سوداني', currency_sub:'قرش', currency_abbr_ar:'ج.س', currency_abbr_en:'SDG', vat_rate: v === 'sudan_vat' ? 17 : state.featuresDraft.vat_rate });
+          render();
+          showToast(v === 'saudi' ? 'تم ضبط العملة: ريال سعودي' : (v.startsWith('sudan') ? 'تم ضبط العملة: جنيه سوداني' : 'اكتب اسم العملة واختصارها في الخانات بالأسفل'));
+        }
+      };
       inp.oninput = () => { state.featuresDraft[f.key] = read(); };
     });
     document.getElementById('am-reset').onclick = () => {
