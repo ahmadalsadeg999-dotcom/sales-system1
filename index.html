@@ -344,6 +344,7 @@ let state = {
   showSalesPayDialog: false, salesPayConfirmed: false,
   showWalkinPicker: false, walkinList: [], walkinQuery: '', walkinLoading: false,
   showOwnerDash: false, ownerPeriod: 'today', ownerData: null, ownerLoading: false,
+  invStmt: null,
   showShift: false, shift: null, shiftCalc: null, shiftTab: 'current', shiftHistory: [], shiftCount: {}, shiftBusy: false, shiftsAvailable: true,
   editingPmId: null,
   showFiscalLock: false, fiscalLockDateInput: '',
@@ -573,6 +574,7 @@ function render() {
     if (state.showWalkinPicker) bindWalkinPicker();
     if (state.showOwnerDash) bindOwnerDash();
     if (state.showShift) bindShiftModal();
+    if (state.invStmt) bindInvStmt();
     if (state.showPurchaseForm) bindPurchaseSanmarUI();
     if (state.showQuoteForm) bindQuoteSanmarUI();
   }
@@ -2507,6 +2509,7 @@ function renderApp() {
   ${state.showOwnerDash ? renderOwnerDash() : ''}
   ${state.showWaChooser ? renderWaChooser() : ''}
   ${state.showShift ? renderShiftModal() : ''}
+  ${state.invStmt ? renderInvStmt() : ''}
   ${state.itemPickerOpen ? renderItemPickerModal() : ''}
   ${state.showDesignerPanel ? renderDesignerPanelModal() : ''}
   ${state.showFiscalLock ? renderFiscalLockModal() : ''}
@@ -3796,6 +3799,322 @@ function bindShiftModal() {
     state.shift = null; state.shiftCalc = null; state.shiftCount = {}; state.showShift = false;
     render();
   };
+}
+
+
+// =====================================================================
+// كشف فواتير المبيعات / المشتريات (بنفس أسلوب سنمار: شاشة شروط + خيارات أعمدة + معاينة)
+// =====================================================================
+const INV_STMT_COLS = {
+  sales: [
+    ['serial','مسلسل',1],['number','رقم السند',1],['type','النوع',1],['date','التاريخ',1],['time','الوقت',0],
+    ['partyCode','رقم العميل',0],['partyName','اسم العميل',1],['repCode','رقم المندوب',0],['repName','اسم المندوب',0],
+    ['mobile','الجوال',0],['taxNo','الرقم الضريبي',1],['subtotal','المجموع',1],['discount','الخصم',0],['net','الصافي',1],
+    ['tax','الضريبة',0],['total','المجموع/ض',1],['paid','المدفوع',0],['due','المتبقي',0],['payCols','أعمدة طرق الدفع',1],
+    ['user','المستخدم',0],['status','الحالة',0],['notes','ملاحظات',0]],
+  purchase: [
+    ['serial','مسلسل',1],['number','رقم السند',1],['supplierRef','رقم فاتورة المورد',1],['type','النوع',1],['date','التاريخ',1],['time','الوقت',0],
+    ['partyCode','رقم المورد',0],['partyName','اسم المورد',1],['taxNo','الرقم الضريبي',1],['subtotal','المجموع',1],['discount','الخصم',0],
+    ['net','الصافي',1],['tax','الضريبة',0],['total','المجموع/ض',1],['paid','المدفوع',0],['due','المتبقي',0],['payCols','أعمدة طرق الدفع',1],
+    ['user','المستخدم',0],['status','الحالة',0],['notes','ملاحظات',0]],
+};
+function invStmtSavedCols(kind) {
+  try { const v = JSON.parse(localStorage.getItem('invStmtCols_' + kind) || 'null'); if (Array.isArray(v)) return v; } catch (e) {}
+  return INV_STMT_COLS[kind].filter(c => c[2]).map(c => c[0]);
+}
+function invStmtPeriod(p) {
+  const d = (x) => x.toISOString().slice(0, 10), t = new Date();
+  if (p === 'today') return [d(t), d(t)];
+  if (p === 'week') { const a = new Date(t); a.setDate(a.getDate() - 6); return [d(a), d(t)]; }
+  if (p === 'month') return [d(new Date(t.getFullYear(), t.getMonth(), 1, 12)), d(t)];
+  return null;
+}
+async function openInvStmt(kind) {
+  const [from, to] = invStmtPeriod('month');
+  state.invStmt = { kind, showOptions: false, view: false, loading: false, result: null, cols: invStmtSavedCols(kind),
+    f: { docType:'الكل', partyId:'', repId:'', userId:'', status:'الكل', taxClass:'الكل', sortBy:'date', mode:'total', itemId:'',
+         taxRateMode:'all', taxRate:'15', period:'month', from, to, numFrom:'', numTo:'', mobile:'', timeFrom:'', timeTo:'', noJournal:false } };
+  render();
+  await Promise.all([loadParties(), loadSalesReps ? loadSalesReps().catch(() => {}) : null, (isAdmin() ? loadUsers().catch(() => {}) : null)]);
+  if (state.invStmt) render();
+}
+async function runInvStmt() {
+  const S = state.invStmt, f = S.f, isS = S.kind === 'sales';
+  S.loading = true; render();
+  const table = isS ? 'sales_invoices' : 'purchase_invoices';
+  const res = await fetchAllQ(() => sb.from(table).select('*, parties(name, account_code, code, tax_number, phone, mobile)').gte('invoice_date', f.from).lte('invoice_date', f.to).order('invoice_date').order('id'));
+  if (res.error) { S.loading = false; showToast('تعذّر تحميل الفواتير: ' + res.error.message, 'error'); render(); return; }
+  const numOf = (n) => { const m = String(n || '').match(/(\d+)\s*$/); return m ? Number(m[1]) : null; };
+  let rows = (res.data || []).filter(r => {
+    if (f.docType !== 'الكل' && r.invoice_type !== f.docType) return false;
+    if (f.partyId && (isS ? r.customer_id : r.supplier_id) !== f.partyId) return false;
+    if (isS && f.repId && r.sales_rep_id !== f.repId) return false;
+    if (f.userId && r.created_by !== f.userId) return false;
+    if (f.status === 'معتمدة' && !r.approved) return false;
+    if (f.status === 'مسودة' && r.approved) return false;
+    if (f.taxClass === 'ضريبية' && r.no_tax) return false;
+    if (f.taxClass === 'بدون ضريبة' && !r.no_tax) return false;
+    const n = numOf(r.invoice_number);
+    if (f.numFrom && (n === null || n < Number(f.numFrom))) return false;
+    if (f.numTo && (n === null || n > Number(f.numTo))) return false;
+    if (f.mobile) { const m = String(r.customer_mobile || r.parties?.mobile || r.parties?.phone || '').replace(/\D/g, ''); if (!m.includes(f.mobile.replace(/\D/g, ''))) return false; }
+    if ((f.timeFrom || f.timeTo) && r.created_at) { const hm = new Date(r.created_at).toTimeString().slice(0, 5); if (f.timeFrom && hm < f.timeFrom) return false; if (f.timeTo && hm > f.timeTo) return false; }
+    return true;
+  });
+  // الأسطر (للتفصيلي أو فلتر الصنف أو نسبة الضريبة)
+  let lines = [];
+  if (f.mode === 'detail' || f.itemId || f.taxRateMode === 'eq') {
+    const ids = rows.map(r => r.id);
+    const lt = isS ? 'sales_invoice_items' : 'purchase_invoice_items';
+    for (let i = 0; i < ids.length; i += 150) {
+      const part = ids.slice(i, i + 150);
+      const r = await fetchAllQ(() => sb.from(lt).select('*').in('invoice_id', part).order('id'));
+      lines.push(...(r.data || []));
+    }
+    if (f.itemId) { const keep = new Set(lines.filter(l => l.item_id === f.itemId).map(l => l.invoice_id)); rows = rows.filter(r => keep.has(r.id)); lines = lines.filter(l => l.item_id === f.itemId); }
+    if (f.taxRateMode === 'eq') { const rate = Number(f.taxRate) || 0; const keep = new Set(lines.filter(l => Number(l.tax_percent || 0) === rate).map(l => l.invoice_id)); rows = rows.filter(r => keep.has(r.id)); lines = lines.filter(l => Number(l.tax_percent || 0) === rate); }
+  }
+  if (f.noJournal && rows.length) {
+    const ids = rows.map(r => r.id); const has = new Set();
+    for (let i = 0; i < ids.length; i += 150) {
+      const r = await fetchAllQ(() => sb.from('journal_entries').select('source_id').eq('source_type', isS ? 'sales_invoice' : 'purchase_invoice').in('source_id', ids.slice(i, i + 150)).order('id'));
+      (r.data || []).forEach(x => has.add(x.source_id));
+    }
+    rows = rows.filter(r => !has.has(r.id));
+  }
+  const sorters = { date: (a, b) => (a.invoice_date + (a.created_at || '')).localeCompare(b.invoice_date + (b.created_at || '')),
+                    number: (a, b) => (numOf(a.invoice_number) || 0) - (numOf(b.invoice_number) || 0),
+                    party: (a, b) => (a.parties?.name || '').localeCompare(b.parties?.name || '', 'ar'),
+                    total: (a, b) => Number(b.total || 0) - Number(a.total || 0) };
+  rows.sort(sorters[f.sortBy] || sorters.date);
+  S.result = { rows, lines, at: new Date() };
+  S.loading = false; S.view = true; render();
+}
+function invStmtTable() {
+  const S = state.invStmt, f = S.f, isS = S.kind === 'sales', R = S.result;
+  const rows = R.rows;
+  const partyName = (r) => r.parties?.name || (isS ? (r.walkin_customer_name || 'زبون نقدي') : (r.walkin_supplier_name || 'مورد نقدي'));
+  const userName = (id) => { const u = (state.users || []).find(x => x.id === id); return u ? (u.display_name || u.username) : ''; };
+  if (f.mode === 'detail') {
+    const byId = Object.fromEntries(rows.map(r => [r.id, r]));
+    const L = R.lines.filter(l => byId[l.invoice_id]).sort((a, b) => sortIdx(byId[a.invoice_id]) - sortIdx(byId[b.invoice_id]));
+    function sortIdx(r) { return rows.indexOf(r); }
+    const head = ['مسلسل','رقم السند','التاريخ', isS ? 'اسم العميل' : 'اسم المورد','رقم الصنف','اسم الصنف','الكمية', isS ? 'السعر' : 'التكلفة','المجموع','ض%','الضريبة','المجموع/ض'];
+    let tq = 0, ts = 0, tt = 0, tg = 0;
+    const body = L.map((l, i) => { const r = byId[l.invoice_id]; const it = state.items.find(x => x.id === l.item_id) || {};
+      const price = isS ? l.unit_price : l.unit_cost; const sub = Number(l.line_total ?? (l.quantity * price)); const tx = Number(l.tax_amount ?? 0);
+      tq += Number(l.quantity || 0); ts += sub; tt += tx; tg += sub + tx;
+      return [i + 1, r.invoice_number, r.invoice_date, partyName(r), it.sku || '', it.name || '', roundQty(l.quantity), fmt(price), fmt(sub), Number(l.tax_percent || 0), fmt(tx), fmt(sub + tx)]; });
+    const foot = ['', '', '', 'مجموع الكشف', '', '', roundQty(tq), '', fmt(ts), '', fmt(tt), fmt(tg)];
+    return { head, body, foot, numCols: [6,7,8,9,10,11] };
+  }
+  const cols = INV_STMT_COLS[S.kind].filter(c => S.cols.includes(c[0]) && c[0] !== 'payCols');
+  // أعمدة طرق الدفع (مثل: الصندوق، مدى، الشبكة) حسب ما ورد بالفواتير
+  const payOf = (r) => { const out = {}; const ps = Array.isArray(r.payment_details) && r.payment_details.length ? r.payment_details : (Number(r.paid_amount) > 0 ? [{ method: r.payment_method || 'نقدي', amount: r.paid_amount }] : []); ps.forEach(p => { const m = p.method || 'نقدي'; out[m] = (out[m] || 0) + Number(p.amount || 0); }); return out; };
+  const payMethods = S.cols.includes('payCols') ? [...new Set(rows.flatMap(r => Object.keys(payOf(r))))] : [];
+  const val = (c, r, i) => {
+    const sub = Number(r.subtotal ?? 0), disc = Number(r.discount || 0), tax = Number(r.tax_total ?? (Number(r.total || 0) - (sub - disc))), tot = Number(r.total || 0), paid = Number(r.paid_amount || 0);
+    switch (c) {
+      case 'serial': return i + 1; case 'number': return r.invoice_number || ''; case 'supplierRef': return r.supplier_ref || '';
+      case 'type': return r.invoice_type || ''; case 'date': return r.invoice_date || ''; case 'time': return r.created_at ? new Date(r.created_at).toTimeString().slice(0, 5) : '';
+      case 'partyCode': return r.parties?.account_code || r.parties?.code || ''; case 'partyName': return partyName(r);
+      case 'repCode': { const rp = (state.salesReps || []).find(x => x.id === r.sales_rep_id); return rp?.code || ''; }
+      case 'repName': { const rp = (state.salesReps || []).find(x => x.id === r.sales_rep_id); return rp?.name || ''; }
+      case 'mobile': return r.customer_mobile || r.parties?.mobile || r.parties?.phone || '';
+      case 'taxNo': return r.parties?.tax_number || r.walkin_customer_tax_number || '';
+      case 'subtotal': return fmt(sub); case 'discount': return fmt(disc); case 'net': return fmt(sub - disc); case 'tax': return fmt(tax);
+      case 'total': return fmt(tot); case 'paid': return fmt(paid); case 'due': return fmt(Math.max(0, tot - paid));
+      case 'user': return userName(r.created_by); case 'status': return r.approved ? 'معتمدة' : 'مسودة'; case 'notes': return r.notes || '';
+    }
+    return '';
+  };
+  const numKeys = new Set(['subtotal','discount','net','tax','total','paid','due']);
+  const head = [...cols.map(c => c[1]), ...payMethods];
+  const body = rows.map((r, i) => { const pm = payOf(r); return [...cols.map(c => val(c[0], r, i)), ...payMethods.map(m => pm[m] ? fmt(pm[m]) : '')]; });
+  const sumKey = (k) => rows.reduce((a, r) => { const sub = Number(r.subtotal ?? 0), disc = Number(r.discount || 0), tot = Number(r.total || 0), paid = Number(r.paid_amount || 0);
+    return a + ({ subtotal: sub, discount: disc, net: sub - disc, tax: Number(r.tax_total ?? (tot - (sub - disc))), total: tot, paid, due: Math.max(0, tot - paid) })[k]; }, 0);
+  const labelKey = ['partyName','date','number','serial'].find(k => cols.some(c => c[0] === k));
+  const foot = [...cols.map(c => numKeys.has(c[0]) ? fmt(sumKey(c[0])) : (c[0] === labelKey ? 'مجموع الكشف' : '')),
+                ...payMethods.map(m => fmt(rows.reduce((a, r) => a + (payOf(r)[m] || 0), 0)))];
+  const numCols = [...cols.map((c, i) => numKeys.has(c[0]) ? i : -1).filter(i => i >= 0), ...payMethods.map((_, j) => cols.length + j)];
+  return { head, body, foot, numCols };
+}
+function invStmtPaperHtml() {
+  const S = state.invStmt, f = S.f, c = state.company || {};
+  const T = invStmtTable();
+  const title = (S.kind === 'sales' ? 'كشف فواتير المبيعات' : 'كشف فواتير المشتريات') + (f.mode === 'detail' ? ' — تفصيلي للأصناف' : '');
+  const cell = (v, i, isHead) => `<${isHead ? 'th' : 'td'} style="border:1px solid #333;padding:4px 5px;${T.numCols.includes(i) && !isHead ? 'text-align:left;direction:ltr;font-family:Tahoma,monospace;' : ''}${isHead ? 'background:#FFF3A0;font-weight:700;' : ''}white-space:${isHead ? 'normal' : 'nowrap'};">${escapeHtml(String(v ?? ''))}</${isHead ? 'th' : 'td'}>`;
+  return `
+  <div id="invstmt-paper" style="background:#fff;color:#000;font-family:Tahoma,'IBM Plex Sans Arabic',sans-serif;padding:22px 26px;width:1060px;">
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;border-bottom:2px solid #000;padding-bottom:8px;">
+      <div style="text-align:right;font-size:13px;line-height:1.6;"><b style="font-size:16px;">${escapeHtml(c.name_ar || '')}</b><br>${escapeHtml(c.tagline_ar || '')}${c.iban ? '<br>الآيبان: ' + escapeHtml(c.iban) : ''}</div>
+      <div>${c.logo_url ? `<img src="${escapeHtml(c.logo_url)}" style="max-height:64px;max-width:140px;">` : ''}</div>
+      <div style="text-align:left;direction:ltr;font-size:13px;line-height:1.6;"><b style="font-size:16px;">${escapeHtml(c.name_en || '')}</b><br>${c.tax_number ? 'VAT : ' + escapeHtml(c.tax_number) : ''}${c.email ? '<br>' + escapeHtml(c.email) : ''}</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11.5px;margin:6px 0;"><span>التاريخ: <bdi dir="ltr">${new Date().toLocaleString('en-GB')}</bdi></span><span>عدد الفواتير: ${S.result.rows.length}</span></div>
+    <div style="text-align:center;font-weight:800;font-size:15px;margin:4px 0 8px;text-decoration:underline;">${title}</div>
+    <div style="display:flex;justify-content:space-around;font-size:12.5px;font-weight:700;margin-bottom:8px;"><span>من تاريخ: <bdi dir="ltr">${escapeHtml(f.from)}</bdi></span><span>إلى: <bdi dir="ltr">${escapeHtml(f.to)}</bdi></span></div>
+    <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+      <thead><tr>${T.head.map((h, i) => cell(h, i, true)).join('')}</tr></thead>
+      <tbody>${T.body.map((r, ri) => `<tr style="background:${ri % 2 ? '#F2F2F2' : '#fff'};">${r.map((v, i) => cell(v, i)).join('')}</tr>`).join('') || `<tr><td colspan="${T.head.length}" style="padding:18px;text-align:center;border:1px solid #333;">لا توجد فواتير مطابقة</td></tr>`}</tbody>
+      ${T.body.length ? `<tfoot><tr>${T.foot.map((v, i) => `<td style="border:1px solid #333;padding:5px;background:#FFF3A0;font-weight:800;${T.numCols.includes(i) ? 'text-align:left;direction:ltr;font-family:Tahoma,monospace;' : ''}">${escapeHtml(String(v ?? ''))}</td>`).join('')}</tr></tfoot>` : ''}
+    </table>
+  </div>`;
+}
+function renderInvStmt() {
+  const S = state.invStmt, f = S.f, isS = S.kind === 'sales';
+  const parties = state.parties.filter(p => p.party_type === (isS ? 'customer' : 'supplier'));
+  const opt = (v, cur, l) => `<option value="${escapeHtml(v)}" ${String(cur) === String(v) ? 'selected' : ''}>${escapeHtml(l ?? v)}</option>`;
+  const lbl = 'font-size:12.5px;font-weight:700;white-space:nowrap;';
+  if (S.view && S.result) {
+    return `
+    <div id="invstmt-overlay" style="position:fixed;inset:0;background:#8A8A8A;z-index:46;display:flex;flex-direction:column;">
+      <div class="win-title" style="flex:none;"><span>${isS ? 'كشف فواتير المبيعات' : 'كشف فواتير المشتريات'}</span><button data-is-act="back" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="flex:1;overflow:auto;padding:16px;display:flex;justify-content:center;"><div style="box-shadow:0 6px 24px rgba(0,0,0,.35);">${invStmtPaperHtml()}</div></div>
+      <div class="sx-win" style="flex:none;display:flex;gap:4px;justify-content:center;padding:8px;border-top:1px solid #999;">
+        <button data-is-act="print" class="sx-btn"><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+        <button data-is-act="pdf" class="sx-btn"><i class="ti ti-file-type-pdf" style="color:#D9534F;"></i>PDF</button>
+        <button data-is-act="excel" class="sx-btn"><i class="ti ti-file-spreadsheet" style="color:#1D7A45;"></i>Excel</button>
+        <button data-is-act="wa" class="sx-btn"><i class="ti ti-brand-whatsapp" style="color:#25D366;"></i>واتساب</button>
+        <button data-is-act="back" class="sx-btn"><i class="ti ti-adjustments" style="color:#5F5E5A;"></i>تجهيز</button>
+        <button data-is-act="close" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
+      </div>
+      ${sxStyles()}
+    </div>`;
+  }
+  const colsList = INV_STMT_COLS[S.kind];
+  return `
+  <div id="invstmt-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:12px;z-index:46;">
+    ${sxStyles()}
+    <div class="sx-win" style="width:100%;max-width:700px;max-height:96vh;overflow:auto;border:1px solid #1B3352;border-radius:6px;box-shadow:0 16px 44px rgba(0,0,0,.35);position:relative;" onclick="event.stopPropagation()">
+      <div class="win-title"><span>${isS ? 'كشف فواتير المبيعات' : 'كشف فواتير المشتريات'}</span><button data-is-act="close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:12px 14px;">
+        <div style="display:grid;grid-template-columns:1fr 92px;gap:10px;">
+          <div style="display:grid;grid-template-columns:100px 1fr 80px 1.1fr;gap:6px 8px;align-items:center;">
+            <label style="${lbl}">نوع السند</label><select data-isf="docType" class="sx-in">${['الكل','نقدي','آجل'].map(v => opt(v, f.docType)).join('')}</select>
+            <label style="${lbl}">الحالة</label><select data-isf="status" class="sx-in">${['الكل','معتمدة','مسودة'].map(v => opt(v, f.status)).join('')}</select>
+            <label style="${lbl}">${isS ? 'العميل' : 'المورد'}</label><select data-isf="partyId" class="sx-in" style="grid-column:2 / span 3;"><option value="">الكل</option>${parties.map(p => opt(p.id, f.partyId, (p.account_code || p.code ? (p.account_code || p.code) + ' — ' : '') + p.name)).join('')}</select>
+            ${isS ? `<label style="${lbl}">المندوب</label><select data-isf="repId" class="sx-in" style="grid-column:2 / span 3;"><option value="">الكل</option>${(state.salesReps || []).map(r => opt(r.id, f.repId, (r.code ? r.code + ' — ' : '') + r.name)).join('')}</select>` : ''}
+            <label style="${lbl}">المستخدمين</label><select data-isf="userId" class="sx-in"><option value="">الجميع</option>${(state.users || []).map(u => opt(u.id, f.userId, u.display_name || u.username)).join('')}</select>
+            <label style="${lbl}">ترتيب حسب</label><select data-isf="sortBy" class="sx-in">${[['date','تاريخ السند'],['number','رقم السند'],['party', isS ? 'اسم العميل' : 'اسم المورد'],['total','الإجمالي']].map(([v, l]) => opt(v, f.sortBy, l)).join('')}</select>
+            <label style="${lbl}">تصنيف الفاتورة</label><select data-isf="taxClass" class="sx-in">${['الكل','ضريبية','بدون ضريبة'].map(v => opt(v, f.taxClass, v === 'الكل' ? 'الجميع' : v)).join('')}</select>
+            <label style="grid-column:3 / span 2;font-size:12px;display:flex;align-items:center;gap:6px;"><input type="checkbox" data-isf="noJournal" ${f.noJournal ? 'checked' : ''}> إظهار التي ليس لها قيود محاسبية فقط</label>
+          </div>
+          <button data-is-act="options" class="sx-btn" style="width:84px;height:62px;align-self:start;"><i class="ti ti-settings" style="color:#2C4A6E;"></i>خيارات</button>
+        </div>
+
+        <fieldset style="border:1px solid #9AA8A0;border-radius:10px;margin:12px 0 8px;padding:8px 12px;">
+          <div style="display:flex;gap:22px;font-size:12.5px;font-weight:700;margin-bottom:8px;">
+            <label><input type="radio" name="is-mode" value="total" ${f.mode === 'total' ? 'checked' : ''}> إجمالي</label>
+            <label><input type="radio" name="is-mode" value="detail" ${f.mode === 'detail' ? 'checked' : ''}> تفصيلي للأصناف</label>
+          </div>
+          <div style="display:grid;grid-template-columns:80px 1fr;gap:6px 8px;align-items:center;">
+            <label style="${lbl}">الصنف</label><select data-isf="itemId" class="sx-in"><option value="">كل الأصناف</option>${state.items.slice(0, 3000).map(it => opt(it.id, f.itemId, (it.sku || '') + ' — ' + it.name)).join('')}</select>
+            <label style="${lbl}">نسبة الضريبة</label>
+            <div style="display:flex;gap:14px;align-items:center;font-size:12.5px;">
+              <label><input type="radio" name="is-taxmode" value="all" ${f.taxRateMode === 'all' ? 'checked' : ''}> الكل</label>
+              <label><input type="radio" name="is-taxmode" value="eq" ${f.taxRateMode === 'eq' ? 'checked' : ''}> نسبة الضريبة =</label>
+              <input data-isf="taxRate" class="sx-in mono" style="width:70px;text-align:center;" value="${escapeHtml(f.taxRate)}">
+            </div>
+          </div>
+        </fieldset>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <fieldset style="border:1px solid #9AA8A0;border-radius:6px;padding:8px 12px;">
+            <legend style="font-size:12.5px;font-weight:700;color:#1B6E4A;">الفترة المطلوبة</legend>
+            <div style="display:flex;gap:12px;font-size:12.5px;margin-bottom:8px;flex-wrap:wrap;">
+              ${[['today','اليوم'],['week','الأسبوع'],['month','الشهر'],['range','الفترة']].map(([v, l]) => `<label><input type="radio" name="is-period" value="${v}" ${f.period === v ? 'checked' : ''}> ${l}</label>`).join('')}
+            </div>
+            <div style="display:grid;grid-template-columns:62px 1fr;gap:6px 8px;align-items:center;">
+              <label style="${lbl}">من تاريخ</label><input type="date" data-isf="from" class="sx-in mono" value="${escapeHtml(f.from)}" ${f.period !== 'range' ? 'disabled' : ''}>
+              <label style="${lbl}">إلى تاريخ</label><input type="date" data-isf="to" class="sx-in mono" value="${escapeHtml(f.to)}" ${f.period !== 'range' ? 'disabled' : ''}>
+              <label style="${lbl}">من سند</label><div style="display:flex;gap:6px;align-items:center;"><input data-isf="numFrom" class="sx-in mono" value="${escapeHtml(f.numFrom)}"><span style="${lbl}">إلى</span><input data-isf="numTo" class="sx-in mono" value="${escapeHtml(f.numTo)}"></div>
+            </div>
+          </fieldset>
+          <div style="display:grid;grid-template-columns:80px 1fr;gap:6px 8px;align-items:center;align-content:start;">
+            ${isS ? `<label style="${lbl}">رقم الجوال</label><input data-isf="mobile" class="sx-in mono" dir="ltr" value="${escapeHtml(f.mobile)}">` : ''}
+            <label style="${lbl}">من الوقت</label><input type="time" data-isf="timeFrom" class="sx-in mono" value="${escapeHtml(f.timeFrom)}">
+            <label style="${lbl}">إلى الوقت</label><input type="time" data-isf="timeTo" class="sx-in mono" value="${escapeHtml(f.timeTo)}">
+          </div>
+        </div>
+
+        <div style="display:flex;gap:4px;justify-content:center;margin-top:14px;">
+          <button data-is-act="show" class="sx-btn" ${S.loading ? 'disabled' : ''}><i class="ti ti-zoom-in" style="color:#1B5FA8;"></i>${S.loading ? '...' : 'عرض'}</button>
+          <button data-is-act="showprint" class="sx-btn" ${S.loading ? 'disabled' : ''}><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+          <button data-is-act="close" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
+        </div>
+      </div>
+
+      ${S.showOptions ? `
+      <div style="position:absolute;top:118px;left:14px;width:230px;background:#ECE9D8;border:1px solid #7F7F7F;box-shadow:0 10px 26px rgba(0,0,0,.35);padding:8px;z-index:3;" onclick="event.stopPropagation()">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;">الأعمدة الظاهرة بالكشف</div>
+        <div style="background:#fff;border:1px solid #999;max-height:260px;overflow:auto;padding:4px 6px;">
+          ${colsList.map(([k, l]) => `<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;"><input type="checkbox" data-iscol="${k}" ${S.cols.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <button data-is-act="colsall" class="sx-in" style="cursor:pointer;width:auto;flex:1;">اختيار الكل</button>
+          <button data-is-act="colsok" class="sx-in" style="cursor:pointer;width:auto;flex:1;font-weight:700;">موافق</button>
+        </div>
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+async function invStmtPdfBlob() {
+  const el = document.getElementById('invstmt-paper');
+  const png = await window.htmlToImage.toBlob(el, { pixelRatio: 2, backgroundColor: '#ffffff', width: el.scrollWidth, height: el.scrollHeight });
+  return pngBlobToPdf(png);
+}
+function bindInvStmt() {
+  const S = state.invStmt; if (!S) return;
+  const f = S.f;
+  document.querySelectorAll('[data-isf]').forEach(el => {
+    const k = el.dataset.isf;
+    const read = () => { f[k] = el.type === 'checkbox' ? el.checked : el.value; };
+    el.onchange = read; if (el.tagName === 'INPUT' && el.type !== 'checkbox') el.oninput = read;
+  });
+  document.querySelectorAll('input[name="is-mode"]').forEach(r => { r.onchange = () => { f.mode = r.value; }; });
+  document.querySelectorAll('input[name="is-taxmode"]').forEach(r => { r.onchange = () => { f.taxRateMode = r.value; }; });
+  document.querySelectorAll('input[name="is-period"]').forEach(r => { r.onchange = () => { f.period = r.value; const p = invStmtPeriod(r.value); if (p) { f.from = p[0]; f.to = p[1]; } render(); }; });
+  document.querySelectorAll('[data-iscol]').forEach(cb => { cb.onchange = () => { const k = cb.dataset.iscol; S.cols = cb.checked ? [...new Set([...S.cols, k])] : S.cols.filter(x => x !== k); }; });
+  const saveCols = () => { try { localStorage.setItem('invStmtCols_' + S.kind, JSON.stringify(S.cols)); } catch (e) {} };
+  const ov = document.getElementById('invstmt-overlay'); if (ov && !S.view) ov.onclick = () => { state.invStmt = null; render(); };
+  document.querySelectorAll('[data-is-act]').forEach(b => { b.onclick = async (ev) => {
+    ev.stopPropagation();
+    const a = b.dataset.isAct;
+    if (a === 'close') { state.invStmt = null; render(); return; }
+    if (a === 'options') { S.showOptions = !S.showOptions; render(); return; }
+    if (a === 'colsall') { S.cols = INV_STMT_COLS[S.kind].map(c => c[0]); render(); return; }
+    if (a === 'colsok') { S.showOptions = false; saveCols(); render(); return; }
+    if (a === 'back') { S.view = false; render(); return; }
+    if (a === 'show' || a === 'showprint') {
+      if (f.period === 'range' && (!f.from || !f.to || f.from > f.to)) { showToast('حدد الفترة صحيحة', 'error'); return; }
+      S.showOptions = false; saveCols();
+      await runInvStmt();
+      if (a === 'showprint') setTimeout(() => document.querySelector('[data-is-act="print"]')?.click(), 300);
+      return;
+    }
+    if (a === 'print') {
+      const w = window.open('', '_blank'); if (!w) return;
+      w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><title>${escapeHtml(S.kind === 'sales' ? 'كشف فواتير المبيعات' : 'كشف فواتير المشتريات')}</title><style>@page{size:A4 landscape;margin:8mm} body{margin:0}</style></head><body>${invStmtPaperHtml().replace('width:1060px;', 'width:auto;')}<script>window.onload=()=>window.print();<\/script></body></html>`);
+      w.document.close(); return;
+    }
+    if (a === 'excel') {
+      const T = invStmtTable();
+      exportFormattedAccountingSheet((S.kind === 'sales' ? 'كشف_فواتير_المبيعات_' : 'كشف_فواتير_المشتريات_') + f.from + '_' + f.to, 'الكشف', T.head, [...T.body, T.foot]);
+      return;
+    }
+    if (a === 'pdf' || a === 'wa') {
+      showToast('جاري تجهيز ملف PDF...');
+      try {
+        const blob = await invStmtPdfBlob();
+        const name = (S.kind === 'sales' ? 'كشف_فواتير_المبيعات_' : 'كشف_فواتير_المشتريات_') + f.from + '_' + f.to + '.pdf';
+        const file = new File([blob], name, { type: 'application/pdf' });
+        if (a === 'wa' && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+        const url = URL.createObjectURL(blob); const l = document.createElement('a'); l.href = url; l.download = name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(url), 3000);
+        if (a === 'wa') showToast('تم تحميل الملف — أرفقه في واتساب من التنزيلات 📎');
+      } catch (e) { showToast('تعذّر إنشاء PDF: ' + (e.message || e), 'error'); }
+    }
+  }; });
 }
 
 function homeShortcut(icon, label, target) {
@@ -12520,6 +12839,8 @@ function bindAppEvents() {
       ev.stopPropagation();
       state.openDropdown = null;
       const target = btn.dataset.submenuTarget || btn.dataset.submenu;
+      if (target === '__report_sales_invoices__') { openInvStmt('sales'); return; }
+      if (target === '__purchases_report__') { openInvStmt('purchase'); return; }
       if (target === '__statement__') {
         await loadParties();
         state.showStatement = true;
@@ -19124,7 +19445,7 @@ function handleGlobalShortcuts(ev) {
 
   // Esc يشتغل حتى أثناء الكتابة — يقفل أي نافذة مفتوحة
   if (ev.key === 'Escape') {
-    const openModals = ['showShift','showWaChooser','showOwnerDash','showWalkinPicker','showSalesPayDialog','showSalesForm','showPurchaseForm','showQuoteForm','showSalesReturnForm','showPurchaseReturnForm',
+    const openModals = ['invStmtClose','showShift','showWaChooser','showOwnerDash','showWalkinPicker','showSalesPayDialog','showSalesForm','showPurchaseForm','showQuoteForm','showSalesReturnForm','showPurchaseReturnForm',
       'showReceiptVoucherForm','showPaymentVoucherForm','showSettlementVoucher','showCashDisbursement','showPartyForm',
       'showItemForm','showGlobalSearch','showQuickOpen','showDueReminders','showPerformanceReport','showSupplierPriceCompare',
       'showAccountStatement','showStatement','showAgingReport','showFiscalLock','showPaymentMethodsSettings','showAccountMapping'];
