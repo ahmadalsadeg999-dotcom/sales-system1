@@ -10384,6 +10384,128 @@ function emptyCrmForm() {
   return { name:'', phone:'', city:'', netlify_url:'', supabase_url:'', subscription_start:'', subscription_end:'', status:'نشط', notes:'' };
 }
 
+
+// =====================================================================
+// توليد السيريال داخل لوحة المصمم
+// المفتاح السرّي غير موجود بالبرنامج إطلاقاً: المصمم يختار ملف coinsoft.key من جهازه/الفلاش،
+// يُقرأ بالذاكرة فقط (متغيّر داخلي) ويختفي عند إغلاق الصفحة أو الضغط على «إزالة المفتاح».
+// =====================================================================
+let __serialSignKey = null;
+function serialGenDefaults() {
+  if (!state.serialGen) {
+    const d = new Date(); d.setFullYear(d.getFullYear() + 1);
+    state.serialGen = { client: state.company?.name_ar || '', project: currentProjectRef(), expiry: d.toISOString().slice(0, 10), users: '0', trial: false, note: '', serial: '', msg: '', keyName: '' };
+  }
+  return state.serialGen;
+}
+function renderSerialGenTab() {
+  const g = serialGenDefaults();
+  const loaded = !!__serialSignKey;
+  const chips = [['trial', '🧪 تجريبي 14 يوم'], ['1', 'شهر'], ['3', '3 أشهر'], ['6', '6 أشهر'], ['12', 'سنة'], ['24', 'سنتين']];
+  return `
+  <div style="display:grid;gap:12px;">
+    <div style="border:1px solid ${loaded ? '#0F6E56' : '#BA7517'};background:${loaded ? '#E8F4EF' : '#FDF6E8'};border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <i class="ti ${loaded ? 'ti-key' : 'ti-lock'}" style="font-size:22px;color:${loaded ? '#0F6E56' : '#BA7517'};"></i>
+      <div style="flex:1;min-width:220px;font-size:12.5px;line-height:1.7;">
+        ${loaded ? `<b style="color:#0F6E56;">✓ ملف المفتاح محمّل</b> (${escapeHtml(g.keyName)}) — بالذاكرة فقط، ويختفي عند إغلاق الصفحة`
+                 : `<b>اختر ملف المفتاح <span class="mono">coinsoft.key</span></b> من الفلاش لتفعيل التوليد. الملف لا يُرفع ولا يُحفظ في أي مكان.`}
+      </div>
+      ${loaded ? `<button id="sg-unload" class="btn" style="padding:6px 12px;">إزالة المفتاح</button>`
+               : `<label class="btn primary" style="padding:6px 14px;cursor:pointer;">اختيار الملف<input id="sg-keyfile" type="file" accept=".key,.json,.txt" style="display:none;" /></label>`}
+    </div>
+    <fieldset ${loaded ? '' : 'disabled'} style="border:1px solid #DEDACB;border-radius:8px;padding:12px;margin:0;opacity:${loaded ? 1 : .55};">
+      <div style="display:grid;grid-template-columns:130px 1fr;gap:8px 10px;align-items:center;">
+        <label style="font-size:12.5px;font-weight:700;">اسم العميل</label><input id="sg-client" class="input" value="${escapeHtml(g.client)}" />
+        <label style="font-size:12.5px;font-weight:700;">رابط المشروع / ID</label>
+        <div style="display:flex;gap:6px;"><input id="sg-project" class="input mono" dir="ltr" value="${escapeHtml(g.project)}" /><button id="sg-this" class="btn" style="white-space:nowrap;padding:4px 10px;" title="هذه النسخة">هذه النسخة</button></div>
+        <label style="font-size:12.5px;font-weight:700;">المدة</label>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;">${chips.map(([k, l]) => `<button type="button" data-sg-period="${k}" class="btn" style="padding:4px 10px;font-size:12px;${k === 'trial' ? 'background:#FFF3C4;' : ''}">${l}</button>`).join('')}</div>
+        <label style="font-size:12.5px;font-weight:700;">تاريخ الانتهاء</label><input id="sg-expiry" type="date" class="input mono" value="${escapeHtml(g.expiry)}" />
+        <label style="font-size:12.5px;font-weight:700;">عدد المستخدمين</label><input id="sg-users" class="input mono" style="max-width:120px;" value="${escapeHtml(g.users)}" title="0 = غير محدود" />
+        <label style="font-size:12.5px;font-weight:700;">نسخة تجريبية</label><label style="font-size:12.5px;display:flex;gap:6px;align-items:center;"><input id="sg-trial" type="checkbox" ${g.trial ? 'checked' : ''} /> يظهر للعميل شريط «نسخة تجريبية»</label>
+        <label style="font-size:12.5px;font-weight:700;">ملاحظة (لك)</label><input id="sg-note" class="input" value="${escapeHtml(g.note)}" placeholder="مثلاً: دفع 1500 — تحويل" />
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button id="sg-generate" class="btn primary" style="padding:8px 18px;"><i class="ti ti-key"></i> إصدار السيريال</button>
+      </div>
+    </fieldset>
+    ${g.serial ? `
+    <div style="border:1px dashed #1B3352;border-radius:8px;padding:12px;background:#F7F5EF;">
+      <div style="font-size:12px;color:#555;margin-bottom:4px;">السيريال:</div>
+      <textarea id="sg-out" class="input mono" dir="ltr" rows="3" readonly style="font-size:11px;">${escapeHtml(g.serial)}</textarea>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+        <button id="sg-copy" class="btn">نسخ السيريال</button>
+        <button id="sg-copymsg" class="btn"><i class="ti ti-brand-whatsapp" style="color:#25D366;"></i> نسخ رسالة للعميل</button>
+        ${g.lastProject === currentProjectRef() ? `<button id="sg-activate" class="btn primary">تفعيل على هذه النسخة الآن</button>` : ''}
+      </div>
+      ${g.msg ? `<div style="font-size:12px;color:#0F6E56;margin-top:6px;">${escapeHtml(g.msg)}</div>` : ''}
+    </div>` : ''}
+  </div>`;
+}
+const _b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+async function loadSerialKeyFile(file) {
+  const txt = await file.text();
+  let j; try { j = JSON.parse(txt); } catch (e) { throw new Error('الملف ليس ملف مفتاح صالح'); }
+  if (!j.d || !j.x || !j.y) throw new Error('الملف لا يحتوي مفتاح توقيع');
+  if (j.x !== LICENSE_PUBLIC_KEY_JWK.x || j.y !== LICENSE_PUBLIC_KEY_JWK.y) throw new Error('هذا المفتاح لا يطابق مفتاح التحقق في البرنامج');
+  __serialSignKey = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', x: j.x, y: j.y, d: j.d }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+}
+async function signLicense(data) {
+  const payload = _b64url(new TextEncoder().encode(JSON.stringify(data)));
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, __serialSignKey, new TextEncoder().encode(payload)));
+  return payload + '.' + _b64url(sig);
+}
+function bindSerialGenTab() {
+  const g = serialGenDefaults(); const $ = id => document.getElementById(id);
+  const read = () => { if (!$('sg-client')) return; g.client = $('sg-client').value; g.project = $('sg-project').value; g.expiry = $('sg-expiry').value; g.users = $('sg-users').value; g.trial = $('sg-trial').checked; g.note = $('sg-note').value; };
+  if ($('sg-keyfile')) $('sg-keyfile').onchange = async (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    try { await loadSerialKeyFile(f); g.keyName = f.name; showToast('✓ تم تحميل المفتاح'); }
+    catch (e) { __serialSignKey = null; showToast(e.message, 'error'); }
+    ev.target.value = ''; render();
+  };
+  if ($('sg-unload')) $('sg-unload').onclick = () => { __serialSignKey = null; g.keyName = ''; render(); };
+  ['sg-client','sg-project','sg-expiry','sg-users','sg-note'].forEach(id => { if ($(id)) $(id).oninput = read; });
+  if ($('sg-trial')) $('sg-trial').onchange = read;
+  if ($('sg-this')) $('sg-this').onclick = () => { read(); g.project = currentProjectRef(); g.client = g.client || state.company?.name_ar || ''; render(); };
+  document.querySelectorAll('[data-sg-period]').forEach(b => { b.onclick = () => {
+    read(); const d = new Date(); const k = b.dataset.sgPeriod;
+    if (k === 'trial') { d.setDate(d.getDate() + 14); g.trial = true; if (!g.note) g.note = 'تجريبي'; } else { d.setMonth(d.getMonth() + Number(k)); g.trial = false; }
+    g.expiry = d.toISOString().slice(0, 10); render();
+  }; });
+  if ($('sg-generate')) $('sg-generate').onclick = async () => {
+    read();
+    if (!__serialSignKey) { showToast('اختر ملف المفتاح أولاً', 'error'); return; }
+    const ref = (() => { const v = String(g.project || '').trim(); try { if (v.includes('://')) return new URL(v).hostname.split('.')[0]; } catch (e) {} return v.split('.')[0]; })();
+    if (!g.client.trim() || !ref || !g.expiry) { showToast('عبّي اسم العميل ورابط المشروع وتاريخ الانتهاء', 'error'); return; }
+    const data = { v: 1, c: g.client.trim(), p: ref, e: g.expiry, u: Math.max(0, parseInt(g.users || '0', 10) || 0), i: new Date().toISOString().slice(0, 10), n: 'L' + Date.now().toString(36).toUpperCase() };
+    if (g.trial) data.t = 1;
+    g.serial = await signLicense(data); g.lastProject = ref; g.msg = '';
+    logActivity('إصدار سيريال', `${data.c} — ${data.e}${g.trial ? ' (تجريبي)' : ''}`);
+    // تسجيل تلقائي في «متابعة العملاء» — فقط لما تصدر لنسخة أخرى (يعني أنت داخل نسختك أنت)،
+    // عشان بيانات عملائك ما تنكتب داخل قاعدة بيانات عميل
+    if (ref !== currentProjectRef()) try {
+      const { data: rows } = await sb.from('crm_clients').select('id, supabase_url, name').ilike('supabase_url', `%${ref}%`);
+      const rec = { subscription_start: data.i, subscription_end: data.e, status: 'نشط' };
+      if (rows && rows.length) await sb.from('crm_clients').update({ ...rec, notes: (g.note ? g.note + ' — ' : '') + 'سيريال ' + data.n }).eq('id', rows[0].id);
+      else await sb.from('crm_clients').insert({ name: data.c, supabase_url: `https://${ref}.supabase.co`, ...rec, notes: (g.note ? g.note + ' — ' : '') + 'سيريال ' + data.n });
+      g.msg = '✓ سُجّل في «متابعة العملاء»';
+    } catch (e) {}
+    render();
+  };
+  if ($('sg-copy')) $('sg-copy').onclick = () => { navigator.clipboard.writeText(g.serial); showToast('✓ تم نسخ السيريال'); };
+  if ($('sg-copymsg')) $('sg-copymsg').onclick = () => {
+    const msg = `السلام عليكم،\n${g.trial ? 'هذا سيريال النسخة التجريبية (14 يوم) من' : 'هذا سيريال تفعيل'} برنامج Coin Soft ERP (كوين سوفت) لـ ${g.client}\nصالح حتى: ${g.expiry}\n\n${g.serial}\n\nطريقة التفعيل: الصق السيريال في شاشة التفعيل، واكتب اسم مستخدم المدير وكلمة المرور، ثم اضغط تفعيل.`;
+    navigator.clipboard.writeText(msg); showToast('✓ تم نسخ الرسالة');
+  };
+  if ($('sg-activate')) $('sg-activate').onclick = async () => {
+    const r = await verifyLicenseSerial(g.serial); if (!r.ok) { showToast(r.reason, 'error'); return; }
+    const { error } = await sb.from('license_settings').update({ serial: g.serial, expiry_date: r.data.e }).eq('id', 1);
+    if (error) { showToast('تعذّر التفعيل: ' + error.message, 'error'); return; }
+    await applyLicenseFromSerial(g.serial); g.msg = '✓ تم تفعيل السيريال على هذه النسخة'; logActivity('تفعيل سيريال', r.data.e); render();
+  };
+}
+
 function renderCrmTabContent() {
   const totalClients = state.crmClients.length;
   const expiringSoon = state.crmClients.filter(c => { const d = crmDaysUntil(c.subscription_end); return d !== null && d >= 0 && d <= 30; }).length;
@@ -10919,11 +11041,11 @@ function renderBulkImportModal() {
 }
 
 function renderDesignerPanelModal() {
-  const tabs = ['عام', 'المحاسبة', 'الاشتراك', 'متابعة العملاء', 'التصفير الكامل'];
+  const tabs = ['عام', 'المحاسبة', 'الاشتراك', 'توليد سيريال', 'متابعة العملاء', 'التصفير الكامل'];
   return `
   <div id="dp-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:30;">
     <div style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:640px;max-height:88vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
-      <div class="win-title"><span>إعدادات متقدمة</span><button id="dp-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div class="win-title"><span>لوحة المصمم</span><button id="dp-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       ${!state.designerUnlocked ? `
       <div style="padding:24px;text-align:center;">
         <i class="ti ti-lock" style="font-size:32px;color:#5F5E5A;"></i>
@@ -10992,6 +11114,7 @@ function renderDesignerPanelModal() {
             <div style="font-size:10.5px;color:#8B8A7A;margin-top:6px;">أي حقل تسيبه فاضي ما يظهر بالبار إطلاقاً</div>
           </div>
         ` : ''}
+        ${state.designerActiveTab === 'توليد سيريال' ? renderSerialGenTab() : ''}
         ${state.designerActiveTab === 'متابعة العملاء' ? renderCrmTabContent() : ''}
         ${state.designerActiveTab === 'التصفير الكامل' ? `
           <div style="border:2px solid #D9534F;border-radius:6px;padding:14px;background:#FCEBEB;">
@@ -16474,6 +16597,7 @@ function bindAppEvents() {
       };
     } else {
 
+    if (state.designerActiveTab === 'توليد سيريال') bindSerialGenTab();
     document.querySelectorAll('[data-dp-tab]').forEach(btn => {
       btn.onclick = async () => {
         state.designerActiveTab = btn.dataset.dpTab;
