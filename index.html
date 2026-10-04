@@ -10484,17 +10484,8 @@ function bindSerialGenTab() {
     g.serial = await signLicense(data); g.lastProject = ref; g.msg = '';
     logActivity('إصدار سيريال', `${data.c} — ${data.e}${g.trial ? ' (تجريبي)' : ''}`);
     // تسجيل تلقائي في «متابعة العملاء» (تحديث العميل لو موجود بنفس الرابط، أو إضافته)
-    try {
-      const { data: rows, error: qErr } = await sb.from('crm_clients').select('id, supabase_url, name').ilike('supabase_url', `%${ref}%`);
-      if (qErr) throw qErr;
-      const rec = { subscription_start: data.i, subscription_end: data.e, status: g.trial ? 'تجريبي' : 'نشط', notes: (g.note ? g.note + ' — ' : '') + 'سيريال ' + data.n };
-      const r = (rows && rows.length)
-        ? await sb.from('crm_clients').update(rec).eq('id', rows[0].id)
-        : await sb.from('crm_clients').insert({ name: data.c, supabase_url: `https://${ref}.supabase.co`, ...rec });
-      if (r.error) throw r.error;
-      if (typeof loadCrmClients === 'function') await loadCrmClients();
-      g.msg = (rows && rows.length) ? '✓ تم تحديث اشتراك العميل في «متابعة العملاء»' : '✓ أُضيف العميل إلى «متابعة العملاء»';
-    } catch (e) { g.msg = '⚠️ لم يُسجَّل في «متابعة العملاء»: ' + (e.message || e); }
+    try { const added = await recordLicenseInCrm(data, data.n, g.note); g.msg = added ? '✓ أُضيف العميل إلى «متابعة العملاء»' : '✓ تم تحديث اشتراك العميل في «متابعة العملاء»'; }
+    catch (e) { g.msg = '⚠️ لم يُسجَّل في «متابعة العملاء»: ' + (e.message || e); }
     render();
   };
   if ($('sg-copy')) $('sg-copy').onclick = () => { navigator.clipboard.writeText(g.serial); showToast('✓ تم نسخ السيريال'); };
@@ -10510,10 +10501,24 @@ function bindSerialGenTab() {
   };
 }
 
+async function recordLicenseInCrm(info, serialNo, note) {
+  const ref = info.p || currentProjectRef();
+  const { data: rows, error: qErr } = await sb.from('crm_clients').select('id').ilike('supabase_url', `%${ref}%`);
+  if (qErr) throw qErr;
+  const rec = { subscription_start: info.i || new Date().toISOString().slice(0, 10), subscription_end: info.e, status: info.t ? 'تجريبي' : 'نشط',
+                notes: (note ? note + ' — ' : '') + 'سيريال ' + (serialNo || info.n || '') + (info.u ? ` — ${info.u} مستخدم` : '') };
+  const r = (rows && rows.length) ? await sb.from('crm_clients').update(rec).eq('id', rows[0].id)
+                                  : await sb.from('crm_clients').insert({ name: info.c, supabase_url: `https://${ref}.supabase.co`, ...rec });
+  if (r.error) throw r.error;
+  await loadCrmClients();
+  return !(rows && rows.length);
+}
 function renderCrmTabContent() {
   const totalClients = state.crmClients.length;
   const expiringSoon = state.crmClients.filter(c => { const d = crmDaysUntil(c.subscription_end); return d !== null && d >= 0 && d <= 30; }).length;
   const expired = state.crmClients.filter(c => { const d = crmDaysUntil(c.subscription_end); return d !== null && d < 0; }).length;
+  const lic = state.licenseInfo;
+  const licMissing = lic && lic.c && !state.crmClients.some(c => (c.supabase_url || '').includes(lic.p || currentProjectRef()));
   let list = state.crmClients;
   if (state.crmSearch.trim()) { const q = state.crmSearch.trim().toLowerCase(); list = list.filter(c => c.name.toLowerCase().includes(q) || (c.city||'').toLowerCase().includes(q)); }
   if (state.crmStatusFilter !== 'الكل') {
@@ -10522,6 +10527,11 @@ function renderCrmTabContent() {
     else list = list.filter(c => c.status === state.crmStatusFilter);
   }
   return `
+    ${licMissing ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#E6F1FB;border:1px solid #2C4A6E;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;">
+      <i class="ti ti-info-circle" style="color:#1B5FA8;font-size:18px;"></i>
+      <span style="flex:1;min-width:200px;">ترخيص هذه النسخة (<b>${escapeHtml(lic.c)}</b> — ينتهي <span class="mono">${escapeHtml(lic.e)}</span>) غير مسجّل في متابعة العملاء.</span>
+      <button id="crm-add-current-lic" class="btn primary" style="padding:5px 12px;font-size:12px;">إضافته الآن</button>
+    </div>` : ''}
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
       <div style="background:#F4F1EA;border-radius:6px;padding:10px;"><div style="font-size:10.5px;color:#5F5E5A;">إجمالي العملاء</div><div style="font-size:17px;font-weight:600;">${totalClients}</div></div>
       <div style="background:#FAEEDA;border-radius:6px;padding:10px;"><div style="font-size:10.5px;color:#5F5E5A;">قاربوا ينتهون</div><div style="font-size:17px;font-weight:600;color:#BA7517;">${expiringSoon}</div></div>
@@ -16615,6 +16625,10 @@ function bindAppEvents() {
     } else {
 
     if (state.designerActiveTab === 'توليد سيريال') bindSerialGenTab();
+    if (document.getElementById('crm-add-current-lic')) document.getElementById('crm-add-current-lic').onclick = async () => {
+      try { await recordLicenseInCrm(state.licenseInfo, state.licenseInfo.n); showToast('✓ أُضيف إلى متابعة العملاء'); } catch (e) { showToast('تعذّر الإضافة: ' + (e.message || e), 'error'); }
+      render();
+    };
     document.querySelectorAll('[data-dp-tab]').forEach(btn => {
       btn.onclick = async () => {
         state.designerActiveTab = btn.dataset.dpTab;
@@ -16792,7 +16806,7 @@ function bindAppEvents() {
         const { error } = await sb.from('license_settings').update(payload).eq('id', 1);
         if (error) { msgEl.textContent = 'خطأ: ' + error.message; msgEl.style.color = '#C0392B'; return; }
         state.licenseContact = newContact;
-        if (serial) { await applyLicenseFromSerial(serial); logActivity('تحديث سيريال الترخيص', state.licenseInfo?.e || ''); }
+        if (serial) { await applyLicenseFromSerial(serial); logActivity('تحديث سيريال الترخيص', state.licenseInfo?.e || ''); try { if (state.licenseInfo) await recordLicenseInCrm(state.licenseInfo, state.licenseInfo.n); } catch (e) {} }
         render();
         msgEl.textContent = serial ? '✓ تم تحديث السيريال بنجاح' : '✓ تم حفظ بيانات التواصل';
         msgEl.style.color = '#0F6E56';
