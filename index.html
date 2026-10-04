@@ -2196,8 +2196,12 @@ async function adminCreateUser(username, password, role, displayName) {
   }
 }
 
+// حساب المصمم (الدعم الفني): مستخدم خاص بصلاحيات كاملة + الترخيص/الاشتراك والتصفير — لا يظهر هذا المستوى لمدير المنشأة
+function isDesigner() {
+  return !!(state.profile && state.profile.is_support && state.profile.active !== false);
+}
 function isAdmin() {
-  return state.profile && state.profile.role === 'admin';
+  return !!(state.profile && (state.profile.role === 'admin' || isDesigner()));
 }
 function canApprove() {
   return isAdmin() || (state.profile && state.profile.can_approve);
@@ -2393,7 +2397,8 @@ const SUBMENUS = {
     { header: 'عمليات المدير', icon: 'ti-shield-lock' },
     { label: 'إعادة فتح مستند معتمد', target: '__reopen_doc__', icon: 'ti-lock-open' },
     { label: 'إقفال السنة المالية', target: '__fiscal_lock__', icon: 'ti-calendar-off' },
-    { label: 'الترخيص والدعم الفني', target: '__designer_panel__', icon: 'ti-key' },
+    { header: 'المصمم', icon: 'ti-tool' },
+    { label: 'لوحة المصمم (الترخيص والاشتراك)', target: '__designer_panel__', icon: 'ti-key' },
   ],
 };
 
@@ -2442,7 +2447,7 @@ function renderApp() {
                   : item.target === '__perm_matrix__' ? isAdmin()
                   : item.target === '__company__' || item.target === '__payment_methods__' || item.target === '__print_settings__' || item.target === '__account_mapping__' ? canManageCompany()
                   : item.target === '__maintenance__' ? canManageBackup()
-                  : item.target === '__designer_panel__' ? isAdmin()
+                  : item.target === '__designer_panel__' ? isDesigner()
                   : item.target === '__fiscal_lock__' ? isAdmin()
                   : item.target === '__reopen_doc__' ? isAdmin()
                   : item.target === '__sys_features__' ? canManageCompany()
@@ -9919,12 +9924,12 @@ function renderUsersModal() {
             <label><input id="add-user-perm-parties" type="checkbox" /> إدارة العملاء والموردين</label>
             <label><input id="add-user-perm-users" type="checkbox" /> إدارة المستخدمين (إضافة/حذف)</label>
           </div>
-          <div style="padding:8px 10px;background:#E6F1FB;border:1px solid #2C4A6E;border-radius:4px;margin-bottom:10px;">
+          ${isDesigner() ? `<div style="padding:8px 10px;background:#E6F1FB;border:1px solid #2C4A6E;border-radius:4px;margin-bottom:10px;">
             <label style="font-size:12px;color:#1B3352;display:flex;align-items:center;gap:6px;">
               <input id="add-user-is-support" type="checkbox" />
               <span><b>حساب دعم فني</b> — يظهر بعلامة واضحة للعميل بقائمة المستخدمين، يستخدمه المطوّر للمساعدة والصيانة</span>
             </label>
-          </div>
+          </div>` : '<input id="add-user-is-support" type="checkbox" style="display:none;" />'}
           <div id="add-user-error" class="err-text" style="margin-bottom:8px;"></div>
           <div style="display:flex;gap:8px;">
             <button id="add-user-cancel-btn" class="btn" style="padding:7px 14px;">إلغاء</button>
@@ -9939,6 +9944,7 @@ function renderUsersModal() {
           </div>
           ${state.users.map((u, i) => `
             <div style="background:${i % 2 ? '#F4F1EA' : '#FFFDF6'};">
+            <fieldset ${u.is_support && !isDesigner() ? 'disabled title="حساب المصمم — لا يمكن تعديله أو حذفه"' : ''} style="border:0;padding:0;margin:0;min-width:0;">
             <div style="display:grid;grid-template-columns:1.2fr 1fr 1.1fr 0.8fr 0.5fr;font-size:12.5px;align-items:center;">
               <div style="padding:5px 8px;">
                 <input data-name-for="${u.id}" class="input" style="padding:4px 6px;font-size:12px;" value="${escapeHtml(u.display_name || u.username)}" />
@@ -9966,6 +9972,7 @@ function renderUsersModal() {
               <label><input type="checkbox" data-perm="can_manage_backup" data-perm-user="${u.id}" ${(u.role==='admin'||u.can_manage_backup)?'checked':''} ${u.role==='admin'?'disabled':''} /> النسخ الاحتياطية والصيانة</label>
               ${u.role==='admin' ? `<span style="color:#A9A48C;">(المدير عنده كل الصلاحيات تلقائياً)</span>` : ''}
             </div>
+            </fieldset>
             </div>`).join('')}
         </div>
 
@@ -13293,7 +13300,7 @@ function bindAppEvents() {
       }
       if ((target === '__company__' || target === '__payment_methods__') && !canManageCompany()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
       if (target === '__maintenance__' && !canManageBackup()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
-      if (target === '__designer_panel__' && !isAdmin()) { showToast('هذا القسم للمدير فقط'); return; }
+      if (target === '__designer_panel__' && !isDesigner()) { showToast('هذا القسم لحساب المصمم فقط'); return; }
       if (target === '__reopen_doc__' && !isAdmin()) { showToast('هذا القسم للمدير فقط'); return; }
       if (target === '__reopen_doc__') {
         state.reopenDocType = 'فاتورة بيع'; state.reopenDocNumber = ''; state.reopenDocError = '';
@@ -19278,7 +19285,7 @@ function bindAppEvents() {
         const canInventoryChk = document.getElementById('add-user-perm-inventory').checked;
         const canPartiesChk = document.getElementById('add-user-perm-parties').checked;
         const canUsersChk = document.getElementById('add-user-perm-users').checked;
-        const isSupportChk = document.getElementById('add-user-is-support').checked;
+        const isSupportChk = isDesigner() && document.getElementById('add-user-is-support').checked;
         // مهم: ما نلتقط عنصر رسالة الخطأ بمتغيّر ثابت — أي render() بمنتصف العملية يعيد بناء الصفحة
         // ويخلّي أي عنصر ملتقط قبلها "ميت" (منفصل عن الصفحة الفعلية)، فرسالة الخطأ ما تظهر أبداً.
         // بدل كذا، نجيب العنصر من جديد بكل مرة نبي نكتب فيها رسالة، عن طريق هذي الدالة المساعدة.
@@ -19297,7 +19304,7 @@ function bindAppEvents() {
           // ننشئ المستخدم عبر دالة خادم (Edge Function) بدل signUp من المتصفح —
           // هذا يتجنّب نهائياً مشكلة تعارض جلسة المدير ومشكلة حد إرسال الإيميلات
           await callUserManagementFunction({
-            action: 'create', username, password, displayName, role,
+            action: 'create', username, password, displayName, role: isSupportChk ? 'admin' : role,
             canApprove: canApproveChk, canCompany: canCompanyChk, canBackup: canBackupChk, isSupport: isSupportChk,
             canHr: canHrChk, canReports: canReportsChk, canInventory: canInventoryChk, canParties: canPartiesChk, canUsers: canUsersChk,
           });
