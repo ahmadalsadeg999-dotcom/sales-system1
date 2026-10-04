@@ -10483,15 +10483,18 @@ function bindSerialGenTab() {
     if (g.trial) data.t = 1;
     g.serial = await signLicense(data); g.lastProject = ref; g.msg = '';
     logActivity('إصدار سيريال', `${data.c} — ${data.e}${g.trial ? ' (تجريبي)' : ''}`);
-    // تسجيل تلقائي في «متابعة العملاء» — فقط لما تصدر لنسخة أخرى (يعني أنت داخل نسختك أنت)،
-    // عشان بيانات عملائك ما تنكتب داخل قاعدة بيانات عميل
-    if (ref !== currentProjectRef()) try {
-      const { data: rows } = await sb.from('crm_clients').select('id, supabase_url, name').ilike('supabase_url', `%${ref}%`);
-      const rec = { subscription_start: data.i, subscription_end: data.e, status: 'نشط' };
-      if (rows && rows.length) await sb.from('crm_clients').update({ ...rec, notes: (g.note ? g.note + ' — ' : '') + 'سيريال ' + data.n }).eq('id', rows[0].id);
-      else await sb.from('crm_clients').insert({ name: data.c, supabase_url: `https://${ref}.supabase.co`, ...rec, notes: (g.note ? g.note + ' — ' : '') + 'سيريال ' + data.n });
-      g.msg = '✓ سُجّل في «متابعة العملاء»';
-    } catch (e) {}
+    // تسجيل تلقائي في «متابعة العملاء» (تحديث العميل لو موجود بنفس الرابط، أو إضافته)
+    try {
+      const { data: rows, error: qErr } = await sb.from('crm_clients').select('id, supabase_url, name').ilike('supabase_url', `%${ref}%`);
+      if (qErr) throw qErr;
+      const rec = { subscription_start: data.i, subscription_end: data.e, status: g.trial ? 'تجريبي' : 'نشط', notes: (g.note ? g.note + ' — ' : '') + 'سيريال ' + data.n };
+      const r = (rows && rows.length)
+        ? await sb.from('crm_clients').update(rec).eq('id', rows[0].id)
+        : await sb.from('crm_clients').insert({ name: data.c, supabase_url: `https://${ref}.supabase.co`, ...rec });
+      if (r.error) throw r.error;
+      if (typeof loadCrmClients === 'function') await loadCrmClients();
+      g.msg = (rows && rows.length) ? '✓ تم تحديث اشتراك العميل في «متابعة العملاء»' : '✓ أُضيف العميل إلى «متابعة العملاء»';
+    } catch (e) { g.msg = '⚠️ لم يُسجَّل في «متابعة العملاء»: ' + (e.message || e); }
     render();
   };
   if ($('sg-copy')) $('sg-copy').onclick = () => { navigator.clipboard.writeText(g.serial); showToast('✓ تم نسخ السيريال'); };
