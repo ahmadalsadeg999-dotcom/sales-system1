@@ -2345,6 +2345,8 @@ const SUBMENUS = {
     { label: 'كشف حساب', target: '__account_statement__' },
     { label: 'ميزان المراجعة', target: '__trial_balance__' },
     { divider: true },
+    { label: 'تطابق الصندوق آخر اليوم', target: '__cash_recon__' },
+    { divider: true },
     { label: 'قائمة الدخل', target: '__income_statement__' },
     { label: 'قائمة المركز المالي (الميزانية)', target: '__balance_sheet__' },
     { divider: true },
@@ -2377,18 +2379,21 @@ const SUBMENUS = {
   'المشتريات': PURCHASES_SUBMENU,
   'المبيعات': SALES_SUBMENU,
   'النظام': [
-    { label: 'المستخدمون والصلاحيات', target: '__users__' },
-    { label: 'مصفوفة الصلاحيات المتقدمة', target: '__perm_matrix__' },
-    { label: 'بيانات الشركة', target: '__company__' },
-    { label: 'إعدادات الطباعة', target: '__print_settings__' },
-    { label: 'إعدادات طرق الدفع', target: '__payment_methods__' },
-    { label: 'إعدادات النظام (أرقام الحسابات والمميزات)', target: '__account_mapping__' },
-    { divider: true },
-    { label: 'نسخة احتياطية وصيانة النظام', target: '__maintenance__' },
-    { label: 'تطابق الصندوق آخر اليوم', target: '__cash_recon__' },
-    { label: 'إعادة فتح مستند معتمد', target: '__reopen_doc__' },
-    { label: 'إعدادات متقدمة', target: '__designer_panel__' },
-    { label: 'إقفال السنة المالية', target: '__fiscal_lock__' },
+    { header: 'إعدادات المنشأة', icon: 'ti-building-store' },
+    { label: 'بيانات الشركة', target: '__company__', icon: 'ti-id' },
+    { label: 'الدولة والضريبة ومميزات النظام', target: '__sys_features__', icon: 'ti-world' },
+    { label: 'طرق الدفع', target: '__payment_methods__', icon: 'ti-credit-card' },
+    { label: 'إعدادات الطباعة', target: '__print_settings__', icon: 'ti-printer' },
+    { label: 'ربط أرقام الحسابات', target: '__account_mapping__', icon: 'ti-sitemap' },
+    { header: 'المستخدمون', icon: 'ti-users' },
+    { label: 'المستخدمون والصلاحيات', target: '__users__', icon: 'ti-user-cog' },
+    { label: 'مصفوفة الصلاحيات المتقدمة', target: '__perm_matrix__', icon: 'ti-table-options' },
+    { header: 'البيانات', icon: 'ti-database' },
+    { label: 'النسخ الاحتياطي والصيانة', target: '__maintenance__', icon: 'ti-cloud-download' },
+    { header: 'عمليات المدير', icon: 'ti-shield-lock' },
+    { label: 'إعادة فتح مستند معتمد', target: '__reopen_doc__', icon: 'ti-lock-open' },
+    { label: 'إقفال السنة المالية', target: '__fiscal_lock__', icon: 'ti-calendar-off' },
+    { label: 'الترخيص والدعم الفني', target: '__designer_panel__', icon: 'ti-key' },
   ],
 };
 
@@ -2439,10 +2444,16 @@ function renderApp() {
                   : item.target === '__maintenance__' ? canManageBackup()
                   : item.target === '__designer_panel__' ? isAdmin()
                   : item.target === '__fiscal_lock__' ? isAdmin()
+                  : item.target === '__reopen_doc__' ? isAdmin()
+                  : item.target === '__sys_features__' ? canManageCompany()
                   : true
-                ) : SUBMENUS[m]).filter(item => item.divider || menuFeatureOk(item.target)).map(item => item.divider
+                ) : SUBMENUS[m]).filter(item => item.divider || item.header || (menuFeatureOk(item.target) && (item.target !== '__cash_recon__' || isAdmin() || canApprove())))
+                  .filter((item, i, arr) => !item.header || (arr[i + 1] && !arr[i + 1].header && !arr[i + 1].divider))
+                  .map(item => item.header
+                ? `<div style="display:flex;align-items:center;gap:6px;padding:8px 14px 4px;font-size:11px;font-weight:700;color:#8B8A7A;letter-spacing:.2px;border-top:1px solid #EEECE4;margin-top:2px;"><i class="ti ${item.icon || 'ti-point'}" style="font-size:13px;"></i>${item.header}</div>`
+                : item.divider
                 ? `<div style="border-top:1px solid #E4E2DA;margin:4px 0;"></div>`
-                : `<button data-submenu="${escapeHtml(item.label)}" data-submenu-target="${item.target || ''}" style="display:block;width:100%;text-align:right;padding:7px 14px;font-size:12.5px;background:none;border:none;cursor:pointer;color:#3A3826;transition:background-color 0.12s ease,color 0.12s ease;" onmouseover="this.style.background='#2C4A6E';this.style.color='#fff';" onmouseout="this.style.background='none';this.style.color='#3A3826';">${item.label}</button>`
+                : `<button data-submenu="${escapeHtml(item.label)}" data-submenu-target="${item.target || ''}" style="display:${item.icon ? 'flex' : 'block'};align-items:center;gap:8px;width:100%;text-align:right;padding:7px ${item.icon ? '22px' : '14px'};font-size:12.5px;background:none;border:none;cursor:pointer;color:#3A3826;transition:background-color 0.12s ease,color 0.12s ease;" onmouseover="this.style.background='#2C4A6E';this.style.color='#fff';" onmouseout="this.style.background='none';this.style.color='#3A3826';">${item.icon ? `<i class="ti ${item.icon}" style="font-size:15px;opacity:.75;"></i>` : ''}${item.label}</button>`
               ).join('')}
             </div>` : ''}
           </div>
@@ -13040,6 +13051,14 @@ function bindAppEvents() {
       state.openDropdown = null;
       const target = btn.dataset.submenuTarget || btn.dataset.submenu;
       if (target === '__report_sales_invoices__') { openInvStmt('sales'); return; }
+      if (target === '__sys_features__' || target === '__account_mapping__') {
+        if (!canManageCompany()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
+        await loadCompany(); await loadChartOfAccounts();
+        state.accountMappingDraft = currentAccountMapping(); state.featuresDraft = currentFeatures();
+        state.sysSettingsTab = target === '__sys_features__' ? 'features' : 'accounts';
+        state.showAccountMapping = true; render(); return;
+      }
+      if (target === '__cash_recon__' && !(isAdmin() || canApprove())) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
       if (target === '__purchases_report__') { openInvStmt('purchase'); return; }
       if (target === '__report_sales_returns__') { openInvStmt('sales_return'); return; }
       if (target === '__report_purchase_returns__') { openInvStmt('purchase_return'); return; }
