@@ -2385,19 +2385,18 @@ const SUBMENUS = {
   'النظام': [
     { header: 'إعدادات المنشأة', icon: 'ti-building-store' },
     { label: 'بيانات الشركة', target: '__company__', icon: 'ti-id' },
-    { label: 'الدولة والضريبة ومميزات النظام', target: '__sys_features__', icon: 'ti-world' },
     { label: 'طرق الدفع', target: '__payment_methods__', icon: 'ti-credit-card' },
     { label: 'إعدادات الطباعة', target: '__print_settings__', icon: 'ti-printer' },
-    { label: 'ربط أرقام الحسابات', target: '__account_mapping__', icon: 'ti-sitemap' },
     { header: 'المستخدمون', icon: 'ti-users' },
     { label: 'المستخدمون والصلاحيات', target: '__users__', icon: 'ti-user-cog' },
     { label: 'مصفوفة الصلاحيات المتقدمة', target: '__perm_matrix__', icon: 'ti-table-options' },
     { header: 'البيانات', icon: 'ti-database' },
     { label: 'النسخ الاحتياطي والصيانة', target: '__maintenance__', icon: 'ti-cloud-download' },
-    { header: 'عمليات المدير', icon: 'ti-shield-lock' },
+    { header: 'مدير النظام', icon: 'ti-shield-lock' },
+    { label: 'الدولة والضريبة ومميزات النظام', target: '__sys_features__', icon: 'ti-world' },
+    { label: 'ربط أرقام الحسابات', target: '__account_mapping__', icon: 'ti-sitemap' },
     { label: 'إعادة فتح مستند معتمد', target: '__reopen_doc__', icon: 'ti-lock-open' },
     { label: 'إقفال السنة المالية', target: '__fiscal_lock__', icon: 'ti-calendar-off' },
-    { header: 'المصمم', icon: 'ti-tool' },
     { label: 'لوحة المصمم (الترخيص والاشتراك)', target: '__designer_panel__', icon: 'ti-key' },
   ],
 };
@@ -2445,12 +2444,13 @@ function renderApp() {
               ${(m==='النظام' ? SUBMENUS[m].filter(item =>
                   item.target === '__users__' ? (isAdmin() || canManageUsers())
                   : item.target === '__perm_matrix__' ? isAdmin()
-                  : item.target === '__company__' || item.target === '__payment_methods__' || item.target === '__print_settings__' || item.target === '__account_mapping__' ? canManageCompany()
+                  : item.target === '__company__' || item.target === '__payment_methods__' || item.target === '__print_settings__' ? canManageCompany()
                   : item.target === '__maintenance__' ? canManageBackup()
                   : item.target === '__designer_panel__' ? isDesigner()
-                  : item.target === '__fiscal_lock__' ? isAdmin()
-                  : item.target === '__reopen_doc__' ? isAdmin()
-                  : item.target === '__sys_features__' ? canManageCompany()
+                  : item.target === '__fiscal_lock__' ? isDesigner()
+                  : item.target === '__reopen_doc__' ? isDesigner()
+                  : item.target === '__sys_features__' ? isDesigner()
+                  : item.target === '__account_mapping__' ? isDesigner()
                   : true
                 ) : SUBMENUS[m]).filter(item => item.divider || item.header || (menuFeatureOk(item.target) && (item.target !== '__cash_recon__' || isAdmin() || canApprove())))
                   .filter((item, i, arr) => !item.header || (arr[i + 1] && !arr[i + 1].header && !arr[i + 1].divider))
@@ -3408,7 +3408,7 @@ function renderPurchaseFormModal() {
             <button id="purchase-prev" type="button" class="sx-btn" ${state.purchases.length===0?'disabled':''}><i class="ti ti-arrow-big-right" style="color:#27AE60;"></i>${t('btn_prev')}</button>
             <button id="purchase-next" type="button" class="sx-btn" ${state.purchases.length===0?'disabled':''}><i class="ti ti-arrow-big-left" style="color:#27AE60;"></i>${t('btn_next')}</button>
             ${(!f.approved && state.editingPurchaseId && (canApprove() || hasPerm('purchase_invoice','can_approve'))) ? `<button id="purchase-approve" type="button" class="sx-btn"><i class="ti ti-lock" style="color:#0F6E56;"></i>ترحيل</button>` : ''}
-            ${(f.approved && state.editingPurchaseId && isAdmin()) ? `<button id="purchase-unlock" type="button" class="sx-btn"><i class="ti ti-lock-open" style="color:#C0392B;"></i>${t('unlock_btn')}</button>` : ''}
+            ${(f.approved && state.editingPurchaseId && isDesigner()) ? `<button id="purchase-unlock" type="button" class="sx-btn"><i class="ti ti-lock-open" style="color:#C0392B;"></i>${t('unlock_btn')}</button>` : ''}
             ${hasPerm('purchase_invoice','can_print') ? `<button id="purchase-pdf" type="button" class="sx-btn" ${!state.editingPurchaseId?'disabled':''}><i class="ti ti-file-type-pdf" style="color:#D9534F;"></i>PDF</button>` : ''}
             <button id="purchase-exit" type="button" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>${t('btn_exit')}</button>
           </div>
@@ -5331,7 +5331,7 @@ function renderSalesFormModal() {
             <button id="sales-prev" type="button" class="sx-btn" ${state.salesInvoices.length===0?'disabled':''}><i class="ti ti-arrow-big-right" style="color:#27AE60;"></i>${t('btn_prev')}</button>
             <button id="sales-next" type="button" class="sx-btn" ${state.salesInvoices.length===0?'disabled':''}><i class="ti ti-arrow-big-left" style="color:#27AE60;"></i>${t('btn_next')}</button>
             ${(!f.approved && state.editingSalesId && (canApprove() || hasPerm('sales_invoice','can_approve'))) ? `<button id="sales-approve" type="button" class="sx-btn"><i class="ti ti-lock" style="color:#0F6E56;"></i>ترحيل</button>` : ''}
-            ${(f.approved && state.editingSalesId && isAdmin()) ? `<button id="sales-unlock" type="button" class="sx-btn"><i class="ti ti-lock-open" style="color:#C0392B;"></i>${t('unlock_btn')}</button>` : ''}
+            ${(f.approved && state.editingSalesId && isDesigner()) ? `<button id="sales-unlock" type="button" class="sx-btn"><i class="ti ti-lock-open" style="color:#C0392B;"></i>${t('unlock_btn')}</button>` : ''}
             ${hasPerm('sales_invoice','can_print') ? `<button id="sales-pdf" type="button" class="sx-btn" ${!state.editingSalesId?'disabled':''}><i class="ti ti-file-type-pdf" style="color:#D9534F;"></i>PDF</button>` : ''}
             <button id="sales-exit" type="button" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>${t('btn_exit')}</button>
           </div>
@@ -7347,7 +7347,7 @@ function renderVoucherFormModal(kind) {
         ${hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_print') ? iconBtn(`${prefix}-pdf`, 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number) : ''}
         ${f.approved ? '' : iconBtn(`${prefix}-save`, 'ti-device-floppy', '#2C4A6E', 'حفظ')}
         ${(!f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && (canApprove() || hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_approve'))) ? iconBtn(`${prefix}-approve`, 'ti-lock', '#0F6E56', 'ترحيل') : ''}
-        ${(f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && isAdmin()) ? iconBtn(`${prefix}-unlock`, 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
+        ${(f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && isDesigner()) ? iconBtn(`${prefix}-unlock`, 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
       </div>
     </div>
   </div>`;
@@ -9364,7 +9364,7 @@ function renderSettlementVoucherModal() {
         ${iconBtn('stv-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), sortedVouchers.length===0)}
         ${!state.editingSettlementVoucherId ? iconBtn('stv-save', 'ti-device-floppy', '#1E5AC0', t('btn_save')) : ''}
         ${(state.editingSettlementVoucherId && !f.approved && (canApprove() || hasPerm('settlement_voucher','can_approve'))) ? iconBtn('stv-approve', 'ti-lock', '#0F6E56', t('btn_approve')) : ''}
-        ${(state.editingSettlementVoucherId && f.approved && isAdmin()) ? iconBtn('stv-unlock', 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
+        ${(state.editingSettlementVoucherId && f.approved && isDesigner()) ? iconBtn('stv-unlock', 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
       </div>
     </div>
   </div>`;
@@ -9911,7 +9911,7 @@ function renderUsersModal() {
             ${partyField('اسم المستخدم *', `<input id="add-user-username" class="input" dir="ltr" placeholder="مثال: sara" />`)}
             ${partyField('الاسم الظاهر', `<input id="add-user-display" class="input" placeholder="سارة أحمد" />`)}
             ${partyField('كلمة المرور *', `<input id="add-user-password" type="password" class="input" dir="ltr" placeholder="6 أحرف على الأقل" />`)}
-            ${partyField('الصلاحية', `<select id="add-user-role" class="input"><option value="staff">موظف</option><option value="accountant">محاسب</option><option value="admin">مدير النظام</option></select>`)}
+            ${partyField('الصلاحية', `<select id="add-user-role" class="input"><option value="staff">موظف</option><option value="accountant">محاسب</option><option value="admin">مدير الشركة</option>${isDesigner() ? '<option value="system">مدير النظام (المصمم)</option>' : ''}</select>`)}
           </div>
           <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:#5F5E5A;margin-bottom:10px;padding-top:4px;border-top:1px dashed #DEDACB;">
             <span style="font-weight:500;">صلاحيات إضافية (اختياري):</span>
@@ -9954,7 +9954,8 @@ function renderUsersModal() {
               <div style="padding:5px 8px;">
                 <select data-role-for="${u.id}" class="input" style="padding:4px 6px;font-size:12px;" ${u.id === state.session.user.id ? 'disabled' : ''}>
                   <option value="staff" ${u.role==='staff'?'selected':''}>موظف</option>
-                  <option value="admin" ${u.role==='admin'?'selected':''}>مدير النظام</option>
+                  <option value="admin" ${u.role==='admin' && !u.is_support?'selected':''}>مدير الشركة</option>
+                  ${(u.is_support || isDesigner()) ? `<option value="system" ${u.is_support?'selected':''}>مدير النظام (المصمم)</option>` : ''}
                   <option value="accountant" ${u.role==='accountant'?'selected':''}>محاسب</option>
                 </select>
               </div>
@@ -13059,7 +13060,7 @@ function bindAppEvents() {
       const target = btn.dataset.submenuTarget || btn.dataset.submenu;
       if (target === '__report_sales_invoices__') { openInvStmt('sales'); return; }
       if (target === '__sys_features__' || target === '__account_mapping__') {
-        if (!canManageCompany()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
+        if (!isDesigner()) { showToast('هذا القسم لمدير النظام (المصمم) فقط'); return; }
         await loadCompany(); await loadChartOfAccounts();
         state.accountMappingDraft = currentAccountMapping(); state.featuresDraft = currentFeatures();
         state.sysSettingsTab = target === '__sys_features__' ? 'features' : 'accounts';
@@ -13301,7 +13302,8 @@ function bindAppEvents() {
       if ((target === '__company__' || target === '__payment_methods__') && !canManageCompany()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
       if (target === '__maintenance__' && !canManageBackup()) { showToast('ما عندك صلاحية الوصول لهذا القسم'); return; }
       if (target === '__designer_panel__' && !isDesigner()) { showToast('هذا القسم لحساب المصمم فقط'); return; }
-      if (target === '__reopen_doc__' && !isAdmin()) { showToast('هذا القسم للمدير فقط'); return; }
+      if (target === '__reopen_doc__' && !isDesigner()) { showToast('هذا القسم لمدير النظام (المصمم) فقط'); return; }
+      if (target === '__fiscal_lock__' && !isDesigner()) { showToast('هذا القسم لمدير النظام (المصمم) فقط'); return; }
       if (target === '__reopen_doc__') {
         state.reopenDocType = 'فاتورة بيع'; state.reopenDocNumber = ''; state.reopenDocError = '';
         state.showReopenDoc = true;
@@ -18262,7 +18264,7 @@ function bindAppEvents() {
       document.getElementById('maint-json-restore-file').onchange = (ev) => {
         const file = ev.target.files[0];
         if (!file) return;
-        if (!isAdmin()) { alert('الاسترجاع التام للمدير فقط'); ev.target.value=''; return; }
+        if (!isDesigner()) { alert('الاسترجاع التام لمدير النظام (المصمم) فقط'); ev.target.value=''; return; }
         const reader = new FileReader();
         reader.onload = async (e) => {
           let backupObj;
@@ -19243,7 +19245,8 @@ function bindAppEvents() {
     document.querySelectorAll('[data-role-for]').forEach(sel => {
       sel.onchange = async () => {
         const u = state.users.find(x => x.id === sel.dataset.roleFor);
-        { const { error: roleErr } = await sb.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.roleFor); if (roleErr) showToast('فشل تحديث الصلاحية', 'error'); }
+        const patch = sel.value === 'system' ? { role: 'admin', is_support: true } : { role: sel.value, ...(isDesigner() && u?.is_support ? { is_support: false } : {}) };
+        { const { error: roleErr } = await sb.from('profiles').update(patch).eq('id', sel.dataset.roleFor); if (roleErr) showToast('فشل تحديث الصلاحية: ' + roleErr.message, 'error'); }
         logActivity('تغيير صلاحية مستخدم', `${u?.username||''} → ${sel.value}`);
         await loadUsers();
         render();
@@ -19285,7 +19288,7 @@ function bindAppEvents() {
         const canInventoryChk = document.getElementById('add-user-perm-inventory').checked;
         const canPartiesChk = document.getElementById('add-user-perm-parties').checked;
         const canUsersChk = document.getElementById('add-user-perm-users').checked;
-        const isSupportChk = isDesigner() && document.getElementById('add-user-is-support').checked;
+        const isSupportChk = isDesigner() && (document.getElementById('add-user-is-support').checked || document.getElementById('add-user-role').value === 'system');
         // مهم: ما نلتقط عنصر رسالة الخطأ بمتغيّر ثابت — أي render() بمنتصف العملية يعيد بناء الصفحة
         // ويخلّي أي عنصر ملتقط قبلها "ميت" (منفصل عن الصفحة الفعلية)، فرسالة الخطأ ما تظهر أبداً.
         // بدل كذا، نجيب العنصر من جديد بكل مرة نبي نكتب فيها رسالة، عن طريق هذي الدالة المساعدة.
@@ -19304,7 +19307,7 @@ function bindAppEvents() {
           // ننشئ المستخدم عبر دالة خادم (Edge Function) بدل signUp من المتصفح —
           // هذا يتجنّب نهائياً مشكلة تعارض جلسة المدير ومشكلة حد إرسال الإيميلات
           await callUserManagementFunction({
-            action: 'create', username, password, displayName, role: isSupportChk ? 'admin' : role,
+            action: 'create', username, password, displayName, role: (isSupportChk || role === 'system') ? 'admin' : role,
             canApprove: canApproveChk, canCompany: canCompanyChk, canBackup: canBackupChk, isSupport: isSupportChk,
             canHr: canHrChk, canReports: canReportsChk, canInventory: canInventoryChk, canParties: canPartiesChk, canUsers: canUsersChk,
           });
