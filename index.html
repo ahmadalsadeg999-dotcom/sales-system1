@@ -4692,6 +4692,22 @@ function bindPurchaseSanmarUI() {
 }
 // ترحيل المردود كعملية واحدة بقاعدة البيانات (نفس دالة post_document لفاتورة البيع)
 // يرجّع true لو تم، false لو فشل (ما تغيّر شيء)، null لو الدالة غير مثبّتة (نكمل بالطريقة القديمة)
+// ترحيل أي مستند كعملية واحدة بقاعدة البيانات (دالة post_document)
+// يرجّع true لو تم، false لو فشل (ما تغيّر شيء)، null لو الدالة غير مثبّتة/قديمة (نكمل بالطريقة القديمة)
+async function postDocAtomic(docTable, docId, { stock = [], parties = [], date, description, sourceType, lines = [] }) {
+  const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+  lines = lines.map(l => ({ ...l, debit: r2(l.debit), credit: r2(l.credit) })).filter(l => l.debit || l.credit);
+  const dd = r2(lines.reduce((a, l) => a + l.debit - l.credit, 0));
+  if (Math.abs(dd) > 0 && Math.abs(dd) < 0.05) { const L = lines.find(l => l.credit > 0); if (L) L.credit = r2(L.credit + dd); }
+  const { error } = await sb.rpc('post_document', { p: { doc_table: docTable, doc_id: docId, stock, parties: parties.filter(x => x.party_id && r2(x.delta)).map(x => ({ ...x, delta: r2(x.delta) })),
+    entry: { date, description, source_type: sourceType, lines } } });
+  if (!error) return true;
+  const m = error.message || '';
+  const missing = error.code === 'PGRST202' || error.code === '42883' || (/post_document/.test(m) && /not find|does not exist|schema cache/i.test(m)) || /نوع مستند غير مسموح/.test(m);
+  if (missing) return null;
+  alert('لم يتم الاعتماد — لم يتغيّر أي شيء:\n\n' + m);
+  return false;
+}
 async function postReturnAtomic(kind, f, t, returnCost) {
   const isS = kind === 'sales';
   const docId = isS ? state.editingSalesReturnId : state.editingPurchaseReturnId;
@@ -14284,6 +14300,34 @@ function bindAppEvents() {
             if (!confirm(`المبلغ المدفوع (${fmt(f.paid_amount)}) أكبر من إجمالي الفاتورة (${fmt(t0.grandTotal)}) — تأكد إنك ما كتبت رقم غلط. متابعة؟`)) return;
           }
           if (!confirm('اعتماد الفاتورة يزيد المخزون تلقائياً ويربط رصيد المورد لو آجل، ولا يمكن التراجع عنه من هنا. متابعة؟')) return;
+          // ① الترحيل الآمن (عملية واحدة: المخزون + متوسط التكلفة + رصيد المورد + القيد + الاعتماد)
+          {
+            const t = calcPurchaseTotals(f);
+            const stock = f.lines.map(l => ({ item_id: l.item_id, warehouse_id: f.warehouse_id || null, delta: Number(l.quantity),
+              cost: Math.round(l.unit_cost * t.rate * 10000) / 10000, price: (feat('purchase_edit_price') && Number(l.sale_price) > 0) ? Number(l.sale_price) : null }));
+            const parties = [];
+            if (f.supplier_id && (f.invoice_type === 'آجل' || t.due !== 0)) parties.push({ party_id: f.supplier_id, delta: t.dueSAR });
+            else if (!f.supplier_id && t.due > 0) showToast(`تنبيه: يوجد مبلغ غير مدفوع ${fmt(t.due)} لمورد غير مسجّل — لن يُحفظ كدين قابل للمتابعة`, 'error');
+            const jLines = [
+              { account_code: acc('inventory'), debit: t.subtotalSAR - t.discount * t.rate, credit: 0, description: 'مخزون - ' + f.invoice_number },
+              { account_code: acc('input_vat'), debit: t.taxTotalSAR, credit: 0, description: 'ضريبة مدخلات' },
+            ];
+            const payLines = (Array.isArray(f.payments) && f.payments.length ? f.payments : (Number(f.paid_amount) > 0 ? [{ method: f.payment_method, amount: Number(f.paid_amount) }] : []))
+              .filter(p => Number(p.amount) > 0)
+              .map(p => ({ account_code: cashOrBankAccount(p.method), debit: 0, credit: Number(p.amount) * t.rate, description: 'مدفوع - ' + (p.method || 'نقدي') + (p.ref ? ' #' + p.ref : '') }));
+            const paidSAR = payLines.reduce((s2, l) => s2 + l.credit, 0);
+            payLines.forEach(l => jLines.push(l));
+            if (f.invoice_type === 'آجل') jLines.push({ account_code: getPartyAccountCode(f.supplier_id, 'supplier'), debit: 0, credit: t.grandTotalSAR - paidSAR, description: 'مستحق للمورد' });
+            else if (t.due > 0) jLines.push({ account_code: getPartyAccountCode(f.supplier_id, 'supplier'), debit: 0, credit: t.dueSAR, description: 'باقي غير مدفوع' });
+            const ok = await postDocAtomic('purchase_invoices', state.editingPurchaseId, { stock, parties, date: f.invoice_date, description: `فاتورة شراء ${f.invoice_number}`, sourceType: 'purchase_invoice', lines: jLines });
+            if (ok === false) return;
+            if (ok === true) {
+              state.purchaseForm.approved = true;
+              logActivity('اعتماد فاتورة شراء', f.invoice_number);
+              await loadParties(); await loadDocJournalNumbers('purchase_invoice', state.editingPurchaseId); await loadItems(); await loadPurchases();
+              showToast('تم اعتماد الفاتورة بنجاح'); render(); return;
+            }
+          }
           const t = calcPurchaseTotals(f);
           const saveWarnings = [];
           const trackedCall = async (promise, label) => { const { error } = await promise; if (error) saveWarnings.push(`${label}: ${error.message}`); };
@@ -16291,6 +16335,16 @@ function bindAppEvents() {
         const f = state.receiptVoucherForm;
         if (!(await checkFiscalPeriodAllowed(f.voucher_date))) return;
         if (!confirm('اعتماد سند القبض ينقص من رصيد العميل المستحق فوراً. متابعة؟')) return;
+        {
+          const ok = await postDocAtomic('receipt_vouchers', state.editingReceiptVoucherId, { parties: [{ party_id: f.customer_id, delta: -Number(f.amount) }],
+            date: f.voucher_date, description: `سند قبض ${f.voucher_number}`, sourceType: 'receipt_voucher', lines: [{ account_code: cashOrBankAccount(f.payment_method), debit: Number(f.amount), credit: 0, description: 'تحصيل من العميل' }, { account_code: getPartyAccountCode(f.customer_id, 'customer'), debit: 0, credit: Number(f.amount), description: 'خصم من مستحق العميل' }] });
+          if (ok === false) return;
+          if (ok === true) {
+            state.receiptVoucherForm.approved = true; logActivity('اعتماد سند قبض', f.voucher_number);
+            await loadDocJournalNumbers('receipt_voucher', state.editingReceiptVoucherId); await loadParties(); await loadReceiptVouchers();
+            showToast('تم اعتماد السند بنجاح'); render(); return;
+          }
+        }
         const customer = state.parties.find(p => p.id === f.customer_id);
         let rvBalErr = null;
         if (customer) { const r = await sb.from('parties').update({ balance: Number(customer.balance||0) - Number(f.amount) }).eq('id', customer.id); rvBalErr = r.error; }
@@ -16406,6 +16460,16 @@ function bindAppEvents() {
         const f = state.paymentVoucherForm;
         if (!(await checkFiscalPeriodAllowed(f.voucher_date))) return;
         if (!confirm('اعتماد سند الصرف ينقص من المستحق للمورد فوراً. متابعة؟')) return;
+        {
+          const ok = await postDocAtomic('payment_vouchers', state.editingPaymentVoucherId, { parties: [{ party_id: f.supplier_id, delta: -Number(f.amount) }],
+            date: f.voucher_date, description: `سند صرف ${f.voucher_number}`, sourceType: 'payment_voucher', lines: [{ account_code: getPartyAccountCode(f.supplier_id, 'supplier'), debit: Number(f.amount), credit: 0, description: 'خصم من مستحق المورد' }, { account_code: cashOrBankAccount(f.payment_method), debit: 0, credit: Number(f.amount), description: 'دفع للمورد' }] });
+          if (ok === false) return;
+          if (ok === true) {
+            state.paymentVoucherForm.approved = true; logActivity('اعتماد سند صرف', f.voucher_number);
+            await loadDocJournalNumbers('payment_voucher', state.editingPaymentVoucherId); await loadParties(); await loadPaymentVouchers();
+            showToast('تم اعتماد السند بنجاح'); render(); return;
+          }
+        }
         const supplier = state.parties.find(p => p.id === f.supplier_id);
         let pvBalErr = null;
         if (supplier) { const r = await sb.from('parties').update({ balance: Number(supplier.balance||0) - Number(f.amount) }).eq('id', supplier.id); pvBalErr = r.error; }
