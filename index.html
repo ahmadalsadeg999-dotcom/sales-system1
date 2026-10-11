@@ -598,6 +598,7 @@ function render() {
     document.querySelectorAll('body > #active-item-bar').forEach(el => el.remove()); // نسخة قديمة أُضيفت مباشرة للصفحة — render يرسم البار من جديد
     root.innerHTML = withBranchQty(renderApp);
     bindAppEvents();
+    try { tickHomeClock(); } catch (e) {}
     attachWindowDragging();
     applyWindowEntranceAnimation();
     applyFeatureVisibility();
@@ -4591,7 +4592,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.11-5';
+const APP_VERSION = '2026.10.11-6';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -4650,7 +4651,11 @@ function renderHomeSection() {
               <div style="font-size:22px;font-weight:700;">${escapeHtml(state.profile?.display_name || state.profile?.username || t('welcome'))}</div>
               <div style="font-size:12px;color:#B8C8DC;margin-top:4px;">${new Date().toLocaleDateString(state.lang==='en'?'en-US':'ar-SA', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</div>
             </div>
-            <div style="margin-top:36px;">
+            <div style="display:flex;gap:12px;margin-top:18px;flex-wrap:wrap;">
+              ${homeClockCard()}
+              ${homeCalendarCard()}
+            </div>
+            <div style="margin-top:22px;">
               <div style="color:#B8C8DC;font-size:12px;font-weight:500;margin-bottom:12px;">${t('quick_shortcuts')}</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 ${(isAdmin() || canViewReports()) ? homeShortcut('ti-device-mobile-analytics', 'لوحة صاحب المحل', '__owner_dash__') : ''}
@@ -12359,6 +12364,86 @@ function homeSpeedCard() {
     </div>`;
 }
 document.addEventListener('click', e => { if (e.target.closest('[data-speed-run]')) runSpeedTest(); });
+
+// =====================================================================
+// الساعة والتقويم (الشاشة الرئيسية) — الساعة تتحدّث كل ثانية بدون إعادة رسم الصفحة
+// =====================================================================
+function homeClockCard() {
+  const ticks = Array.from({ length: 60 }, (_, i) => { const a = i * 6 * Math.PI / 180, big = i % 5 === 0, r1 = big ? 40 : 43, r2 = 46;
+    return `<line x1="${50 + r1 * Math.sin(a)}" y1="${50 - r1 * Math.cos(a)}" x2="${50 + r2 * Math.sin(a)}" y2="${50 - r2 * Math.cos(a)}" stroke="${big ? '#fff' : 'rgba(255,255,255,.35)'}" stroke-width="${big ? 2.2 : 1}" stroke-linecap="round"/>`; }).join('');
+  const nums = [12, 3, 6, 9].map((n, i) => { const a = i * 90 * Math.PI / 180; return `<text x="${50 + 32 * Math.sin(a)}" y="${50 - 32 * Math.cos(a) + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(255,255,255,.85)" font-family="Tahoma">${n}</text>`; }).join('');
+  return `
+    <div style="flex:1;min-width:0;background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.04));border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:12px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);">
+      <svg viewBox="0 0 100 100" style="width:104px;height:104px;flex-shrink:0;filter:drop-shadow(0 4px 10px rgba(0,0,0,.25));">
+        <defs><radialGradient id="clk-face" cx="50%" cy="40%" r="65%"><stop offset="0%" stop-color="#2E5C8A"/><stop offset="100%" stop-color="#132A44"/></radialGradient></defs>
+        <circle cx="50" cy="50" r="48" fill="url(#clk-face)" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/>
+        ${ticks}${nums}
+        <line id="clk-h" x1="50" y1="54" x2="50" y2="27" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+        <line id="clk-m" x1="50" y1="56" x2="50" y2="15" stroke="#E8F0FA" stroke-width="2.6" stroke-linecap="round"/>
+        <line id="clk-s" x1="50" y1="60" x2="50" y2="11" stroke="#FFB020" stroke-width="1.2" stroke-linecap="round"/>
+        <circle cx="50" cy="50" r="3.4" fill="#FFB020" stroke="#fff" stroke-width="1"/>
+      </svg>
+      <div style="flex:1;min-width:0;color:#fff;text-align:center;">
+        <div style="display:flex;align-items:baseline;justify-content:center;gap:4px;" dir="ltr">
+          <span id="clk-digital" style="font-size:30px;font-weight:800;letter-spacing:1px;font-family:'Segoe UI',Tahoma,monospace;">--:--</span>
+          <span id="clk-sec" style="font-size:15px;font-weight:700;color:#FFB020;font-family:monospace;">--</span>
+        </div>
+        <div id="clk-ampm" style="font-size:12.5px;color:#B8C8DC;margin-top:2px;"></div>
+        <div id="clk-day" style="font-size:13px;font-weight:700;margin-top:4px;"></div>
+      </div>
+    </div>`;
+}
+function tickHomeClock() {
+  const h = document.getElementById('clk-h'); if (!h) return;
+  const d = new Date(), hr = d.getHours(), mi = d.getMinutes(), se = d.getSeconds();
+  const rot = (el, deg) => { const e = document.getElementById(el); if (e) e.setAttribute('transform', `rotate(${deg} 50 50)`); };
+  rot('clk-h', (hr % 12) * 30 + mi * 0.5); rot('clk-m', mi * 6 + se * 0.1); rot('clk-s', se * 6);
+  const h12 = hr % 12 || 12;
+  const set = (id, v) => { const e = document.getElementById(id); if (e && e.textContent !== v) e.textContent = v; };
+  set('clk-digital', `${String(h12).padStart(2, '0')}:${String(mi).padStart(2, '0')}`);
+  set('clk-sec', String(se).padStart(2, '0'));
+  set('clk-ampm', hr < 12 ? 'صباحاً' : 'مساءً');
+  set('clk-day', d.toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { weekday: 'long' }));
+}
+if (!window.__clockTimer) window.__clockTimer = setInterval(tickHomeClock, 1000);
+
+function homeCalendarCard() {
+  const off = state.calOffset || 0, now = new Date();
+  const base = new Date(now.getFullYear(), now.getMonth() + off, 1, 12);
+  const y = base.getFullYear(), m = base.getMonth();
+  const first = base.getDay(); // الأحد = 0
+  const days = new Date(y, m + 1, 0).getDate();
+  const isToday = dd => off === 0 && dd === now.getDate();
+  const monthName = base.toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { month: 'long', year: 'numeric' });
+  const hijri = (dt) => { try { return dt.toLocaleDateString('ar-SA-u-ca-islamic-umalqura-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return ''; } };
+  const wd = ['أحد', 'إثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'];
+  const cells = [];
+  for (let i = 0; i < first; i++) cells.push('<div></div>');
+  for (let dd = 1; dd <= days; dd++) {
+    const dow = (first + dd - 1) % 7, weekend = dow === 5 || dow === 6;
+    cells.push(`<div title="${escapeHtml(hijri(new Date(y, m, dd, 12)))}" style="text-align:center;font-size:11.5px;padding:3px 0;border-radius:7px;font-family:monospace;${isToday(dd) ? 'background:#FFB020;color:#132A44;font-weight:800;box-shadow:0 2px 8px rgba(255,176,32,.45);' : weekend ? 'color:#FFC9A8;' : 'color:#EAF1F8;'}">${dd}</div>`);
+  }
+  return `
+    <div id="home-cal" style="flex:1;min-width:0;background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.04));border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:10px 12px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.18);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <button data-cal-nav="-1" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:7px;width:24px;height:24px;cursor:pointer;"><i class="ti ti-chevron-right"></i></button>
+        <div style="text-align:center;cursor:pointer;" data-cal-nav="0" title="الرجوع للشهر الحالي">
+          <div style="font-size:13.5px;font-weight:800;">${escapeHtml(monthName)}</div>
+          <div style="font-size:10.5px;color:#B8C8DC;">${escapeHtml(hijri(off === 0 ? now : base))}</div>
+        </div>
+        <button data-cal-nav="1" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:7px;width:24px;height:24px;cursor:pointer;"><i class="ti ti-chevron-left"></i></button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">
+        ${wd.map((w, i) => `<div style="text-align:center;font-size:9.5px;font-weight:700;color:${i >= 5 ? '#FFC9A8' : '#B8C8DC'};padding-bottom:2px;">${w}</div>`).join('')}
+        ${cells.join('')}
+      </div>
+    </div>`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-cal-nav]'); if (!b) return;
+  const v = Number(b.dataset.calNav); state.calOffset = v === 0 ? 0 : (state.calOffset || 0) + v;
+  const el = document.getElementById('home-cal'); if (el) el.outerHTML = homeCalendarCard();
+});
 
 async function recordLicenseInCrm(info, serialNo, note, extra) {
   const ref = info.p || currentProjectRef();
