@@ -2115,6 +2115,10 @@ function userBranchId() {
   if (canAllBranches()) return null;
   return state.profile.branch_id || branchOptions()[0]?.id || null;
 }
+// حد الفروع من السيريال (b): السيريال القديم بدونه = فرع واحد (الرئيسي)، 0 = غير محدود
+function branchLimit() { const b = state.licenseInfo ? state.licenseInfo.b : undefined; return b == null ? 1 : Number(b) || 0; }
+function branchesActiveCount(exceptId) { return (state.branches || []).filter(b => b.active !== false && b.id !== exceptId).length; }
+function branchLimitReached(exceptId) { const lim = branchLimit(); return lim > 0 && !isDesigner() && branchesActiveCount(exceptId) >= lim; }
 function branchPickNeeded() { return (state.branches || []).filter(b => b.active !== false).length > 1 && branchOptions().length > 1; }
 async function chooseWorkingBranch(id) {
   id = id || null;
@@ -4507,7 +4511,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.11-1';
+const APP_VERSION = '2026.10.11-2';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -6680,9 +6684,10 @@ function renderBranchesModal() {
       <div class="win-title"><span><i class="ti ti-building-store"></i> الفروع (المحلات)</span><button data-branches-close style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       <div style="padding:14px 16px;overflow-y:auto;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-          <div style="font-size:12px;color:#5F5E5A;line-height:1.7;">كل فرع محل مستقل: عملاؤه ومورديه وترقيم فواتيره ومستودعه.<br>اربط كل موظف بفرعه من <b>النظام ← المستخدمين</b>.</div>
+          <div style="font-size:12px;color:#5F5E5A;line-height:1.7;">كل فرع محل مستقل: عملاؤه ومورديه وترقيم فواتيره ومستودعه.<br>اربط كل موظف بفرعه من <b>النظام ← المستخدمين</b>.
+            <div style="margin-top:4px;"><span style="display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:10px;font-weight:700;background:${branchLimitReached() ? '#FAEEDA' : '#E1F5EE'};color:${branchLimitReached() ? '#BA7517' : '#0F6E56'};"><i class="ti ti-building-store"></i> الفروع النشطة: ${branchesActiveCount()} من ${branchLimit() || '∞'} المسموحة في اشتراكك</span></div></div>
           <div style="display:flex;gap:8px;">${state.branches.filter(b => b.active !== false).length > 1 ? '<button data-open-compare class="btn" style="padding:8px 14px;"><i class="ti ti-chart-bar"></i> مقارنة الفروع</button>' : ''}
-          <button id="new-branch-btn" class="btn primary" style="padding:8px 16px;"><i class="ti ti-plus"></i> فرع جديد</button></div>
+          ${branchLimitReached() ? `<button data-renew-open data-renew-reason="branches" class="btn" style="padding:8px 14px;background:#25D366;color:#fff;border-color:#25D366;" title="وصلت للحد المسموح"><i class="ti ti-brand-whatsapp"></i> طلب زيادة الفروع</button>` : `<button id="new-branch-btn" class="btn primary" style="padding:8px 16px;"><i class="ti ti-plus"></i> فرع جديد</button>`}</div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;">
           ${state.branches.map(b => `
@@ -11334,7 +11339,7 @@ function isMasterCopy() { return currentProjectRef() === MASTER_PROJECT_REF; }
 function serialGenDefaults() {
   if (!state.serialGen) {
     const d = new Date(); d.setFullYear(d.getFullYear() + 1);
-    state.serialGen = { ownerUser: '', ownerPass: '', client: '', project: '', expiry: d.toISOString().slice(0, 10), users: '0', trial: false, note: '', serial: '', msg: '', keyName: '' };
+    state.serialGen = { ownerUser: '', ownerPass: '', client: '', project: '', expiry: d.toISOString().slice(0, 10), users: '0', branches: '1', trial: false, note: '', serial: '', msg: '', keyName: '' };
   }
   return state.serialGen;
 }
@@ -11362,6 +11367,7 @@ function renderSerialGenTab() {
         <div style="display:flex;gap:5px;flex-wrap:wrap;">${chips.map(([k, l]) => `<button type="button" data-sg-period="${k}" class="btn" style="padding:4px 10px;font-size:12px;${k === 'trial' ? 'background:#FFF3C4;' : ''}">${l}</button>`).join('')}</div>
         <label style="font-size:12.5px;font-weight:700;">تاريخ الانتهاء</label><input id="sg-expiry" type="date" class="input mono" value="${escapeHtml(g.expiry)}" />
         <label style="font-size:12.5px;font-weight:700;">عدد المستخدمين</label><input id="sg-users" class="input mono" style="max-width:120px;" value="${escapeHtml(g.users)}" title="0 = غير محدود" />
+        <label style="font-size:12.5px;font-weight:700;">عدد الفروع</label><div><input id="sg-branches" class="input mono" style="max-width:120px;" value="${escapeHtml(g.branches ?? '1')}" /><div style="font-size:10.5px;color:#8B8A7A;margin-top:3px;">1 = الفرع الرئيسي بس · 2 = رئيسي + فرع · 0 = غير محدود</div></div>
         <label style="font-size:12.5px;font-weight:700;">نسخة تجريبية</label><label style="font-size:12.5px;display:flex;gap:6px;align-items:center;"><input id="sg-trial" type="checkbox" ${g.trial ? 'checked' : ''} /> يظهر للعميل شريط «نسخة تجريبية»</label>
         <label style="font-size:12.5px;font-weight:700;">حساب صاحب المحل</label>
         <div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;"><input id="sg-ouser" class="input mono" dir="ltr" placeholder="اسم المستخدم" value="${escapeHtml(g.ownerUser||'')}" /><input id="sg-opass" class="input mono" dir="ltr" placeholder="كلمة المرور" value="${escapeHtml(g.ownerPass||'')}" /></div>
@@ -11401,7 +11407,7 @@ async function signLicense(data) {
 }
 function bindSerialGenTab() {
   const g = serialGenDefaults(); const $ = id => document.getElementById(id);
-  const read = () => { if (!$('sg-client')) return; g.ownerUser = ($('sg-ouser')?.value || '').trim().toLowerCase(); g.ownerPass = $('sg-opass')?.value || ''; g.client = $('sg-client').value; g.project = $('sg-project').value; g.expiry = $('sg-expiry').value; g.users = $('sg-users').value; g.trial = $('sg-trial').checked; g.note = $('sg-note').value; };
+  const read = () => { if (!$('sg-client')) return; g.ownerUser = ($('sg-ouser')?.value || '').trim().toLowerCase(); g.ownerPass = $('sg-opass')?.value || ''; g.client = $('sg-client').value; g.project = $('sg-project').value; g.expiry = $('sg-expiry').value; g.users = $('sg-users').value; g.branches = $('sg-branches')?.value ?? '1'; g.trial = $('sg-trial').checked; g.note = $('sg-note').value; };
   if ($('sg-keyfile')) $('sg-keyfile').onchange = async (ev) => {
     const f = ev.target.files[0]; if (!f) return;
     try { await loadSerialKeyFile(f); g.keyName = f.name; showToast('✓ تم تحميل المفتاح'); }
@@ -11409,7 +11415,7 @@ function bindSerialGenTab() {
     ev.target.value = ''; render();
   };
   if ($('sg-unload')) $('sg-unload').onclick = () => { __serialSignKey = null; g.keyName = ''; render(); };
-  ['sg-client','sg-project','sg-expiry','sg-users','sg-note','sg-ouser','sg-opass'].forEach(id => { if ($(id)) $(id).oninput = read; });
+  ['sg-client','sg-project','sg-expiry','sg-users','sg-branches','sg-note','sg-ouser','sg-opass'].forEach(id => { if ($(id)) $(id).oninput = read; });
   if ($('sg-trial')) $('sg-trial').onchange = read;
   if ($('sg-this')) $('sg-this').onclick = () => { read(); g.project = currentProjectRef(); g.client = g.client || state.company?.name_ar || ''; render(); };
   document.querySelectorAll('[data-sg-period]').forEach(b => { b.onclick = () => {
@@ -11423,7 +11429,7 @@ function bindSerialGenTab() {
     const ref = (() => { const v = String(g.project || '').trim(); try { if (v.includes('://')) return new URL(v).hostname.split('.')[0]; } catch (e) {} return v.split('.')[0]; })();
     if (!g.client.trim() || !ref || !g.expiry) { showToast('عبّي اسم العميل ورقم نسخته وتاريخ الانتهاء', 'error'); return; }
     if (ref === currentProjectRef() && !confirm('⚠️ الرقم الذي كتبته هو رقم نسختك أنت وليس العميل.\nمتأكد تريد إصدار السيريال لنسختك؟')) return;
-    const data = { v: 1, c: g.client.trim(), p: ref, e: g.expiry, u: Math.max(0, parseInt(g.users || '0', 10) || 0), i: new Date().toISOString().slice(0, 10), n: 'L' + Date.now().toString(36).toUpperCase() };
+    const data = { v: 1, c: g.client.trim(), p: ref, e: g.expiry, u: Math.max(0, parseInt(g.users || '0', 10) || 0), b: Math.max(0, parseInt(g.branches ?? '1', 10) || 0), i: new Date().toISOString().slice(0, 10), n: 'L' + Date.now().toString(36).toUpperCase() };
     if (g.trial) data.t = 1;
     g.serial = await signLicense(data); g.lastProject = ref; g.msg = '';
     logActivity('إصدار سيريال', `${data.c} — ${data.e}${g.trial ? ' (تجريبي)' : ''}`);
@@ -11504,7 +11510,7 @@ async function checkCrmClient(c) {
       single('company_settings', 'name_ar'),
     ]);
     const pl = lic?.serial ? serialPayload(lic.serial) : null;
-    Object.assign(H, { ok: true, expiry: pl?.e || lic?.expiry_date || null, trial: !!pl?.t, maxUsers: pl?.u || null,
+    Object.assign(H, { ok: true, expiry: pl?.e || lic?.expiry_date || null, trial: !!pl?.t, maxUsers: pl?.u || null, maxBranches: pl ? (pl.b == null ? 1 : pl.b) : null,
       lastSale: lastSale?.created_at || lastSale?.invoice_date || null, monthInvoices: monthInv, users, items, branches,
       lastBackup: lastBk?.taken_at || null, lastActivity: lastAct?.created_at || null, shopName: comp?.name_ar || null });
   } catch (e) { H.error = 'تعذّر الفحص: ' + (e.message || e); }
@@ -11606,7 +11612,7 @@ function renderClientsBoard() {
               ${td(H.monthInvoices ?? '—', 'font-family:monospace;text-align:center;')}
               ${td(cbAgo(H.lastActivity), 'white-space:nowrap;')}
               ${td(H.ok ? (H.lastBackup ? cbAgo(H.lastBackup) : '<span style="color:#BA7517;">ما فيه</span>') : '—', 'white-space:nowrap;')}
-              ${td(H.ok ? `<span class="mono">${H.users ?? '—'}${H.maxUsers ? '/' + H.maxUsers : ''} · ${H.items ?? '—'} · ${H.branches ?? '—'}</span>` : '—', 'white-space:nowrap;')}
+              ${td(H.ok ? `<span class="mono">${H.users ?? '—'}${H.maxUsers ? '/' + H.maxUsers : ''} · ${H.items ?? '—'} · ${H.branches ?? '—'}${H.maxBranches ? '/' + H.maxBranches : ''}</span>` : '—', 'white-space:nowrap;')}
               ${td(`<span style="font-size:10.5px;color:#8B8A7A;">${c.health_at || H.at ? cbAgo(c.health_at || H.at) : 'لسه'}</span>`, 'white-space:nowrap;')}
               ${td(`<div style="display:flex;gap:4px;justify-content:flex-end;">
                 ${c.netlify_url ? `<a href="${escapeHtml(c.netlify_url)}" target="_blank" class="btn" title="فتح البرنامج" style="padding:4px 8px;font-size:11px;text-decoration:none;"><i class="ti ti-external-link"></i></a>` : ''}
@@ -11634,7 +11640,7 @@ function renewRequestUrl(period) {
   const info = state.licenseInfo || {};
   const shop = state.company?.name_ar || info.c || '';
   const who = state.profile?.display_name || state.profile?.username || '';
-  const msg = `السلام عليكم،\nأرغب في ${state.licenseReason === 'missing' && state.licenseExpired ? 'تفعيل' : 'تجديد اشتراك'} برنامج Coin Soft ERP (كوين سوفت)\n\nالمحل: ${shop}\nرقم النسخة: ${currentProjectRef()}\nالاشتراك الحالي ينتهي: ${state.licenseExpiryDate || info.e || '—'}${period ? `\nالمدة المطلوبة: ${period}` : ''}${who ? `\nالمرسل: ${who}` : ''}`;
+  const msg = `السلام عليكم،\nأرغب في ${state.licenseReason === 'missing' && state.licenseExpired ? 'تفعيل' : 'تجديد اشتراك'} برنامج Coin Soft ERP (كوين سوفت)\n\nالمحل: ${shop}\nرقم النسخة: ${currentProjectRef()}\nالاشتراك الحالي ينتهي: ${state.licenseExpiryDate || info.e || '—'}${state.renew?.reason === 'branches' ? `\nالطلب: زيادة عدد الفروع (المسموح حالياً ${branchLimit()})` : ''}${period ? `\nالمدة المطلوبة: ${period}` : ''}${who ? `\nالمرسل: ${who}` : ''}`;
   return `https://wa.me/${devWhatsApp()}?text=${encodeURIComponent(msg)}`;
 }
 function renderRenewModal() {
@@ -11685,7 +11691,7 @@ async function activateRenewSerial() {
 function installRenewDelegation() {
   if (window.__renewInstalled) return; window.__renewInstalled = true;
   document.addEventListener('click', e => {
-    if (e.target.closest('[data-renew-open]')) { state.renew = {}; state.showRenew = true; render(); return; }
+    const ro = e.target.closest('[data-renew-open]'); if (ro) { state.renew = { reason: ro.dataset.renewReason || '' }; state.showBranches = false; state.showRenew = true; render(); return; }
     if (e.target.closest('[data-renew-close]')) { state.showRenew = false; render(); return; }
     const pp = e.target.closest('[data-renew-period]'); if (pp) { state.renew = state.renew || {}; state.renew.period = pp.dataset.renewPeriod; state.renew.serial = document.getElementById('renew-serial')?.value || ''; render(); return; }
     if (e.target.closest('[data-renew-activate]')) { activateRenewSerial(); return; }
@@ -11703,7 +11709,7 @@ async function recordLicenseInCrm(info, serialNo, note, extra) {
   const { data: rows, error: qErr } = await sb.from('crm_clients').select('id').ilike('supabase_url', `%${ref}%`);
   if (qErr) throw qErr;
   const rec = { subscription_start: info.i || new Date().toISOString().slice(0, 10), subscription_end: info.e, status: info.t ? 'تجريبي' : 'نشط',
-                notes: (note ? note + ' — ' : '') + 'سيريال ' + (serialNo || info.n || '') + (info.u ? ` — ${info.u} مستخدم` : '') };
+                notes: (note ? note + ' — ' : '') + 'سيريال ' + (serialNo || info.n || '') + (info.u ? ` — ${info.u} مستخدم` : '') + (info.b != null ? ` — ${info.b ? info.b + ' فرع' : 'فروع غير محدودة'}` : '') };
   const write = (x) => (rows && rows.length) ? sb.from('crm_clients').update(x).eq('id', rows[0].id)
                                             : sb.from('crm_clients').insert({ name: info.c, supabase_url: `https://${ref}.supabase.co`, ...x });
   let r = await write(extra ? { ...rec, ...extra } : rec);
@@ -12466,7 +12472,7 @@ function renderDesignerPanelModal() {
           <div style="border:1px solid #A9A48C;border-radius:6px;padding:14px;">
             <div style="font-size:12.5px;font-weight:600;margin-bottom:10px;">سيريال الترخيص</div>
             ${state.licenseInfo ? `<div style="background:#E8F4EF;border:1px solid #0F6E56;border-radius:6px;padding:8px 12px;font-size:12px;line-height:1.8;margin-bottom:10px;">
-              العميل: <b>${escapeHtml(state.licenseInfo.c||'')}</b> · ينتهي: <b class="mono">${escapeHtml(state.licenseInfo.e||'')}</b> · المستخدمين: <b>${state.licenseInfo.u ? escapeHtml(String(state.licenseInfo.u)) : 'غير محدود'}</b>${state.licenseInfo.n ? ` · رقم السيريال: <span class="mono">${escapeHtml(state.licenseInfo.n)}</span>` : ''}
+              العميل: <b>${escapeHtml(state.licenseInfo.c||'')}</b> · ينتهي: <b class="mono">${escapeHtml(state.licenseInfo.e||'')}</b> · المستخدمين: <b>${state.licenseInfo.u ? escapeHtml(String(state.licenseInfo.u)) : 'غير محدود'}</b> · الفروع: <b>${branchLimit() ? escapeHtml(String(branchLimit())) : 'غير محدود'}</b>${state.licenseInfo.n ? ` · رقم السيريال: <span class="mono">${escapeHtml(state.licenseInfo.n)}</span>` : ''}
             </div>` : ''}
             <div style="font-size:11px;color:#5F5E5A;margin-bottom:6px;" dir="ltr">ID: <span class="mono">${escapeHtml(currentProjectRef())}</span></div>
             <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px;">
@@ -17172,6 +17178,10 @@ function bindAppEvents() {
       if (!name) { alert('اكتب اسم الفرع'); return; }
       const payload = { name, code: document.getElementById('br-code').value.trim() || null, phone: document.getElementById('br-phone').value.trim() || null,
         address: document.getElementById('br-address').value.trim() || null, active: state.branchForm?.is_main ? true : document.getElementById('br-active').checked };
+      const wasActive = state.editingBranchId ? (state.branches.find(b => b.id === state.editingBranchId)?.active !== false) : false;
+      if (payload.active && !wasActive && branchLimitReached(state.editingBranchId)) {
+        alert(`اشتراكك يسمح بـ ${branchLimit()} فرع فقط.\n\nلزيادة عدد الفروع تواصل مع المصمم (النظام ← الاشتراك والتجديد).`); return;
+      }
       const pfx = document.getElementById('br-prefix')?.value.trim();
       if (pfx !== undefined && pfx !== '') { if (!/^[1-9][0-9]?$/.test(pfx)) { alert('رقم الفرع لازم يكون رقم من 1 إلى 99'); return; } payload.doc_prefix = pfx; }
       if (state.editingBranchId) {
