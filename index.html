@@ -150,7 +150,19 @@ if (!APP_CONFIG.SUPABASE_URL || !APP_CONFIG.SUPABASE_KEY) {
 }
 const SUPABASE_URL = APP_CONFIG.SUPABASE_URL;
 const SUPABASE_KEY = APP_CONFIG.SUPABASE_KEY;
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// متابعة حالة الإنترنت: أي طلب ينجح = متصل، وأي فشل شبكة = مقطوع (للبيع بدون إنترنت)
+window.__net = { ok: Date.now(), offline: (typeof navigator !== 'undefined' && navigator.onLine === false) };
+const __netFetch = async (...a) => {
+  try {
+    const r = await fetch(...a); window.__net.ok = Date.now();
+    if (window.__net.offline) { window.__net.offline = false; window.dispatchEvent(new Event('cs-online')); }
+    return r;
+  } catch (e) {
+    if (e && e.name !== 'AbortError' && !window.__net.offline) { window.__net.offline = true; window.dispatchEvent(new Event('cs-offline')); }
+    throw e;
+  }
+};
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { global: { fetch: __netFetch } });
 
 // ============================================
 // الترخيص بسيريال موقّع إلكترونياً (ECDSA P-256)
@@ -1173,6 +1185,7 @@ function bindAuthEvents() {
       await loadPaymentMethods();
       if (!branchApplied && branchPickNeeded()) { state.branchPickOpen = true; state.branchPickClosable = false; }
       logActivity('تسجيل دخول', userBranchId() ? branchName(userBranchId()) : '');
+      scheduleOfflineSnapshot(); loadOfflineQueue().then(() => { if (OFF.queue.length) syncOfflineQueue(); });
       loadAlerts().then(() => render()); // بالخلفية، ما نوقف تسجيل الدخول لحد ما يخلص
     } catch (e) {
       state.authError = translateAuthError(e.message);
@@ -1652,6 +1665,13 @@ function filteredSalesInvoices() {
   if (state.salesFilterFromNum.trim()) { const from = extractNum(state.salesFilterFromNum); if (from !== null) list = list.filter(x => { const n = extractNum(x.invoice_number); return n !== null && n >= from; }); }
   if (state.salesFilterToNum.trim()) { const to = extractNum(state.salesFilterToNum); if (to !== null) list = list.filter(x => { const n = extractNum(x.invoice_number); return n !== null && n <= to; }); }
   return list;
+}
+function buildSalesPayload(f) {
+  const t = calcLineTotals(f);
+  const headerPayload = { invoice_type:f.invoice_type, customer_id:f.customer_id||null, walkin_customer_name: !f.customer_id ? (f.walkin_customer_name||null) : null, walkin_customer_tax_number: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_tax_number||null) : null, walkin_customer_address: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_address||null) : null, customer_ref:f.customer_ref||null, order_number:f.order_number||null, warehouse_id: f.warehouse_id||null, payment_method: f.payment_method||null, quotation_id:f.quotation_id||null, invoice_date:f.invoice_date, discount:t.discount, paid_amount:Number(f.paid_amount)||0, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal, no_tax:!!f.no_tax, sales_rep_id: f.sales_rep_id||null, customer_mobile: f.customer_mobile||null, payment_details: (f.payments||[]).length ? f.payments : null, customer_national_address: f.national_address && Object.values(f.national_address).some(Boolean) ? f.national_address : null,
+    ...(fxOn() && fxRate() ? { exchange_rate: Number(f.exchange_rate) || fxRate() } : {}) };
+  const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(taxPctOf(l))/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, discount_percent:Number(l.disc_pct)||0, tax_percent:taxPctOf(l), tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
+  return { headerPayload, lineRows, t };
 }
 function newSalesForm() {
   return { invoice_number:'', invoice_type:'نقدي', price_mode:'قبل الضريبة', default_tax:String(vatRate()), no_tax:!taxOn(), customer_id:'', walkin_customer_name:'', walkin_customer_tax_number:'', walkin_customer_address:'', cash_customer_mode:'walkin', customer_ref:'', order_number:'', warehouse_id: defaultWarehouseId(), quotation_id:null, quotation_number_display:'', invoice_date:new Date().toISOString().slice(0,10), discount:'0', paid_amount:'0', notes:'', lines:[], approved:false, sales_rep_id:'', customer_mobile:'', national_address:{}, payments:[] };
@@ -2621,6 +2641,18 @@ function installPermGuard() {
       showToast(`ما عندك صلاحية «${PERM_LABEL[action]}» في هذه الشاشة — اطلبها من المدير`, 'error');
     }
   }, true);
+  // بدون إنترنت: فاتورة البيع تتحفظ في الجهاز، وباقي الحفظ يتمنع برسالة واضحة
+  document.addEventListener('click', async e => {
+    const btn = e.target.closest && e.target.closest('button[id]'); if (!btn) return;
+    const isSave = /-(save|approve|receive|send)$/.test(btn.id) || btn.id === 'quote-convert';
+    if (!isSave) return;
+    if (btn.id === 'sales-save') {
+      if (!isOffline() && Date.now() - (window.__net.ok || 0) > 15000) { e.preventDefault(); e.stopImmediatePropagation(); await netPing(); if (!isOffline()) { btn.onclick && btn.onclick(); return; } }
+      if (isOffline()) { e.preventDefault(); e.stopImmediatePropagation(); saveSalesOffline(); }
+      return;
+    }
+    if (isOffline()) { e.preventDefault(); e.stopImmediatePropagation(); showToast('ما في إنترنت — الحفظ هنا محتاج نت. فواتير البيع بس بتشتغل بدون نت', 'error'); }
+  }, true);
 }
 installPermGuard();
 
@@ -2779,6 +2811,7 @@ function renderApp() {
   );
   return `
   <div style="width:100%;margin:0;padding:0;min-height:100vh;display:flex;flex-direction:column;">
+    ${offlineBanner()}
     ${state.licenseWarningDays !== null ? `
     <div class="no-print" style="background:#FDF6E8;border:1px solid #BA7517;border-radius:6px;padding:8px 14px;margin-bottom:10px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#3A3826;">
       <i class="ti ti-alert-triangle" style="color:#BA7517;font-size:16px;"></i>
@@ -2862,6 +2895,7 @@ function renderApp() {
   ${state.showClientsBoard ? renderClientsBoard() : ''}
   ${state.showRenew ? renderRenewModal() : ''}
   ${state.showFx ? renderFxModal() : ''}
+  ${state.showOffQueue ? renderOfflineQueueModal() : ''}
   ${state.showReportDesigner ? renderReportDesignerModal() : ''}
   ${state.showFixedAssets ? renderFixedAssetsModal() : ''}
   ${state.showEmployees ? renderEmployeesModal() : ''}
@@ -4557,7 +4591,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.11-4';
+const APP_VERSION = '2026.10.11-5';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -4629,6 +4663,7 @@ function renderHomeSection() {
                 ${homeShortcut('ti-cash', t('sc_receipt'), '__receipt_vouchers__')}
                 ${homeShortcut('ti-chart-bar', t('sc_reports'), 'تقارير عامة')}
               </div>
+              ${homeSpeedCard()}
             </div>
           </div>
         </div>
@@ -12077,6 +12112,254 @@ function installFxDelegation() {
 }
 installFxDelegation();
 
+// =====================================================================
+// البيع بدون إنترنت
+//  • نحفظ نسخة من البيانات اللازمة للبيع في الجهاز (IndexedDB) كل ما البرنامج يفتح بالنت
+//  • لو النت قطع: فاتورة البيع تتحفظ في الجهاز برقم مؤقت (OFF-…)، وتترفع براها لما النت يرجع
+//  • الفواتير المرفوعة تتسجل «غير مرحّلة» — تترحّل من شاشة المبيعات زي العادة (المخزون والقيود وقتها)
+// =====================================================================
+const OFF = { db: null, queue: [], booted: false, syncing: false };
+function offRef() { try { return currentProjectRef(); } catch (e) { return 'x'; } }
+function offDb() {
+  if (OFF.db) return Promise.resolve(OFF.db);
+  return new Promise((res, rej) => {
+    try {
+      const rq = indexedDB.open('coinsoft-offline', 1);
+      rq.onupgradeneeded = () => { rq.result.createObjectStore('kv'); };
+      rq.onsuccess = () => { OFF.db = rq.result; res(OFF.db); };
+      rq.onerror = () => rej(rq.error);
+    } catch (e) { rej(e); }
+  });
+}
+async function offGet(key) { try { const db = await offDb(); return await new Promise(res => { const r = db.transaction('kv').objectStore('kv').get(key + ':' + offRef()); r.onsuccess = () => res(r.result); r.onerror = () => res(undefined); }); } catch (e) { return undefined; } }
+async function offSet(key, val) { try { const db = await offDb(); return await new Promise(res => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(val, key + ':' + offRef()); tx.oncomplete = () => res(true); tx.onerror = () => res(false); }); } catch (e) { return false; } }
+function isOffline() { return !!(window.__net && window.__net.offline); }
+function isNetError(err) { return !!err && /fetch|network|load failed|NetworkError/i.test(String(err.message || err)); }
+async function netPing(ms = 3500) {
+  try {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+    await fetch(SUPABASE_URL + '/auth/v1/health', { headers: { apikey: SUPABASE_KEY }, signal: ctl.signal, cache: 'no-store' });
+    clearTimeout(t); window.__net.ok = Date.now(); window.__net.offline = false; return true;
+  } catch (e) { window.__net.offline = true; return false; }
+}
+// ---------- النسخة المحفوظة في الجهاز ----------
+let offSnapTimer = null;
+function scheduleOfflineSnapshot() { clearTimeout(offSnapTimer); offSnapTimer = setTimeout(saveOfflineSnapshot, 2500); }
+async function saveOfflineSnapshot() {
+  if (!state.session || !state.profile || isOffline() || OFF.booted) return;
+  const snap = {
+    at: new Date().toISOString(), userId: state.session.user.id, profile: state.profile, company: state.company,
+    licenseSerial: state.licenseSettings?.serial || null, licenseContact: state.licenseContact || '',
+    items: state.items || [], parties: state.partiesAll || state.parties || [], warehouses: state.warehouses || [],
+    branches: state.branches || [], paymentMethods: state.paymentMethods || [], whStock: state.whStock || null,
+    fxRates: state.fxRates || [], myPermissions: state.myPermissions || {}, altNumbers: state.itemAltNumbersMap || {},
+    branchPrices: state.branchPrices || null,
+  };
+  await offSet('snap', snap);
+}
+async function startOfflineBoot() {
+  const snap = await offGet('snap');
+  if (!snap || !snap.profile || !snap.licenseSerial) return false;
+  {
+    const r = await verifyLicenseSerial(snap.licenseSerial);
+    if (!r.ok) return false;
+    const today = new Date().toISOString().slice(0, 10);
+    if (today > r.data.e) { state.licenseExpired = true; state.licenseReason = 'expired'; state.licenseExpiryDate = r.data.e; state.licenseInfo = r.data; render(); return true; }
+    state.licenseInfo = r.data; state.licenseExpiryDate = r.data.e; state.licenseTrial = !!r.data.t;
+    const daysLeft = Math.ceil((new Date(r.data.e) - new Date(today)) / 86400000);
+    state.licenseWarningDays = (daysLeft <= 14 || r.data.t) ? daysLeft : null;
+  }
+  OFF.booted = true;
+  Object.assign(state, {
+    session: { user: { id: snap.userId } }, profile: snap.profile, company: snap.company, licenseContact: snap.licenseContact,
+    licenseSettings: { serial: snap.licenseSerial }, items: snap.items || [], partiesAll: snap.parties || [], warehouses: snap.warehouses || [],
+    branches: snap.branches || [], branchesReady: !!(snap.branches || []).length, branchesTried: true, paymentMethods: snap.paymentMethods || [],
+    whStock: snap.whStock, fxRates: snap.fxRates || [], fxReady: !!(snap.fxRates || []).length, myPermissions: snap.myPermissions || {},
+    itemAltNumbersMap: snap.altNumbers || {}, branchPrices: snap.branchPrices, salesInvoicesAll: [], salesInvoices: [], purchases: [], purchasesAll: [],
+    offlineSnapAt: snap.at,
+  });
+  refreshBranchScope();
+  await loadOfflineQueue();
+  state.activeSection = 'المبيعات';
+  render();
+  return true;
+}
+// ---------- قائمة الفواتير المنتظرة ----------
+async function loadOfflineQueue() { OFF.queue = (await offGet('queue')) || []; }
+async function saveOfflineQueue() { await offSet('queue', OFF.queue); }
+async function nextOfflineNumber() {
+  let dev = null; try { dev = localStorage.getItem('coinsoft_device'); if (!dev) { dev = Math.random().toString(36).slice(2, 5).toUpperCase(); localStorage.setItem('coinsoft_device', dev); } } catch (e) { dev = 'D'; }
+  const seq = ((await offGet('seq')) || 0) + 1; await offSet('seq', seq);
+  return `OFF-${dev}-${seq}`;
+}
+async function saveSalesOffline() {
+  const f = state.salesForm;
+  if (state.editingSalesId) { alert('ما بتقدر تعدّل فاتورة محفوظة من غير إنترنت — اعمل فاتورة جديدة'); return; }
+  if (f.invoice_type === 'آجل' && !f.customer_id) { alert('اختر العميل — إلزامي لفاتورة آجل'); return; }
+  if (!f.lines.length) { alert('أضف صنف واحد على الأقل'); return; }
+  const { headerPayload, lineRows } = buildSalesPayload(f);
+  if (!f.offline_id) { f.offline_id = 'q' + Date.now(); f.invoice_number = await nextOfflineNumber(); }
+  const entry = { id: f.offline_id, number: f.invoice_number, created_at: new Date().toISOString(), user: state.session?.user?.id || null,
+    branch_id: userBranchId() || null, header: headerPayload, lines: lineRows, total: headerPayload.total, customer: f.walkin_customer_name || state.parties.find(p => p.id === f.customer_id)?.name || 'عميل نقدي', error: null };
+  OFF.queue = OFF.queue.filter(q => q.id !== entry.id).concat(entry);
+  await saveOfflineQueue();
+  // نخصم الكمية من النسخة المحلية عشان الكاشير يشوف رصيد قريب من الحقيقة
+  lineRows.forEach(l => { const it = state.items.find(x => x.id === l.item_id); if (it) it.qty = Number(it.qty || 0) - Number(l.quantity || 0); });
+  showToast(`✓ اتحفظت في الجهاز برقم ${f.invoice_number} — بتترفع لما النت يرجع`);
+  render();
+}
+async function syncOfflineQueue(manual) {
+  if (OFF.syncing || !OFF.queue.length || !state.session) return;
+  if (isOffline() && !(await netPing())) { if (manual) showToast('لسه ما في إنترنت', 'error'); return; }
+  if (OFF.booted) { const { data } = await sb.auth.getSession(); if (!data?.session) { showToast('سجّل الدخول عشان الفواتير المنتظرة تترفع', 'error'); return; } state.session = data.session; }
+  OFF.syncing = true; render();
+  let ok = 0, fail = 0;
+  try {
+    await loadSalesInvoices();
+    for (const q of [...OFF.queue]) {
+      const number = nextDocNumber(state.salesInvoicesAll || state.salesInvoices, 'invoice_number');
+      const header = { ...q.header, notes: [q.header.notes, `أُنشئت بدون إنترنت (${q.number})`].filter(Boolean).join(' — ') };
+      if (q.branch_id && !header.branch_id) header.branch_id = q.branch_id;
+      const { data, error } = await sb.from('sales_invoices').insert({ invoice_number: number, ...header, created_by: state.session.user.id }).select().single();
+      if (error) { q.error = error.message; fail++; if (isNetError(error)) break; continue; }
+      const { error: le } = await sb.from('sales_invoice_items').insert(q.lines.map(l => ({ ...l, invoice_id: data.id })));
+      if (le) { await sb.from('sales_invoices').delete().eq('id', data.id); q.error = le.message; fail++; if (isNetError(le)) break; continue; }
+      OFF.queue = OFF.queue.filter(x => x.id !== q.id); ok++;
+      (state.salesInvoicesAll || state.salesInvoices).push({ ...data });
+      logActivity('رفع فاتورة بيع من وقت انقطاع النت', `${q.number} ← ${data.invoice_number}`);
+    }
+  } finally { OFF.syncing = false; await saveOfflineQueue(); }
+  if (ok) {
+    showToast(`✓ اترفعت ${ok} فاتورة من وقت انقطاع النت — افتحها من المبيعات واضغط «ترحيل»`);
+    if (OFF.booted) { setTimeout(() => location.reload(), 1500); return; }
+    await loadSalesInvoices(); await loadItems(); loadAlerts().then(() => render());
+  }
+  if (fail && manual) showToast(`${fail} فاتورة ما اترفعت — شوف السبب في القائمة`, 'error');
+  render();
+}
+function offlineBanner() {
+  const n = OFF.queue.length;
+  if (!isOffline() && !n) return '';
+  const off = isOffline();
+  return `<div class="no-print" style="background:${off ? '#3A3A3A' : '#FFF3D6'};color:${off ? '#fff' : '#7A5410'};padding:7px 14px;display:flex;align-items:center;gap:10px;font-size:12.5px;flex-wrap:wrap;">
+    <i class="ti ${off ? 'ti-wifi-off' : 'ti-cloud-upload'}" style="font-size:18px;"></i>
+    <span style="flex:1;min-width:200px;">${off ? `<b>بدون إنترنت</b> — تقدر تكمل <b>فواتير البيع</b> عادي، بتتحفظ في الجهاز وتترفع براها لما النت يرجع.${state.offlineSnapAt ? ` (بيانات الأصناف من ${escapeHtml(new Date(state.offlineSnapAt).toLocaleString('ar-SA-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))})` : ''}` : `<b>${n} فاتورة</b> محفوظة في الجهاز من وقت انقطاع النت ${OFF.syncing ? '— جاري الرفع…' : 'ما اترفعت لسه'}`}</span>
+    ${n ? `<button data-off-list class="btn" style="padding:3px 10px;font-size:11.5px;">الفواتير المنتظرة (${n})</button>` : ''}
+    ${n && !off && !OFF.syncing ? `<button data-off-sync class="btn primary" style="padding:3px 10px;font-size:11.5px;"><i class="ti ti-cloud-upload"></i> رفع الآن</button>` : ''}
+  </div>`;
+}
+function renderOfflineQueueModal() {
+  return `
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:60;">
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:620px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,0.3);">
+      <div class="win-title"><span><i class="ti ti-cloud-upload"></i> فواتير محفوظة في الجهاز (منتظرة الرفع)</span><button data-off-close style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="padding:12px 16px;overflow-y:auto;">
+        ${OFF.queue.map(q => `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #E4E2DA;border-radius:10px;margin-bottom:6px;">
+          <div style="flex:1;"><div style="font-weight:700;color:#1B3352;" class="mono">${escapeHtml(q.number)}</div>
+            <div style="font-size:11px;color:#6E6D5F;">${escapeHtml(q.customer)} · ${escapeHtml(new Date(q.created_at).toLocaleString('ar-SA-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))} · ${q.lines.length} صنف</div>
+            ${q.error ? `<div style="font-size:10.5px;color:#C0392B;">آخر محاولة: ${escapeHtml(q.error)}</div>` : ''}</div>
+          <b class="mono">${fmt(q.total)}</b>
+          <button data-off-del="${q.id}" class="btn" style="padding:3px 8px;font-size:11px;color:#C0392B;" title="حذف"><i class="ti ti-trash"></i></button>
+        </div>`).join('') || '<div style="padding:16px;text-align:center;color:#8B8A7A;">ما في فواتير منتظرة ✓</div>'}
+        <div style="font-size:11px;color:#8B8A7A;margin-top:6px;">بعد الرفع، الفاتورة بتظهر في المبيعات برقم عادي وتحتاج <b>ترحيل</b> زي أي فاتورة (المخزون والقيود بتتسجل وقت الترحيل).</div>
+      </div>
+      <div style="padding:10px 16px;border-top:1px solid #E4E2DA;display:flex;gap:8px;">
+        <button data-off-sync class="btn primary" style="padding:6px 14px;" ${isOffline() || OFF.syncing ? 'disabled' : ''}><i class="ti ti-cloud-upload"></i> رفع الآن</button>
+      </div>
+    </div>
+  </div>`;
+}
+function installOfflineHandlers() {
+  if (window.__offInstalled) return; window.__offInstalled = true;
+  const onOff = () => { window.__net.offline = true; render(); };
+  const onOn = async () => { if (await netPing()) { render(); syncOfflineQueue(); } };
+  window.addEventListener('offline', onOff); window.addEventListener('cs-offline', onOff);
+  window.addEventListener('online', onOn); window.addEventListener('cs-online', () => { render(); syncOfflineQueue(); });
+  setInterval(async () => { if (isOffline() || OFF.queue.length) { if (await netPing()) { if (OFF.queue.length) syncOfflineQueue(); else render(); } } }, 30000);
+  setInterval(() => scheduleOfflineSnapshot(), 5 * 60000);
+  document.addEventListener('click', async e => {
+    if (e.target.closest('[data-off-list]')) { state.showOffQueue = true; render(); return; }
+    if (e.target.closest('[data-off-close]')) { state.showOffQueue = false; render(); return; }
+    if (e.target.closest('[data-off-sync]')) { syncOfflineQueue(true); return; }
+    const d = e.target.closest('[data-off-del]');
+    if (d) { if (!confirm('حذف الفاتورة دي نهائياً من الجهاز؟ (ما اترفعت)')) return; OFF.queue = OFF.queue.filter(q => q.id !== d.dataset.offDel); await saveOfflineQueue(); render(); }
+  });
+}
+installOfflineHandlers();
+
+// =====================================================================
+// اختبار سرعة الإنترنت (في الشاشة الرئيسية)
+//  • سرعة التحميل: تنزيل ملف معروف من شبكة توزيع سريعة وحساب الميغابت في الثانية
+//  • الاستجابة (Ping): الزمن اللي بياخده طلب لخادم قاعدة البيانات — ده الأهم لسرعة البرنامج
+// =====================================================================
+const SPEED_URLS = ['https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'];
+async function runSpeedTest() {
+  const S = state.speed = { running: true, phase: 'ping', mbps: null, ping: null, at: null, error: null };
+  render();
+  try {
+    // 1) الاستجابة: 4 محاولات ونأخذ الوسيط
+    const pings = [];
+    for (let i = 0; i < 4; i++) {
+      const t0 = performance.now();
+      try { await fetch(SUPABASE_URL + '/auth/v1/health', { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' }); pings.push(performance.now() - t0); } catch (e) { }
+    }
+    if (!pings.length) throw new Error('ما في اتصال بالإنترنت');
+    pings.sort((a, b) => a - b); S.ping = Math.round(pings[Math.floor(pings.length / 2)]);
+    S.phase = 'download'; render();
+    // 2) التحميل: نزّل الملفات ونحسب السرعة (نتوقف بعد ~8 ثواني لو النت بطيء)
+    let bytes = 0; const t0 = performance.now(); const deadline = t0 + 8000;
+    for (let round = 0; round < 3 && performance.now() < deadline; round++) {
+      for (const u of SPEED_URLS) {
+        if (performance.now() > deadline) break;
+        const res = await fetch(u + '?speedtest=' + Date.now() + Math.random(), { cache: 'no-store' });
+        const reader = res.body ? res.body.getReader() : null;
+        if (reader) { for (;;) { const { done, value } = await reader.read(); if (done) break; bytes += value.length; S.mbps = (bytes * 8) / ((performance.now() - t0) / 1000) / 1e6; if (performance.now() > deadline) { try { reader.cancel(); } catch (e) {} break; } } }
+        else bytes += (await res.arrayBuffer()).byteLength;
+        S.mbps = (bytes * 8) / ((performance.now() - t0) / 1000) / 1e6;
+        const el = document.getElementById('speed-live'); if (el) el.textContent = S.mbps.toFixed(1);
+      }
+    }
+    S.mbps = Math.round(((bytes * 8) / ((performance.now() - t0) / 1000) / 1e6) * 10) / 10;
+    S.at = new Date().toISOString();
+  } catch (e) { S.error = e.message || 'تعذّر الاختبار'; }
+  S.running = false; render();
+}
+function speedRating(mbps, ping) {
+  if (mbps == null) return null;
+  if (mbps >= 10 && ping < 300) return { l: 'ممتاز', c: '#38C98B' };
+  if (mbps >= 3 && ping < 700) return { l: 'جيد', c: '#7FD1FF' };
+  if (mbps >= 1) return { l: 'مقبول', c: '#FFC107' };
+  return { l: 'ضعيف', c: '#FF6B6B' };
+}
+function homeSpeedCard() {
+  const S = state.speed || {}, off = isOffline();
+  const v = S.mbps != null ? S.mbps : 0, frac = Math.max(0, Math.min(1, Math.log10(1 + v) / Math.log10(101)));
+  const r = 42, cx = 50, cy = 50, a0 = Math.PI, a1 = Math.PI * (1 - frac);
+  const arc = (from, to) => `M ${cx + r * Math.cos(from)} ${cy - r * Math.sin(from)} A ${r} ${r} 0 0 1 ${cx + r * Math.cos(to)} ${cy - r * Math.sin(to)}`;
+  const rate = speedRating(S.mbps, S.ping || 0);
+  return `
+    <div style="margin-top:18px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:14px;">
+      <svg viewBox="0 0 100 58" style="width:120px;flex-shrink:0;">
+        <path d="${arc(a0, 0)}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="9" stroke-linecap="round"/>
+        ${frac > 0.005 ? `<path d="${arc(a0, a1)}" fill="none" stroke="${rate ? rate.c : '#7FD1FF'}" stroke-width="9" stroke-linecap="round"/>` : ''}
+        <text x="50" y="47" text-anchor="middle" font-size="17" font-weight="800" fill="#fff" font-family="monospace" id="speed-live">${S.running && S.phase === 'ping' ? '…' : (S.mbps != null ? (S.mbps >= 100 ? Math.round(S.mbps) : S.mbps.toFixed(1)) : '—')}</text>
+        <text x="50" y="57" text-anchor="middle" font-size="7.5" fill="#B8C8DC">Mbps</text>
+      </svg>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#fff;"><i class="ti ti-gauge"></i> سرعة الإنترنت
+          <span style="margin-right:auto;font-size:10.5px;font-weight:600;padding:1px 8px;border-radius:9px;background:${off ? 'rgba(255,107,107,.25)' : 'rgba(56,201,139,.25)'};color:${off ? '#FFB3B3' : '#9FF0CC'};">● ${off ? 'مقطوع' : 'متصل'}</span></div>
+        <div style="font-size:11.5px;color:#B8C8DC;margin-top:4px;line-height:1.7;">
+          ${S.running ? (S.phase === 'ping' ? 'جاري قياس الاستجابة…' : 'جاري قياس سرعة التحميل…')
+            : S.error ? `<span style="color:#FFB3B3;">${escapeHtml(S.error)}</span>`
+            : S.at ? `التحميل: <b style="color:#fff;" class="mono">${S.mbps} Mbps</b> ${rate ? `<span style="color:${rate.c};font-weight:700;">(${rate.l})</span>` : ''}<br>الاستجابة من قاعدة البيانات: <b style="color:#fff;" class="mono">${S.ping} ms</b>`
+            : 'اضغط «اختبار» عشان تعرف سرعة النت في المحل'}
+        </div>
+      </div>
+      <button data-speed-run ${S.running ? 'disabled' : ''} style="background:#fff;color:#1B3352;border:none;border-radius:10px;padding:8px 14px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;white-space:nowrap;">${S.running ? '<i class="ti ti-loader-2"></i>' : '<i class="ti ti-player-play"></i> اختبار'}</button>
+    </div>`;
+}
+document.addEventListener('click', e => { if (e.target.closest('[data-speed-run]')) runSpeedTest(); });
+
 async function recordLicenseInCrm(info, serialNo, note, extra) {
   const ref = info.p || currentProjectRef();
   const { data: rows, error: qErr } = await sb.from('crm_clients').select('id').ilike('supabase_url', `%${ref}%`);
@@ -16695,10 +16978,7 @@ function bindAppEvents() {
           }
         }
         setBtnLoading(document.getElementById('sales-save'), true, 'جاري الحفظ');
-        const t = calcLineTotals(f);
-        const headerPayload = { invoice_type:f.invoice_type, customer_id:f.customer_id||null, walkin_customer_name: !f.customer_id ? (f.walkin_customer_name||null) : null, walkin_customer_tax_number: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_tax_number||null) : null, walkin_customer_address: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_address||null) : null, customer_ref:f.customer_ref||null, order_number:f.order_number||null, warehouse_id: f.warehouse_id||null, payment_method: f.payment_method||null, quotation_id:f.quotation_id||null, invoice_date:f.invoice_date, discount:t.discount, paid_amount:Number(f.paid_amount)||0, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal, no_tax:!!f.no_tax, sales_rep_id: f.sales_rep_id||null, customer_mobile: f.customer_mobile||null, payment_details: (f.payments||[]).length ? f.payments : null, customer_national_address: f.national_address && Object.values(f.national_address).some(Boolean) ? f.national_address : null,
-          ...(fxOn() && fxRate() ? { exchange_rate: Number(f.exchange_rate) || fxRate() } : {}) };
-        const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(taxPctOf(l))/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, discount_percent:Number(l.disc_pct)||0, tax_percent:taxPctOf(l), tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
+        const { headerPayload, lineRows } = buildSalesPayload(f);
         if (state.editingSalesId) {
           const { error } = await sb.from('sales_invoices').update(headerPayload).eq('id', state.editingSalesId);
           if (error) { alert('خطأ بالحفظ:\n'+error.message); setBtnLoading(document.getElementById('sales-save'), false); return; }
@@ -22090,7 +22370,17 @@ function handleGlobalShortcuts(ev) {
 
 async function init() {
   try {
-    const { data: license } = await sb.from('license_settings').select('*').eq('id', 1).maybeSingle();
+    // لو النت بطيء جداً أو معلّق (بدون رد) أكتر من 10 ثواني نعتبره مقطوع
+    const { data: license, error: licErr } = await Promise.race([
+      sb.from('license_settings').select('*').eq('id', 1).maybeSingle(),
+      new Promise(res => setTimeout(() => res({ data: null, error: { message: 'network timeout' } }), 10000)),
+    ]);
+    // بدون إنترنت: نفتح من النسخة المحفوظة في الجهاز (للبيع فقط)
+    if (licErr && (isNetError(licErr) || isOffline())) {
+      if (await startOfflineBoot()) { document.addEventListener('keydown', handleGlobalShortcuts); return; }
+      state.licenseExpired = true; state.licenseReason = 'ما في إنترنت — افتح البرنامج مرة واحدة بالنت على الجهاز ده عشان يشتغل بعدها بدون نت';
+      render(); return;
+    }
     state.licenseContact = license?.designer_contact || '';
     state.licenseSettings = license || {};
     if (!license?.serial) {
@@ -22111,7 +22401,9 @@ async function init() {
     if (branchPickNeeded() && !canAllBranches() && !state.profile?.active_branch_id) { state.branchPickOpen = true; state.branchPickClosable = false; }
   }
   installBranchPickDelegation();
+  await loadOfflineQueue();
   render();
+  if (state.session) { scheduleOfflineSnapshot(); if (OFF.queue.length) syncOfflineQueue(); }
   if (state.session) checkAndRunAutoBackup();
   if (state.session && isAdmin()) checkApiRowLimit(); // فحص النسخة الاحتياطية بالخلفية، بدون ما يأخّر ظهور الشاشة
   document.addEventListener('keydown', handleGlobalShortcuts);
