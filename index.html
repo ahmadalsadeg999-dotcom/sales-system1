@@ -589,7 +589,7 @@ const PH_COLORS = [
   [/#1B3352/gi, '#0B4F4A'], [/#2C4A6E/gi, '#11706A'], [/#3D6389/gi, '#1A8C83'], [/#1B5FA8/gi, '#0E8C7E'], [/#2E86C1/gi, '#14A397'],
   [/#B8C8DC/gi, '#B5DCD6'], [/#F0F6FC/gi, '#EEF8F6'], [/#E8EEF5/gi, '#E3F2EF'], [/#E6F1FB/gi, '#E2F4F1'], [/#132A44/gi, '#083B37'],
   [/#6C3FA8/gi, '#0F7C6E'], [/#8E5BC7/gi, '#2BA58A'], [/#4A7DC0/gi, '#2BA58A'], [/#2E5C8A/gi, '#1A8C83'], [/#0F1E33/gi, '#062B28'],
-  [/#7A8CA8/gi, '#6FA39C'], [/rgba\(27,\s*51,\s*82,/g, 'rgba(11,79,74,'], [/rgba\(44,\s*74,\s*110,/g, 'rgba(17,112,106,'],
+  [/#7A8CA8/gi, '#6FA39C'], [/#5A96EA/gi, '#2FB3A3'], [/rgba\(27,\s*51,\s*82,/g, 'rgba(11,79,74,'], [/rgba\(44,\s*74,\s*110,/g, 'rgba(17,112,106,'],
 ];
 function phTheme(html) { if (!pharmacyOn() || typeof html !== 'string') return html; for (const [re, v] of PH_COLORS) html = html.replace(re, v); return html; }
 function applyThemeStyles() {
@@ -1702,6 +1702,81 @@ function buildSalesPayload(f) {
   const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(taxPctOf(l))/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, discount_percent:Number(l.disc_pct)||0, tax_percent:taxPctOf(l), tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
   return { headerPayload, lineRows, t };
 }
+
+// =====================================================================
+// إيصال حراري 80مم لفاتورة البيع (يُطبع بدل قوالب A4 لما حجم الورقة = إيصال)
+// =====================================================================
+function renderSalesReceipt(f) {
+  const c = state.company || {}; const t = calcLineTotals(f);
+  const cust = f.customer_id ? (state.parties || []).find(p => p.id === f.customer_id) : null;
+  const custName = cust?.name || f.walkin_customer_name || 'عميل نقدي';
+  const paid = Number(f.paid_amount) || 0, due = t.grandTotal - paid;
+  const cur = escapeHtml(feat('currency_abbr_ar') || '');
+  const noTax = f.no_tax || !taxOn();
+  const title = noTax ? 'فاتورة مبيعات' : (zatcaOn() ? 'فاتورة ضريبية مبسطة' : 'فاتورة ضريبية');
+  const row = (a, b, strong) => `<div style="display:flex;justify-content:space-between;gap:6px;${strong ? 'font-weight:800;font-size:13px;border-top:1px dashed #000;padding-top:3px;margin-top:2px;' : ''}"><span>${a}</span><span style="direction:ltr;">${b}</span></div>`;
+  const now = new Date();
+  return `<div id="si-receipt" class="print-only" style="width:72mm;margin:0 auto;font-family:Tahoma,Arial,sans-serif;font-size:11px;color:#000;line-height:1.45;direction:rtl;">
+    <div style="text-align:center;">
+      ${c.logo_url && c.print_show_logo !== false ? `<img src="${escapeHtml(c.logo_url)}" style="max-height:16mm;max-width:40mm;margin-bottom:2px;" onerror="this.remove()" />` : ''}
+      <div style="font-size:14px;font-weight:800;">${escapeHtml(c.name_ar || c.name_en || '')}</div>
+      ${c.address ? `<div style="font-size:10px;">${escapeHtml(c.address)}</div>` : ''}
+      ${c.phone ? `<div style="font-size:10px;direction:ltr;">${escapeHtml(c.phone)}</div>` : ''}
+      ${!noTax && c.tax_number ? `<div style="font-size:10px;">الرقم الضريبي: <span style="direction:ltr;">${escapeHtml(c.tax_number)}</span></div>` : ''}
+      <div style="margin-top:4px;font-size:12.5px;font-weight:800;border-top:1px dashed #000;border-bottom:1px dashed #000;padding:2px 0;">${title}</div>
+    </div>
+    <div style="margin:4px 0;font-size:10.5px;">
+      ${row('رقم الفاتورة', escapeHtml(f.invoice_number || ''))}
+      ${row('التاريخ', escapeHtml(f.invoice_date || '') + ' ' + now.toTimeString().slice(0, 5))}
+      ${row('العميل', escapeHtml(custName))}
+      ${row('النوع', escapeHtml(f.invoice_type || 'نقدي'))}
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
+      <thead><tr style="border-top:1px dashed #000;border-bottom:1px dashed #000;"><th style="text-align:right;padding:2px 0;">الصنف</th><th style="padding:2px 2px;">الكمية</th><th style="padding:2px 2px;">السعر</th><th style="text-align:left;padding:2px 0;">المجموع</th></tr></thead>
+      <tbody>${f.lines.map(l => { const sub = lineAmt(l); return `<tr><td colspan="4" style="padding-top:3px;font-weight:700;">${escapeHtml(l.item_name || '')}</td></tr>
+        <tr style="border-bottom:1px dotted #999;"><td style="font-size:9.5px;direction:ltr;text-align:right;">${escapeHtml(l.sku || '')}</td><td style="text-align:center;">${Number(l.quantity)}</td><td style="text-align:center;">${fmt(l.unit_price)}</td><td style="text-align:left;">${fmt(sub)}</td></tr>`; }).join('')}</tbody>
+    </table>
+    <div style="margin-top:4px;">
+      ${row('المجموع', fmt(t.subtotal))}
+      ${Number(t.discount) ? row('الخصم', fmt(t.discount)) : ''}
+      ${noTax ? '' : row(`الضريبة (${vatRate()}%)`, fmt(t.taxTotal))}
+      ${row('الإجمالي', fmt(t.grandTotal) + ' ' + cur, true)}
+      ${row('المدفوع', fmt(paid))}
+      ${due > 0.005 ? row('المتبقي', fmt(due)) : ''}
+    </div>
+    ${f.approved && c.print_show_qr !== false && !noTax ? `<div style="text-align:center;margin-top:6px;"><canvas id="si-qr-canvas-rc" style="width:28mm;height:28mm;"></canvas></div>` : ''}
+    <div style="text-align:center;font-size:10px;margin-top:5px;border-top:1px dashed #000;padding-top:3px;">${escapeHtml(c.print_footer_text || 'شكراً لتعاملكم معنا')}</div>
+  </div>`;
+}
+
+// عزل منطقة الطباعة وقت الطباعة: نخفي كل شي غيرها (display:none) ونخلي النوافذ الثابتة عادية،
+// عشان المتصفح ما يكرر النافذة في كل صفحة ولا يصغّر الفاتورة بسبب عناصر عريضة مخفية
+function isolatePrintArea() {
+  if (document.getElementById('print-list-overlay') || document.getElementById('bl-print-host')) return;
+  const area = Array.from(document.querySelectorAll('.print-area')).find(el => el.offsetParent !== null || getComputedStyle(el).position === 'fixed');
+  if (!area) return;
+  let st = document.getElementById('print-isolate-style');
+  if (!st) { st = document.createElement('style'); st.id = 'print-isolate-style'; document.head.appendChild(st);
+    st.textContent = `@media print {
+      .print-iso-hide { display: none !important; }
+      .print-iso-anc { position: static !important; inset: auto !important; transform: none !important; width: auto !important; max-width: none !important; height: auto !important; max-height: none !important; min-height: 0 !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; background: #fff !important; box-shadow: none !important; border: none !important; display: block !important; }
+      .print-iso-area, .print-copy-clone { position: static !important; overflow: visible !important; max-height: none !important; }
+      html, body { width: auto !important; min-width: 0 !important; overflow: visible !important; }
+    }`; }
+  area.classList.add('print-iso-area');
+  let node = area;
+  while (node && node !== document.body) {
+    const parent = node.parentElement; if (!parent) break;
+    Array.from(parent.children).forEach(ch => { if (ch !== node && !ch.classList.contains('print-copy-clone') && !['STYLE', 'SCRIPT', 'LINK'].includes(ch.tagName)) ch.classList.add('print-iso-hide'); });
+    if (parent !== document.body) parent.classList.add('print-iso-anc');
+    node = parent;
+  }
+}
+function unisolatePrintArea() {
+  document.querySelectorAll('.print-iso-hide').forEach(e => e.classList.remove('print-iso-hide'));
+  document.querySelectorAll('.print-iso-anc').forEach(e => e.classList.remove('print-iso-anc'));
+  document.querySelectorAll('.print-iso-area').forEach(e => e.classList.remove('print-iso-area'));
+}
 function newSalesForm() {
   return { invoice_number:'', invoice_type:'نقدي', price_mode:'قبل الضريبة', default_tax:String(vatRate()), no_tax:!taxOn(), customer_id:'', walkin_customer_name:'', walkin_customer_tax_number:'', walkin_customer_address:'', cash_customer_mode:'walkin', customer_ref:'', order_number:'', warehouse_id: defaultWarehouseId(), quotation_id:null, quotation_number_display:'', invoice_date:new Date().toISOString().slice(0,10), discount:'0', paid_amount:'0', notes:'', lines:[], approved:false, sales_rep_id:'', customer_mobile:'', national_address:{}, payments:[] };
 }
@@ -2698,7 +2773,8 @@ function filteredItems() {
   return state.items.filter(it =>
     (it.name || '').toLowerCase().includes(q) ||
     (it.sku || '').toLowerCase().includes(q) ||
-    (it.company || '').toLowerCase().includes(q)
+    (it.company || '').toLowerCase().includes(q) ||
+    (it.generic_name || '').toLowerCase().includes(q) || (it.barcode || '').toLowerCase().includes(q)
   );
 }
 
@@ -4626,7 +4702,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.11-8';
+const APP_VERSION = '2026.10.14-1';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -5992,6 +6068,7 @@ function renderSalesFormModal() {
       </div>
 
       <!-- قالب 2: بسيط موجز — بدون جداول ملوّنة، تنسيق نصي مباشر -->
+      ${state.company?.print_paper_size === 'receipt' ? renderSalesReceipt(f) : ''}
       <div id="si-tpl2" class="print-only" style="font-family:${state.company?.print_font||'IBM Plex Sans Arabic'},sans-serif;">
         <div style="background:linear-gradient(135deg,#1B3352,#2C4A6E);padding:24px 28px;color:#fff;position:relative;overflow:hidden;">
           <div style="position:absolute;top:-40px;left:-40px;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,0.06);"></div>
@@ -9016,17 +9093,17 @@ function renderItemsSection(items, lowStock) {
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${state.items.length} ${t('items_count')}${lowStock > 0 ? ` · ${lowStock} ${t('items_needs_reorder')}` : ''}</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
           <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 0.9fr 0.9fr 0.9fr 1fr 0.6fr;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11.5px;font-weight:500;">
-            ${[t('col_item_name'),t('col_item_sku'),t('col_category'),t('col_unit'),t('col_company'),t('col_qty'),t('col_sale_price'),''].map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
+            ${(pharmacyOn() ? ['الدواء','الرقم / الباركود','الشكل الدوائي',t('col_unit'),'أقرب صلاحية',t('col_qty'),t('col_sale_price'),''] : [t('col_item_name'),t('col_item_sku'),t('col_category'),t('col_unit'),t('col_company'),t('col_qty'),t('col_sale_price'),'']).map(h => `<div style="padding:7px 8px;border-left:1px solid #1B3352;">${h}</div>`).join('')}
           </div>
           ${items.map((item, i) => {
             const status = stockStatus(item);
             return `
             <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 0.9fr 0.9fr 0.9fr 1fr 0.6fr;background:${i % 2 ? '#F4F1EA' : '#FFFDF6'};font-size:12.5px;align-items:center;">
-              <div style="padding:7px 8px;">${escapeHtml(item.name)}</div>
+              <div style="padding:7px 8px;">${escapeHtml(item.name)}${pharmacyOn() && item.generic_name ? `<div style="font-size:10.5px;color:#6E6D5F;" dir="ltr">${escapeHtml(item.generic_name)}${item.strength ? ' ' + escapeHtml(item.strength) : ''}</div>` : ''}${pharmacyOn() && (item.rx_required || item.controlled) ? `<span style="font-size:9.5px;font-weight:700;color:${item.controlled ? '#C0392B' : '#1A6FA8'};">${item.controlled ? '⚠ مراقب' : '℞ وصفة'}</span>` : ''}</div>
               <div style="padding:7px 8px;" class="mono">${escapeHtml(item.sku)}</div>
-              <div style="padding:7px 8px;">${escapeHtml(item.category || '—')}</div>
+              <div style="padding:7px 8px;">${escapeHtml((pharmacyOn() ? item.dosage_form : item.category) || '—')}</div>
               <div style="padding:7px 8px;">${escapeHtml(item.unit || '')}</div>
-              <div style="padding:7px 8px;" class="mono">${escapeHtml(item.company || '—')}</div>
+              ${pharmacyOn() ? (() => { const b = itemBatches(item.id).find(x => Number(x.qty) > 0); const st = b && expiryStatus(b.expiry_date); return `<div style="padding:7px 8px;">${b ? `<span class="mono" style="background:${st.bg};color:${st.c};padding:1px 8px;border-radius:9px;font-size:11.5px;font-weight:700;">${fmtExp(b.expiry_date)}</span>` : '—'}</div>`; })() : `<div style="padding:7px 8px;" class="mono">${escapeHtml(item.company || '—')}</div>`}
               <div style="padding:7px 8px;color:${Number(item.qty) <= Number(item.reorder_at||0) ? '#C0392B' : '#1F2421'};">${item.qty}</div>
               <div style="padding:7px 8px;">${Number(item.price).toFixed(2)}</div>
               <div style="padding:4px 6px;display:flex;gap:4px;">
@@ -11030,23 +11107,24 @@ function renderUsersModal() {
 function renderFormModal() {
   const f = state.form;
   const e = state.formErrors;
-  const tabs = ['عام','الاسعار','الارصدة','أخرى'];
+  const tabs = pharmacyOn() ? ['💊 الدواء','عام','الاسعار','الارصدة','أخرى'] : ['عام','الاسعار','الارصدة','أخرى'];
+  const extraTabs = pharmacyOn() ? ['احصائيات','العلاقات','صور'] : ['التجميع','احصائيات','العلاقات','توافق السيارات','صور'];
   return `
   <div id="modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
     <div class="print-area" style="background:#E8E4DA;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:680px;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title">
-        <span>معلومات الاصناف</span>
+        <span>${pharmacyOn() ? '💊 كرت الدواء' : 'معلومات الاصناف'}</span>
         <button id="modal-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button>
       </div>
       ${state.editingId ? `<div style="padding:6px 16px 0;font-size:11px;color:#0F6E56;">✓ الصنف محفوظ — بقية التبويبات متاحة الآن</div>` : ''}
       <div style="padding:12px 16px 0;display:flex;align-items:center;gap:8px;">
-        <label style="font-size:12.5px;color:#3A3826;">رقم الصنف</label>
+        <label style="font-size:12.5px;color:#3A3826;">${pharmacyOn() ? 'رقم الدواء / الباركود' : 'رقم الصنف'}</label>
         <input id="f-sku" class="input ${e.sku ? 'err' : ''}" style="max-width:200px;" value="${escapeHtml(f.sku)}" />
         ${e.sku ? `<span class="err-text" style="margin:0;">مطلوب وفريد</span>` : ''}
       </div>
       <div style="display:flex;gap:2px;padding:10px 16px 0;border-bottom:1px solid #A9A48C;flex-wrap:wrap;">
         ${tabs.map(t => `<button data-tab="${t}" style="padding:8px 18px;font-size:12.5px;cursor:pointer;background:${state.activeTab===t?'linear-gradient(135deg,#2C4A6E,#3D6389)':'#F4F5F7'};color:${state.activeTab===t?'#fff':'#5F5E5A'};border:1px solid ${state.activeTab===t?'transparent':'#E4E2DA'};border-radius:8px 8px 0 0;margin-bottom:-1px;font-weight:${state.activeTab===t?'600':'400'};box-shadow:${state.activeTab===t?'0 -2px 8px rgba(27,51,82,0.18)':'none'};transition:all 0.15s ease;">${t}</button>`).join('')}
-        ${['التجميع','احصائيات','العلاقات','توافق السيارات','صور'].map(t => `<button data-tab="${t}" style="padding:8px 18px;font-size:12.5px;cursor:pointer;background:${state.activeTab===t?'linear-gradient(135deg,#2C4A6E,#3D6389)':'#F4F5F7'};color:${state.activeTab===t?'#fff':'#5F5E5A'};border:1px solid ${state.activeTab===t?'transparent':'#E4E2DA'};border-radius:8px 8px 0 0;margin-bottom:-1px;font-weight:${state.activeTab===t?'600':'400'};box-shadow:${state.activeTab===t?'0 -2px 8px rgba(27,51,82,0.18)':'none'};transition:all 0.15s ease;" ${state.editingId ? '' : 'disabled title="احفظ الصنف أول"'}>${t}</button>`).join('')}
+        ${extraTabs.map(t => `<button data-tab="${t}" style="padding:8px 18px;font-size:12.5px;cursor:pointer;background:${state.activeTab===t?'linear-gradient(135deg,#2C4A6E,#3D6389)':'#F4F5F7'};color:${state.activeTab===t?'#fff':'#5F5E5A'};border:1px solid ${state.activeTab===t?'transparent':'#E4E2DA'};border-radius:8px 8px 0 0;margin-bottom:-1px;font-weight:${state.activeTab===t?'600':'400'};box-shadow:${state.activeTab===t?'0 -2px 8px rgba(27,51,82,0.18)':'none'};transition:all 0.15s ease;" ${state.editingId ? '' : 'disabled title="احفظ الصنف أول"'}>${t}</button>`).join('')}
       </div>
       <div style="padding:18px;min-height:180px;max-height:52vh;overflow-y:auto;">
         ${renderTabContent()}
@@ -11078,12 +11156,43 @@ function field(label, inputHtml) {
 
 function renderTabContent() {
   const f = state.form; const e = state.formErrors;
+
+  if (state.activeTab === '💊 الدواء') {
+    const sel = (id, opts, v) => `<select id="${id}" class="input">${['', ...opts].map(o => `<option value="${escapeHtml(o)}" ${String(v || '') === o ? 'selected' : ''}>${o || '—'}</option>`).join('')}</select>`;
+    const bs = state.editingId ? itemBatches(state.editingId) : [];
+    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="grid-column:1/-1;">${field('الاسم التجاري *', `<input id="f-name" class="input ${e.name?'err':''}" value="${escapeHtml(f.name)}" placeholder="مثال: بنادول" />`)}</div>
+      <div style="grid-column:1/-1;">${field('الاسم العلمي (المادة الفعالة)', `<input id="f-generic_name" class="input" value="${escapeHtml(f.generic_name || '')}" placeholder="مثال: Paracetamol" dir="ltr" />`)}</div>
+      ${field('الشكل الدوائي', sel('f-dosage_form', ['أقراص', 'كبسولات', 'شراب', 'معلّق', 'حقن', 'أمبولات', 'نقط', 'بخاخ', 'كريم', 'مرهم', 'جل', 'لبوس', 'محلول', 'أكياس / فوار', 'لصقات', 'مستلزمات طبية', 'أخرى'], f.dosage_form))}
+      ${field('التركيز', `<input id="f-strength" class="input" value="${escapeHtml(f.strength || '')}" placeholder="500 mg" dir="ltr" />`)}
+      ${field('الشركة المصنّعة', `<input id="f-manufacturer" class="input" value="${escapeHtml(f.manufacturer || '')}" />`)}
+      ${field('بلد المنشأ', `<input id="f-origin_country" class="input" value="${escapeHtml(f.origin_country || '')}" />`)}
+      ${field('طريقة الحفظ', sel('f-storage', ['عادي (أقل من 25°)', 'ثلاجة (2-8°)', 'مجمّد', 'بعيد عن الضوء'], f.storage))}
+      <div style="display:flex;gap:16px;align-items:center;font-size:12.5px;">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="f-rx_required" ${f.rx_required ? 'checked' : ''} /> يحتاج وصفة طبية</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:#C0392B;"><input type="checkbox" id="f-controlled" ${f.controlled ? 'checked' : ''} /> دواء مراقب</label>
+      </div>
+      <div style="grid-column:1/-1;border:1px solid #CFE0F0;background:#F3F8FD;border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end;">
+        <div style="grid-column:1/-1;font-size:12px;font-weight:700;color:#1B3352;">📦 الوحدات — البيع بالعلبة وبالوحدة الصغيرة (المخزون والأسعار بالوحدة الصغيرة)</div>
+        ${field('الوحدة الصغيرة', `<input id="f-unit" class="input" value="${escapeHtml(f.unit || '')}" placeholder="شريط" />`)}
+        ${field('العلبة', `<input id="f-pack_unit" class="input" value="${escapeHtml(f.pack_unit || '')}" placeholder="علبة" />`)}
+        ${field('العدد في العلبة', `<input id="f-pack_factor" class="input mono" value="${escapeHtml(f.pack_factor ?? '')}" placeholder="3" />`)}
+        ${field('سعر العلبة', `<input id="f-pack_price" class="input mono" value="${escapeHtml(f.pack_price ?? '')}" placeholder="اختياري" />`)}
+      </div>
+      ${state.editingId ? `<div style="grid-column:1/-1;">
+        <div style="font-size:12px;font-weight:700;color:#1B3352;margin-bottom:6px;">📅 التشغيلات الموجودة</div>
+        ${bs.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;">
+          <tr style="background:#1B3352;color:#fff;"><th style="padding:5px 8px;text-align:right;">التشغيلة</th><th style="padding:5px 8px;text-align:right;">الصلاحية</th><th style="padding:5px 8px;text-align:right;">الحالة</th><th style="padding:5px 8px;text-align:right;">الكمية</th></tr>
+          ${bs.map(b => { const st = expiryStatus(b.expiry_date); return `<tr style="border-top:1px solid #EEE;"><td style="padding:5px 8px;" class="mono">${escapeHtml(b.batch_no || '—')}</td><td style="padding:5px 8px;" class="mono">${escapeHtml(b.expiry_date)}</td><td style="padding:5px 8px;"><span style="background:${st.bg};color:${st.c};padding:1px 8px;border-radius:9px;font-size:11px;font-weight:700;">${st.l}</span></td><td style="padding:5px 8px;" class="mono"><b>${Number(b.qty)}</b></td></tr>`; }).join('')}
+        </table>` : '<div style="font-size:11.5px;color:#8B8A7A;">ما في تشغيلات — بتتسجل من فاتورة الشراء (التشغيلة والصلاحية).</div>'}
+      </div>` : ''}
+    </div>`;
+  }
   if (state.activeTab === 'عام') {
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:#5F5E5A;">الاسم والوصف</div>
       <div style="grid-column:1/-1;">${field('اسم الصنف (عربي) *', `<input id="f-name" class="input ${e.name?'err':''}" value="${escapeHtml(f.name)}" />`)}</div>
       <div style="grid-column:1/-1;">${field('اسم الصنف (إنجليزي)', `<input id="f-name_en" class="input" value="${escapeHtml(f.name_en)}" dir="ltr" />`)}</div>
-      ${pharmacyOn() ? `<div style="grid-column:1/-1;">${field('💊 الاسم العلمي (المادة الفعالة)', `<input id="f-generic_name" class="input" value="${escapeHtml(f.generic_name || '')}" placeholder="مثال: Paracetamol 500mg" dir="ltr" />`)}</div>` : ''}
       <div style="grid-column:1/-1;">${field('اسم الصنف تفصيلياً', `<textarea id="f-detailed_name" class="input" rows="2">${escapeHtml(f.detailed_name)}</textarea>`)}</div>
 
       ${sectionHeader('التصنيف', 'ti-category')}
@@ -11093,7 +11202,7 @@ function renderTabContent() {
       ${field('النوع', `<input id="f-item_type" class="input" value="${escapeHtml(f.item_type)}" />`)}
 
       ${sectionHeader('المواصفات الفنية', 'ti-settings')}
-      ${field('الوحدة', `<select id="f-unit" class="input">${UNITS.map(u=>`<option ${f.unit===u?'selected':''}>${u}</option>`).join('')}</select>`)}
+      ${field('الوحدة', `<select id="f-unit" class="input">${[...new Set([...UNITS, ...(pharmacyOn() ? ['شريط','زجاجة','أمبولة','أنبوب','كيس','قطعة'] : []), ...(f.unit ? [f.unit] : [])])].map(u=>`<option ${f.unit===u?'selected':''}>${escapeHtml(u)}</option>`).join('')}</select>`)}
       ${field('المقاس', `<input id="f-size" class="input" value="${escapeHtml(f.size)}" />`)}
       ${field('الحجم', `<input id="f-volume" class="input" value="${escapeHtml(f.volume)}" />`)}
       ${field('الشكل', `<input id="f-shape" class="input" value="${escapeHtml(f.shape)}" />`)}
@@ -11115,12 +11224,6 @@ function renderTabContent() {
       ${field('سعر البيع 1 *', `<input id="f-price" class="input ${e.price?'err':''}" value="${escapeHtml(f.price)}" />`)}
       ${field('سعر البيع 2', `<input id="f-price2" class="input" value="${escapeHtml(f.price2)}" />`)}
       ${field('سعر البيع 3', `<input id="f-price3" class="input" value="${escapeHtml(f.price3)}" />`)}
-      ${pharmacyOn() ? `<div style="grid-column:1/-1;border:1px solid #CFE0F0;background:#F3F8FD;border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end;">
-        <div style="grid-column:1/-1;font-size:12px;font-weight:700;color:#1B3352;">💊 البيع بالعلبة — الوحدة الأساسية هي «${escapeHtml(f.unit || 'الوحدة')}» (المخزون والأسعار فوق بيها)</div>
-        ${field('اسم العلبة', `<input id="f-pack_unit" class="input" value="${escapeHtml(f.pack_unit || '')}" placeholder="علبة" />`)}
-        ${field(`كم ${escapeHtml(f.unit || 'وحدة')} في العلبة`, `<input id="f-pack_factor" class="input mono" value="${escapeHtml(f.pack_factor ?? '')}" placeholder="مثال: 3" />`)}
-        ${field('سعر العلبة (اختياري)', `<input id="f-pack_price" class="input mono" value="${escapeHtml(f.pack_price ?? '')}" placeholder="فاضي = السعر × العدد" />`)}
-      </div>` : ''}
       ${fxOn() ? `<div style="grid-column:1/-1;border:1px solid #CFE6DD;background:#F4F9F7;border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end;">
         <div style="grid-column:1/-1;font-size:12px;font-weight:700;color:#0F6E56;">💵 السعر بـ${escapeHtml(fxName())} (سعر الصرف الحالي ${fxRate() ? fxRate().toLocaleString('en-US') : '—'})</div>
         ${field('سعر البيع بالدولار', `<div style="display:flex;gap:6px;"><input id="f-price_usd" class="input mono" value="${escapeHtml(f.price_usd ?? '')}" placeholder="مثال: 12.5" /><button type="button" data-fx-calc-price class="btn" style="white-space:nowrap;padding:4px 10px;font-size:11.5px;">احسب بالجنيه ←</button></div>`)}
@@ -12524,13 +12627,14 @@ function fmtExp(exp) { return exp ? String(exp).slice(0, 7).split('-').reverse()
 // نص يظهر جنب اسم الصنف وقت الإدخال: أقرب صلاحية صالحة + كمية المنتهي
 function itemExpiryHint(item) {
   if (!pharmacyOn() || !item) return '';
-  const bs = itemBatches(item.id); if (!bs.length) return '';
+  const tag = item.controlled ? '  · ⚠ مراقب' : item.rx_required ? '  · ℞ وصفة' : '';
+  const bs = itemBatches(item.id); if (!bs.length) return tag;
   const today = phToday();
   const valid = bs.filter(b => b.expiry_date >= today), expired = bs.filter(b => b.expiry_date < today);
   let t = valid.length ? `  · أقرب صلاحية ${fmtExp(valid[0].expiry_date)}` : '';
   const exQ = expired.reduce((s, b) => s + Number(b.qty), 0);
   if (exQ > 0) t += `  · ⚠️ ${exQ} منتهي`;
-  return t;
+  return t + tag;
 }
 function itemValidQty(item) { const today = phToday(); return itemBatches(item.id).filter(b => b.expiry_date >= today).reduce((s, b) => s + Number(b.qty), 0); }
 function itemExpiredQty(item) { const today = phToday(); return itemBatches(item.id).filter(b => b.expiry_date < today).reduce((s, b) => s + Number(b.qty), 0); }
@@ -15077,7 +15181,8 @@ function readFormFromDom() {
   if (val('f-price2') !== undefined) f.price2 = val('f-price2');
   if (val('f-price3') !== undefined) f.price3 = val('f-price3');
   if (val('f-price_usd') !== undefined) f.price_usd = val('f-price_usd');
-  ['generic_name', 'pack_unit', 'pack_factor', 'pack_price'].forEach(k => { if (val('f-' + k) !== undefined) f[k] = val('f-' + k); });
+  ['generic_name', 'pack_unit', 'pack_factor', 'pack_price', 'dosage_form', 'strength', 'manufacturer', 'origin_country', 'storage'].forEach(k => { if (val('f-' + k) !== undefined) f[k] = val('f-' + k); });
+  ['rx_required', 'controlled'].forEach(k => { const c = get('f-' + k); if (c) f[k] = c.checked; });
   if (val('f-cost_usd') !== undefined) f.cost_usd = val('f-cost_usd');
   if (val('f-discount_percent') !== undefined) f.discount_percent = val('f-discount_percent');
   if (val('f-vat_applicable') !== undefined) f.vat_applicable = val('f-vat_applicable') === 'true';
@@ -15123,7 +15228,7 @@ function openItemById(id) {
   };
   state.formErrors = {};
   state.editingId = item.id;
-  state.activeTab = 'عام';
+  state.activeTab = pharmacyOn() ? '💊 الدواء' : 'عام';
   state.itemLastPurchasePrices = [];
   loadLastPurchasePrices(item.id, 3).then(prices => { state.itemLastPurchasePrices = prices; if (state.activeTab === 'الاسعار') render(); });
   state.showForm = true;
@@ -16961,6 +17066,10 @@ function bindAppEvents() {
       const tlv = buildZatcaTLV(c.name_ar||'', c.tax_number||'', new Date().toISOString(), t.grandTotal, t.taxTotal);
       renderQRInto('si-qr-canvas-preview', tlv, invoiceQrText(f, t, 'فاتورة'));
     }
+    if (document.getElementById('si-qr-canvas-rc')) {
+      const f = state.salesForm; const t = calcLineTotals(f); const c = state.company || {};
+      renderQRInto('si-qr-canvas-rc', buildZatcaTLV(c.name_ar||'', c.tax_number||'', new Date().toISOString(), t.grandTotal, t.taxTotal), invoiceQrText(f, t, 'فاتورة'));
+    }
     if (document.getElementById('si-qr-canvas-tpl3')) {
       const f = state.salesForm;
       const t = calcLineTotals(f);
@@ -17123,6 +17232,8 @@ function bindAppEvents() {
           }
           if (!confirm(`⚠️ الرصيد المتوفر من "${item.name}" هو ${availQty} فقط — البيع بيخلّي الرصيد بالسالب.${otherTxt}\n\nتكمل؟`)) return;
         }
+        if (pharmacyOn() && item.controlled && !confirm(`⚠️ "${item.name}" دواء مراقب.\n\nتأكد من الوصفة الطبية قبل الصرف. تكمل؟`)) return;
+        if (pharmacyOn() && item.rx_required && !item.controlled) showToast(`℞ "${item.name}" يحتاج وصفة طبية`);
         if (pharmacyOn() && itemBatches(item.id).length) {
           const inForm = state.salesForm.lines.filter(l => l.item_id === itemId).reduce((s2, l) => s2 + Number(l.quantity || 0), 0);
           const valid = itemValidQty(item), exQ = itemExpiredQty(item);
@@ -18597,7 +18708,7 @@ function bindAppEvents() {
       if (feat('auto_sku')) state.form.sku = nextAutoSku();
       state.formErrors = {};
       state.editingId = null;
-      state.activeTab = 'عام';
+      state.activeTab = pharmacyOn() ? '💊 الدواء' : 'عام';
       state.showForm = true;
       render();
     };
@@ -22375,7 +22486,9 @@ function bindAppEvents() {
         shape: txt(f.shape), specs: txt(f.specs), usage_type: txt(f.usage_type), volume: txt(f.volume),
         cost: num(f.cost) || 0, price: Number(f.price), price2: num(f.price2), price3: num(f.price3),
         ...(fxOn() ? { price_usd: num(f.price_usd), cost_usd: num(f.cost_usd) } : {}),
-        ...(pharmacyOn() ? { generic_name: String(f.generic_name || '').trim() || null, pack_unit: String(f.pack_unit || '').trim() || null, pack_factor: num(f.pack_factor), pack_price: num(f.pack_price) } : {}),
+        ...(pharmacyOn() ? { generic_name: String(f.generic_name || '').trim() || null, pack_unit: String(f.pack_unit || '').trim() || null, pack_factor: num(f.pack_factor), pack_price: num(f.pack_price),
+          dosage_form: f.dosage_form || null, strength: String(f.strength || '').trim() || null, manufacturer: String(f.manufacturer || '').trim() || null,
+          origin_country: String(f.origin_country || '').trim() || null, storage: f.storage || null, rx_required: !!f.rx_required, controlled: !!f.controlled } : {}),
         discount_percent: num(f.discount_percent) || 0, vat_applicable: !!f.vat_applicable, pricing_method: f.pricing_method || 'fixed_value',
         competitor1_name: txt(f.competitor1_name), competitor1_price: num(f.competitor1_price),
         competitor2_name: txt(f.competitor2_name), competitor2_price: num(f.competitor2_price),
@@ -22728,8 +22841,16 @@ async function init() {
     const paperSize = state.company?.print_paper_size;
     const marginMm = state.company?.print_margin_mm ?? 10;
     printSizeStyleEl = document.createElement('style');
-    if (paperSize === 'receipt') {
-      printSizeStyleEl.textContent = `@page { size: 80mm auto; margin: ${Math.min(marginMm,10)}mm; } @media print { body, .print-area { font-size: 11px !important; } .print-area { max-width: 74mm !important; width: 74mm !important; } }`;
+    const rcEl = document.getElementById('si-receipt');
+    if (paperSize === 'receipt' && rcEl) {
+      // إيصال فاتورة البيع: نقيس طوله ونخلي الورقة على قده بالظبط (80مم × الطول)
+      const prev = rcEl.style.cssText;
+      rcEl.style.cssText = prev + ';display:block !important;position:absolute;visibility:hidden;left:-9999px;top:0;';
+      const hMm = Math.ceil(rcEl.offsetHeight * 25.4 / 96) + 12;
+      rcEl.style.cssText = prev;
+      printSizeStyleEl.textContent = `@page { size: 80mm ${Math.max(60, hMm)}mm; margin: 3mm 4mm; } @media print { .print-area { width: 72mm !important; max-width: 72mm !important; padding: 0 !important; margin: 0 !important; } }`;
+    } else if (paperSize === 'receipt') {
+      printSizeStyleEl.textContent = `@page { size: 80mm 297mm; margin: 3mm; } @media print { body, .print-area { font-size: 11px !important; } .print-area { max-width: 74mm !important; width: 74mm !important; } }`;
     } else {
       const orientation = state.company?.print_orientation === 'landscape' ? 'landscape' : 'portrait';
       printSizeStyleEl.textContent = `@page { size: A4 ${orientation}; margin: ${marginMm}mm; }`;
@@ -22741,8 +22862,8 @@ async function init() {
     if (state.salesPrintTemplate) {
       templateHideStyle = document.createElement('style');
       templateHideStyle.id = 'sales-template-hide-style';
-      const allIds = ['si-tpl1-a', 'si-tpl1-b', 'si-lines-table-wrap', 'si-tpl2', 'si-tpl3'];
-      const activeIds = state.salesPrintTemplate === '2' ? ['si-tpl2'] : state.salesPrintTemplate === '3' ? ['si-tpl3'] : ['si-tpl1-a', 'si-tpl1-b', 'si-lines-table-wrap'];
+      const allIds = ['si-tpl1-a', 'si-tpl1-b', 'si-lines-table-wrap', 'si-tpl2', 'si-tpl3', 'si-receipt'];
+      const activeIds = rcEl && paperSize === 'receipt' ? ['si-receipt'] : state.salesPrintTemplate === '2' ? ['si-tpl2'] : state.salesPrintTemplate === '3' ? ['si-tpl3'] : ['si-tpl1-a', 'si-tpl1-b', 'si-lines-table-wrap'];
       const hideIds = allIds.filter(id => !activeIds.includes(id));
       templateHideStyle.textContent = hideIds.map(id => `#${id}`).join(', ') + ' { display: none !important; }';
       document.head.appendChild(templateHideStyle);
@@ -22819,6 +22940,7 @@ async function init() {
         }
       }
     }
+    isolatePrintArea();
   });
   window.addEventListener('afterprint', () => {
     if (printSizeStyleEl) { printSizeStyleEl.remove(); printSizeStyleEl = null; }
@@ -22832,6 +22954,7 @@ async function init() {
     if (logoWmEl) logoWmEl.remove();
     printCopyClones.forEach(c => c.remove());
     printCopyClones = [];
+    unisolatePrintArea();
   });
 }
 sb.auth.onAuthStateChange((event, session) => {
