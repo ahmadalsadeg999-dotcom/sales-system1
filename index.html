@@ -2371,19 +2371,22 @@ function branchOptions() {
   const act = (state.branches || []).filter(b => b.active !== false);
   if (canAllBranches()) return act;
   const extra = Array.isArray(state.profile.allowed_branches) ? state.profile.allowed_branches : [];
-  return act.filter(b => b.id === state.profile.branch_id || extra.includes(b.id));
+  const home = homeBranchId();
+  return act.filter(b => b.id === home || extra.includes(b.id));
 }
+// كل الفروع: المدير والمصمم بس. الموظف = فرعه (غير المربوط = الرئيسي) + الفروع اللي سمح بيها المدير
 function canAllBranches() {
   const p = state.profile; if (!p) return false;
-  return isAdmin() || (!p.branch_id && !(Array.isArray(p.allowed_branches) && p.allowed_branches.length));
+  return isAdmin() || !!p.is_support;
 }
+function homeBranchId() { const p = state.profile; return (p && p.branch_id) || mainBranchId(); }
 // فرع العمل الحالي (اللي اختاره عند الدخول). null = كل الفروع
 function userBranchId() {
   if (!state.profile || !state.branchesReady) return null;
   const a = state.profile.active_branch_id;
   if (a && branchOptions().some(b => b.id === a)) return a;
   if (canAllBranches()) return null;
-  return state.profile.branch_id || branchOptions()[0]?.id || null;
+  return homeBranchId() || branchOptions()[0]?.id || null;
 }
 // حد الفروع من السيريال (b): السيريال القديم بدونه = فرع واحد (الرئيسي)، 0 = غير محدود
 function branchLimit() { const b = state.licenseInfo ? state.licenseInfo.b : undefined; return b == null ? 1 : Number(b) || 0; }
@@ -2525,7 +2528,7 @@ function withBranchQty(fn) {
 }
 // رصيد الصنف بالفروع الثانية (للعرض فقط)
 function itemQtyOtherBranches(it) {
-  if (!isBranchUser() || !state.whStock || !it) return [];
+  if (!isBranchUser() || !state.whStock || !it || !hasPerm('other_branches_stock', 'can_read')) return [];
   const m = state.whStock[it.id] || {}, my = userBranchId(), agg = {};
   state.warehouses.forEach(w => { if (w.branch_id && w.branch_id !== my && Number(m[w.id] || 0) > 0) agg[w.branch_id] = (agg[w.branch_id] || 0) + Number(m[w.id]); });
   return Object.entries(agg).map(([bid, q]) => ({ name: branchName(bid) || 'فرع', qty: q }));
@@ -2849,6 +2852,7 @@ function hasPerm(screenKey, action) {
   if (isAdmin()) return true;
   const perms = state.myPermissions?.[screenKey];
   if (perms && perms[action] !== null && perms[action] !== undefined) return !!perms[action];
+  if (screenKey === 'other_branches_stock') return false;           // بدون منح صريح من المدير = ممنوع
   // بدون إعداد في المصفوفة: الاعتماد والإلغاء حسب خيار «اعتماد الفواتير والسندات» في المستخدمين، والباقي مسموح
   if (action === 'can_approve' || action === 'can_delete') return !!state.profile?.can_approve;
   return true;
@@ -4849,7 +4853,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.14-2';
+const APP_VERSION = '2026.10.19-1';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -11226,14 +11230,14 @@ function renderUsersModal() {
             ${state.branchesReady && state.branches.length ? `<div style="padding:0 8px 8px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:#1B3352;">
               <i class="ti ti-building-store"></i><span style="font-weight:500;">الفرع:</span>
               <select data-branch-for="${u.id}" class="input" style="padding:3px 6px;font-size:11.5px;max-width:200px;" ${u.is_support ? 'disabled title="المصمم يشوف كل الفروع"' : ''}>
-                <option value="">كل الفروع</option>
+                <option value="">${u.role === 'admin' || u.is_support ? 'كل الفروع' : 'الفرع الرئيسي (افتراضي)'}</option>
                 ${state.branches.map(b => `<option value="${b.id}" ${u.branch_id === b.id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}
               </select>
-              <span style="color:#8B8A7A;">${u.role === 'admin' || u.is_support ? 'المدير يختار أي فرع عند الدخول' : u.branch_id ? ((u.allowed_branches || []).length ? 'يختار الفرع عند الدخول' : 'يدخل على فرعه مباشرة') : 'يشوف كل الفروع'}</span>
+              <span style="color:#8B8A7A;">${u.role === 'admin' || u.is_support ? 'المدير يختار أي فرع عند الدخول' : ((u.allowed_branches || []).length ? 'يتنقل بين فرعه والفروع المسموحة' : 'يدخل على فرعه مباشرة (بدون تنقل)')}</span>
             </div>
-            ${u.branch_id && u.role !== 'admin' && !u.is_support && state.branches.filter(b => b.id !== u.branch_id && b.active !== false).length ? `<div style="padding:0 8px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;font-size:11.5px;color:#1B3352;">
-              <span style="font-weight:500;"><i class="ti ti-arrows-exchange"></i> فروع إضافية يقدر يشتغل فيها:</span>
-              ${state.branches.filter(b => b.id !== u.branch_id && b.active !== false).map(b => `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-allow-branch="${b.id}" data-allow-user="${u.id}" ${(u.allowed_branches || []).includes(b.id) ? 'checked' : ''} /> ${escapeHtml(b.name)}</label>`).join('')}
+            ${u.role !== 'admin' && !u.is_support && state.branches.filter(b => b.id !== (u.branch_id || mainBranchId()) && b.active !== false).length ? `<div style="padding:0 8px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;font-size:11.5px;color:#1B3352;">
+              <span style="font-weight:500;"><i class="ti ti-arrows-exchange"></i> السماح بالتنقل إلى:</span>
+              ${state.branches.filter(b => b.id !== (u.branch_id || mainBranchId()) && b.active !== false).map(b => `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-allow-branch="${b.id}" data-allow-user="${u.id}" ${(u.allowed_branches || []).includes(b.id) ? 'checked' : ''} /> ${escapeHtml(b.name)}</label>`).join('')}
             </div>` : ''}` : ''}
             </fieldset>
             </div>`).join('')}
@@ -14663,6 +14667,8 @@ const ACCOUNT_ROLES = [
   { group:'المخزون والتكلفة', key:'cogs', label:'حساب تكلفة المبيعات', def:'5101' },
   { group:'المخزون والتكلفة', key:'stock_gain', label:'حساب إيراد فروقات الجرد (زيادة)', def:'4201' },
   { group:'المخزون والتكلفة', key:'stock_loss', label:'حساب خسائر فروقات الجرد (نقص)', def:'5402' },
+  { group:'الفروع', key:'inter_branch', label:'حساب جاري الفروع (بضاعة محوّلة بين الفروع)', def:'1106' },
+  { group:'الفروع', key:'transfer_shortage', label:'حساب عجز تحويلات بين الفروع (نقص عند الاستلام)', def:'5404' },
   { group:'الضريبة', key:'output_vat', label:'حساب ضريبة المخرجات (المبيعات)', def:'2102' },
   { group:'الضريبة', key:'input_vat', label:'حساب ضريبة المدخلات (المشتريات)', def:'1104' },
   { group:'سندات التسوية', key:'settlement_expense', label:'حساب مصروف تسوية الذمم', def:'5403' },
