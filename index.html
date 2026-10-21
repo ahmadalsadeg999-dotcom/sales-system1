@@ -1344,12 +1344,12 @@ function translateAuthError(msg) {
 
 async function loadBundleComponents(itemId) {
   const { data } = await sb.from('item_bundle_components').select('id, quantity, component_item_id, items!item_bundle_components_component_item_id_fkey(name)').eq('parent_item_id', itemId);
-  state.bundleComponents = (data || []).map(r => ({ id: r.id, quantity: r.quantity, component_name: r.items ? r.items.name : '' }));
+  state.bundleComponents = (data || []).map(r => ({ id: r.id, quantity: r.quantity, component_item_id: r.component_item_id, component_name: r.items ? r.items.name : '' }));
 }
 
 async function loadItemRelations(itemId) {
   const { data } = await sb.from('item_relations').select('id, related_item_id, items!item_relations_related_item_id_fkey(name)').eq('item_id', itemId);
-  state.itemRelations = (data || []).map(r => ({ id: r.id, related_name: r.items ? r.items.name : '' }));
+  state.itemRelations = (data || []).map(r => ({ id: r.id, related_item_id: r.related_item_id, related_name: r.items ? r.items.name : '' }));
 }
 // ---------- PARTIES (العملاء والموردين) ----------
 async function loadParties() {
@@ -2102,6 +2102,46 @@ const AUTO_POST_DOCS = {
   cdv:      { perm: 'cash_disbursement',  id: () => state.editingCashDisbursementId,  form: () => state.cashDisbursementForm },
 };
 function autoPostOnPrint() { return ((state.company?.print_settings_by_type || {})._opts || {}).auto_post !== false; }
+// تنبيه لمرة وحدة للمدير بعد التحديث: الطباعة صارت تحفظ وترحّل — مع زر إيقاف
+function autoPostNoticeKey() { return 'cs_autopost_notice_' + (state.session?.user?.id || '') + '_' + (state.company?.id || ''); }
+function autoPostNoticeDue() {
+  if (state.autoPostNoticeHide || !state.company?.id || !state.session?.user?.id || typeof isAdmin !== 'function' || !isAdmin()) return false;
+  if (!autoPostOnPrint()) return false;
+  try { return !localStorage.getItem(autoPostNoticeKey()); } catch (_) { return false; }
+}
+function autoPostNoticeDone() { try { localStorage.setItem(autoPostNoticeKey(), '1'); } catch (_) {} state.autoPostNoticeHide = true; }
+function renderAutoPostNotice() {
+  return `${sxStyles()}<div id="apn-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:60;">
+    <div class="sx-win" style="border:1px solid #1B3352;border-radius:6px;width:100%;max-width:520px;box-shadow:0 20px 50px rgba(0,0,0,0.3);">
+      <div class="win-title"><span>جديد في التحديث</span></div>
+      <div style="padding:16px 18px;font-size:13px;line-height:1.9;color:#1B1B1B;">
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          <i class="ti ti-printer" style="font-size:34px;color:#1B5FA8;"></i>
+          <div><b>زر «طباعة» صار يحفظ المستند ويرحّله ويطبعه بضغطة وحدة</b> (F9).<br>
+          ينطبق على: فواتير البيع والشراء والمرتجعات والسندات — ولمن عنده صلاحية الاعتماد بس.<br>
+          <span style="color:#5F5E5A;font-size:12px;">لو تفضّل الطريقة القديمة (الطباعة بدون ترحيل)، أوقفه من هنا أو لاحقاً من النظام › إعدادات الطباعة.</span></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:center;gap:4px;padding:0 18px 14px;">
+        <button data-apn-ok type="button" class="sx-btn" style="min-width:150px;"><i class="ti ti-check" style="color:#0F6E56;"></i>تمام، خليه شغال</button>
+        <button data-apn-off type="button" class="sx-btn" style="min-width:150px;"><i class="ti ti-player-pause" style="color:#C0392B;"></i>أوقفه — طباعة بس</button>
+      </div>
+    </div>
+  </div>`;
+}
+document.addEventListener('click', async ev => {
+  const t = ev.target;
+  if (t.closest && t.closest('[data-apn-ok]')) { autoPostNoticeDone(); render(); return; }
+  if (t.closest && t.closest('[data-apn-off]')) {
+    const byType = { ...(state.company?.print_settings_by_type || {}) };
+    byType._opts = { ...(byType._opts || {}), auto_post: false };
+    const { error } = await sb.from('company_settings').update({ print_settings_by_type: byType }).eq('id', state.company.id);
+    if (error) { showToast('فشل الحفظ: ' + error.message, 'error'); return; }
+    state.company.print_settings_by_type = byType; autoPostNoticeDone();
+    logActivity('إيقاف الترحيل التلقائي عند الطباعة', '');
+    showToast('✓ الطباعة بتطبع بس (الترحيل من زر «ترحيل»)'); render();
+  }
+}, true);
 function canAutoPost(perm) { return autoPostOnPrint() && hasPerm(perm, 'can_approve'); }
 const _tick = (ms) => new Promise(r => setTimeout(r, ms || 0));
 async function printWithPost(p, opt) {
@@ -4087,6 +4127,7 @@ function renderApp() {
   ${state.showDailyFollowup ? renderDailyFollowup() : ''}
   ${state.priceReview ? renderPriceReviewModal() : ''}
   ${state.showPricingRules ? renderPricingRulesModal() : ''}
+  ${autoPostNoticeDue() ? renderAutoPostNotice() : ''}
   ${renderWsBar()}
   ${state.showWalkinPicker ? renderWalkinPicker() : ''}
   ${state.showOwnerDash ? renderOwnerDash() : ''}
@@ -4202,135 +4243,134 @@ function partyField(label, inputHtml) {
 function renderPartyFormModal() {
   const f = state.partyForm; const e = state.partyFormErrors;
   const tab = state.partyActiveTab || 'معلومات عامة';
-  const tabs = ['معلومات عامة','معلومات مالية','الرصيد الافتتاحي','المستندات'];
+  const tabs = ['معلومات عامة','العنوان','معلومات مالية','الرصيد الافتتاحي','المستندات'];
+  const typeLbl = f.party_type === 'supplier' ? 'المورد' : f.party_type === 'customer' ? 'العميل' : 'الحساب';
   return `
   <div id="party-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
-    <div class="print-area" style="background:#E8E4DA;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    ${sxStyles()}
+    <style>
+      .pc-panel{border:1px solid #919B9C;border-top:none;background:#ECE9D8;padding:14px 14px 10px;min-height:280px;max-height:min(56vh, 480px);overflow:auto;}
+      .pc-grid{display:grid;grid-template-columns:110px 1fr 110px 1fr;gap:6px 8px;align-items:center;}
+      .pc-sec{grid-column:1/-1;font-size:12px;font-weight:700;color:#1B3352;border-bottom:1px solid #A9A48C;padding:6px 0 2px;margin-top:4px;}
+      .pc-chk{display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;color:#000;}
+    </style>
+    <div class="print-area sx-win" style="border:1px solid #1B3352;border-radius:6px;width:100%;max-width:780px;max-height:96vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title">
-        <span>معلومات عميل / مورد</span>
+        <span>معلومات ${typeLbl}</span>
         <button id="party-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button>
       </div>
-      ${state.editingPartyId ? `<div style="padding:6px 16px 0;font-size:11px;color:#0F6E56;">✓ محفوظ — الرقم: <span class="mono">${escapeHtml(f.code||'')}</span></div>` : ''}
-
-      <div style="padding:14px 16px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div style="grid-column:1/-1;">${partyField('الاسم (عربي) *', `<input id="p-name" class="input ${e.name?'err':''}" value="${escapeHtml(f.name)}" />`)}</div>
-        <div style="grid-column:1/-1;">${partyField('الاسم (إنجليزي)', `<input id="p-name_en" class="input" value="${escapeHtml(f.name_en)}" dir="ltr" />`)}</div>
-        ${partyField('رقم المندوب', `<input id="p-rep_number" class="input" value="${escapeHtml(f.rep_number)}" />`)}
-        ${partyField('رقم الحساب', `<input id="p-account_number" class="input" value="${escapeHtml(f.account_number)}" />`)}
-        <div style="display:flex;gap:16px;font-size:12.5px;">
-          <label><input type="radio" name="p-type" value="customer" ${f.party_type==='customer'?'checked':''} /> عميل</label>
-          <label><input type="radio" name="p-type" value="supplier" ${f.party_type==='supplier'?'checked':''} /> مورد</label>
-          <label><input type="radio" name="p-type" value="other" ${f.party_type==='other'?'checked':''} /> أخرى</label>
+      <div style="padding:12px 14px 0;display:grid;grid-template-columns:110px 150px 70px 1fr 120px;gap:6px 8px;align-items:center;">
+        <label class="sx-lbl">رقم ${typeLbl}</label>
+        <input class="sx-in sx-ro sx-beige mono" value="${escapeHtml(f.code || (state.editingPartyId ? '' : 'تلقائي'))}" disabled />
+        <label class="sx-lbl" style="grid-row:span 2;">الاسم</label>
+        <input id="p-name" class="sx-in" style="${e.name ? 'border-color:#C0392B;background:#FFF0F0;' : ''}" value="${escapeHtml(f.name)}" placeholder="عربي *" />
+        <label class="pc-chk"><input type="radio" name="p-active" value="true" ${f.active?'checked':''} /> <b>فعال</b></label>
+        <label class="sx-lbl">رقم الحساب</label>
+        <input id="p-account_number" class="sx-in mono" value="${escapeHtml(f.account_number)}" />
+        <input id="p-name_en" class="sx-in" value="${escapeHtml(f.name_en)}" dir="ltr" placeholder="English" />
+        <label class="pc-chk"><input type="radio" name="p-active" value="false" ${!f.active?'checked':''} /> <b>موقوف</b></label>
+        <label class="sx-lbl">رقم المندوب</label>
+        <input id="p-rep_number" class="sx-in mono" value="${escapeHtml(f.rep_number)}" />
+        <label class="sx-lbl">النوع</label>
+        <div style="display:flex;gap:18px;grid-column:4 / span 2;">
+          <label class="pc-chk"><input type="radio" name="p-type" value="customer" ${f.party_type==='customer'?'checked':''} /> عميل</label>
+          <label class="pc-chk"><input type="radio" name="p-type" value="supplier" ${f.party_type==='supplier'?'checked':''} /> مورد</label>
+          <label class="pc-chk"><input type="radio" name="p-type" value="other" ${f.party_type==='other'?'checked':''} /> أخرى</label>
         </div>
-        <div style="display:flex;gap:16px;font-size:12.5px;">
-          <label><input type="radio" name="p-active" value="true" ${f.active?'checked':''} /> فعال</label>
-          <label><input type="radio" name="p-active" value="false" ${!f.active?'checked':''} /> موقوف</label>
-        </div>
-        ${state.branchesReady && state.branches.length > 1 && !userBranchId() ? `<div style="grid-column:1/-1;">${partyField('الفرع', `<select id="p-branch" class="input">${state.branches.map(b => `<option value="${b.id}" ${(f.branch_id || mainBranchId()) === b.id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}</select>`)}</div>` : ''}
+        ${state.branchesReady && state.branches.length > 1 && !userBranchId() ? `<label class="sx-lbl">الفرع</label><select id="p-branch" class="sx-in" style="grid-column:2 / span 3;max-width:300px;">${state.branches.map(b => `<option value="${b.id}" ${(f.branch_id || mainBranchId()) === b.id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}</select><span></span>` : ''}
+        ${e.name ? `<span></span><span></span><span></span><span style="font-size:11px;color:#C0392B;">الاسم مطلوب</span><span></span>` : ''}
       </div>
-
-      <div class="no-print" style="display:flex;gap:2px;padding:10px 16px 0;border-bottom:1px solid #A9A48C;flex-wrap:wrap;margin-top:8px;">
-        ${tabs.map(t => `<button data-party-tab="${t}" style="padding:8px 18px;font-size:12.5px;cursor:pointer;background:${tab===t?'linear-gradient(135deg,#2C4A6E,#3D6389)':'#F4F5F7'};color:${tab===t?'#fff':'#5F5E5A'};border:1px solid ${tab===t?'transparent':'#E4E2DA'};border-radius:8px 8px 0 0;margin-bottom:-1px;font-weight:${tab===t?'600':'400'};box-shadow:${tab===t?'0 -2px 8px rgba(27,51,82,0.18)':'none'};transition:all 0.15s ease;">${t}</button>`).join('')}
+      <div class="sx-tabs no-print" style="padding:10px 14px 0;flex-wrap:wrap;">
+        ${tabs.map(t2 => `<button data-party-tab="${t2}" type="button" class="sx-tab ${tab === t2 ? 'on' : ''}" style="flex:1 1 auto;">${t2}</button>`).join('')}
       </div>
-      <div style="padding:16px;min-height:220px;">
-        ${renderPartyTabContent()}
+      <div style="padding:0 14px;">
+        <div class="pc-panel">${renderPartyTabContent()}</div>
       </div>
-      <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;">
-        ${iconBtn('party-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
-        ${iconBtn('party-next', 'ti-player-track-next', '#27AE60', t('btn_next'), !state.editingPartyId)}
-        ${iconBtn('party-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), !state.editingPartyId)}
-        ${iconBtn('party-print', 'ti-printer', '#5F5E5A', 'طباعة', !state.editingPartyId)}
-        ${iconBtn('party-cancel', 'ti-x', '#C0392B', 'الغاء')}
-        ${iconBtn('party-save', 'ti-device-floppy', '#2C4A6E', 'حفظ')}
+      <div class="no-print" style="display:flex;justify-content:center;gap:3px;padding:10px 14px 12px;flex-wrap:wrap;">
+        <button id="party-save" type="button" class="sx-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ</button>
+        <button id="party-cancel" type="button" class="sx-btn"><i class="ti ti-trash" style="color:#5F7FA8;"></i>الغاء</button>
+        <button id="party-print" type="button" class="sx-btn" ${!state.editingPartyId ? 'disabled' : ''}><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+        <button id="party-prev" type="button" class="sx-btn" ${!state.editingPartyId ? 'disabled' : ''}><i class="ti ti-arrow-big-right" style="color:#27AE60;"></i>السابق</button>
+        <button id="party-next" type="button" class="sx-btn" ${!state.editingPartyId ? 'disabled' : ''}><i class="ti ti-arrow-big-left" style="color:#27AE60;"></i>التالي</button>
+        <button id="party-exit" type="button" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
       </div>
     </div>
   </div>`;
 }
 
 function renderPartyTabContent() {
-  const f = state.partyForm;
+  const f = state.partyForm; const pe = state.partyFormErrors || {};
   const tab = state.partyActiveTab || 'معلومات عامة';
+  const inp = (id, v, extra = '') => `<input id="${id}" class="sx-in" value="${escapeHtml(v == null ? '' : v)}" ${extra} />`;
+  const L = (label, html, wide) => `<label class="sx-lbl">${label}</label>${wide ? `<div style="grid-column:2 / span 3;">${html}</div>` : html}`;
+  const chk = (id, on, label) => `<label class="pc-chk"><input id="${id}" type="checkbox" ${on ? 'checked' : ''} /> ${label}</label>`;
+  const err = k => pe[k] ? 'style="border-color:#C0392B;background:#FFF0F0;text-align:left;"' : 'style="text-align:left;"';
   if (tab === 'معلومات عامة') {
-    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      ${sectionHeader('معلومات الاتصال', 'ti-address-book')}
-      ${partyField('المدير المسؤول', `<input id="p-manager_name" class="input" value="${escapeHtml(f.manager_name)}" />`)}
-      ${partyField('رقم الجوال', `<input id="p-mobile" class="input" value="${escapeHtml(f.mobile)}" dir="ltr" />`)}
-      ${partyField('رقم الهاتف', `<input id="p-phone" class="input" value="${escapeHtml(f.phone)}" dir="ltr" />`)}
-      ${partyField('رقم الفاكس', `<input id="p-fax" class="input" value="${escapeHtml(f.fax)}" dir="ltr" />`)}
-      ${partyField('البريد الإلكتروني', `<input id="p-email" class="input" value="${escapeHtml(f.email)}" dir="ltr" />`)}
-
-      ${sectionHeader('معلومات قانونية', 'ti-file-certificate')}
-      ${partyField('الرقم الضريبي', `<input id="p-tax_number" class="input" value="${escapeHtml(f.tax_number)}" />`)}
-      ${partyField('السجل التجاري', `<input id="p-commercial_register" class="input" value="${escapeHtml(f.commercial_register)}" />`)}
-
-      ${sectionHeader('العنوان والشحن', 'ti-truck-delivery')}
-      <div style="grid-column:1/-1;">${partyField('العنوان', `<input id="p-address" class="input" value="${escapeHtml(f.address)}" />`)}</div>
-      ${partyField('اسم الشاحن', `<input id="p-shipper_name" class="input" value="${escapeHtml(f.shipper_name)}" />`)}
-      <div style="grid-column:1/-1;">${partyField('عنوان الشحن', `<input id="p-shipping_address" class="input" value="${escapeHtml(f.shipping_address)}" />`)}</div>
-
-      ${sectionHeader('آخر حركة', 'ti-history')}
-      ${partyField('آخر تاريخ حركة', `<input id="p-last_transaction_date" type="date" class="input" value="${escapeHtml(f.last_transaction_date)}" />`)}
-      ${partyField('نوع الحركة', `<input id="p-transaction_type" class="input" value="${escapeHtml(f.transaction_type)}" />`)}
-
-      <div style="grid-column:1/-1;border-top:1px solid #A9A48C;margin:4px 0;padding-top:8px;font-size:12.5px;font-weight:500;">العنوان الوطني</div>
-      ${partyField('رقم المبنى', `<input id="p-building_number" class="input" value="${escapeHtml(f.building_number)}" />`)}
-      ${partyField('رقم الوحدة', `<input id="p-unit_number" class="input" value="${escapeHtml(f.unit_number)}" />`)}
-      ${partyField('اسم الشارع', `<input id="p-street_name" class="input" value="${escapeHtml(f.street_name)}" />`)}
-      ${partyField('اسم الحي', `<input id="p-district_name" class="input" value="${escapeHtml(f.district_name)}" />`)}
-      ${partyField('المنطقة/المدينة', `<input id="p-city_name" class="input" value="${escapeHtml(f.city_name)}" />`)}
-      ${partyField('الرمز البريدي', `<input id="p-postal_code" class="input" value="${escapeHtml(f.postal_code)}" />`)}
-      ${partyField('الرقم الإضافي', `<input id="p-additional_number" class="input" value="${escapeHtml(f.additional_number)}" />`)}
-      ${partyField('البلد', `<input id="p-country" class="input" value="${escapeHtml(f.country)}" />`)}
-      <div style="grid-column:1/-1;">${partyField('ملاحظات', `<textarea id="p-notes" class="input" rows="2">${escapeHtml(f.notes)}</textarea>`)}</div>
+    return `<div class="pc-grid">
+      <div class="pc-sec">معلومات الاتصال</div>
+      ${L('المدير المسؤول', inp('p-manager_name', f.manager_name))}${L('البريد الإلكتروني', inp('p-email', f.email, 'dir="ltr"'))}
+      ${L('رقم الجوال', inp('p-mobile', f.mobile, 'dir="ltr"'))}${L('رقم الهاتف', inp('p-phone', f.phone, 'dir="ltr"'))}
+      ${L('رقم الفاكس', inp('p-fax', f.fax, 'dir="ltr"'))}<span></span><span></span>
+      <div class="pc-sec">معلومات قانونية</div>
+      ${L('الرقم الضريبي', inp('p-tax_number', f.tax_number, 'dir="ltr"'))}${L('السجل التجاري', inp('p-commercial_register', f.commercial_register, 'dir="ltr"'))}
+      <div class="pc-sec">آخر حركة</div>
+      ${L('آخر تاريخ حركة', `<input id="p-last_transaction_date" type="date" class="sx-in" value="${escapeHtml(f.last_transaction_date)}" />`)}${L('نوع الحركة', inp('p-transaction_type', f.transaction_type))}
+      <label class="sx-lbl" style="align-self:start;padding-top:4px;">ملاحظات</label><textarea id="p-notes" class="sx-in" style="grid-column:2 / span 3;height:50px;resize:vertical;">${escapeHtml(f.notes)}</textarea>
+    </div>`;
+  }
+  if (tab === 'العنوان') {
+    return `<div class="pc-grid">
+      <div class="pc-sec">العنوان والشحن</div>
+      ${L('العنوان', inp('p-address', f.address), true)}
+      ${L('اسم الشاحن', inp('p-shipper_name', f.shipper_name))}<span></span><span></span>
+      ${L('عنوان الشحن', inp('p-shipping_address', f.shipping_address), true)}
+      <div class="pc-sec">العنوان الوطني</div>
+      ${L('رقم المبنى', inp('p-building_number', f.building_number))}${L('رقم الوحدة', inp('p-unit_number', f.unit_number))}
+      ${L('اسم الشارع', inp('p-street_name', f.street_name))}${L('اسم الحي', inp('p-district_name', f.district_name))}
+      ${L('المنطقة/المدينة', inp('p-city_name', f.city_name))}${L('الرمز البريدي', inp('p-postal_code', f.postal_code))}
+      ${L('الرقم الإضافي', inp('p-additional_number', f.additional_number))}${L('البلد', inp('p-country', f.country))}
     </div>`;
   }
   if (tab === 'معلومات مالية') {
-    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div>${partyField('نوع التعامل', `<label style="font-size:12.5px;"><input id="p-is_deferred" type="checkbox" ${f.is_deferred?'checked':''} /> آجل</label>`)}</div>
-      ${partyField('حد الائتمان', `<input id="p-credit_limit" class="input ${state.partyFormErrors?.credit_limit?'err':''}" value="${escapeHtml(f.credit_limit)}" />`)}
-      ${partyField('مدة الائتمان (يوم)', `<input id="p-credit_period_days" class="input ${state.partyFormErrors?.credit_period_days?'err':''}" value="${escapeHtml(f.credit_period_days)}" />`)}
-      ${partyField('نسبة الخصم', `<input id="p-discount_percent" class="input" value="${escapeHtml(f.discount_percent)}" />`)}
-      ${partyField('العملة', `<select id="p-currency" class="input"><option ${f.currency==='ريال سعودي'?'selected':''}>ريال سعودي</option><option ${f.currency==='دولار أمريكي'?'selected':''}>دولار أمريكي</option><option ${f.currency==='درهم إماراتي'?'selected':''}>درهم إماراتي</option></select>`)}
-      ${partyField('سعر البيع', `<select id="p-price_level" class="input"><option ${f.price_level==='سعر1'?'selected':''}>سعر1</option><option ${f.price_level==='سعر2'?'selected':''}>سعر2</option><option ${f.price_level==='سعر3'?'selected':''}>سعر3</option></select>`)}
-      ${partyField('الرصيد الافتتاحي', `<input class="input" value="${escapeHtml(f.opening_balance)}" disabled style="background:#EDEAE0;" />`)}
-      ${partyField('الرصيد الحالي', `<input class="input" value="${escapeHtml(f.balance)}" disabled style="background:#EDEAE0;" />`)}
-      <div>${partyField('', `<label style="font-size:12.5px;"><input id="p-auto_show_discount" type="checkbox" ${f.auto_show_discount?'checked':''} /> إظهار الخصم تلقائياً</label>`)}</div>
-      <div>${partyField('', `<label style="font-size:12.5px;"><input id="p-auto_show_item_discount" type="checkbox" ${f.auto_show_item_discount?'checked':''} /> إظهار خصم الصنف تلقائياً</label>`)}</div>
-      <div style="grid-column:1/-1;border-top:1px solid #A9A48C;margin:4px 0;"></div>
-      <div style="grid-column:1/-1;">${partyField('', `<label style="font-size:12.5px;"><input id="p-vat_applicable" type="checkbox" ${f.vat_applicable?'checked':''} /> تطبيق ضريبة القيمة المضافة</label>`)}</div>
-      <div style="grid-column:1/-1;">${partyField('', `<label style="font-size:12.5px;"><input id="p-is_individual" type="checkbox" ${f.is_individual?'checked':''} /> عميل فردي</label>`)}</div>
-      <div style="grid-column:1/-1;">${partyField('', `<label style="font-size:12.5px;"><input id="p-whatsapp_enabled" type="checkbox" ${f.whatsapp_enabled?'checked':''} /> يمكنه استقبال رسائل واتساب</label>`)}</div>
-    </div>`;
+    const opt = (id, list, v) => `<select id="${id}" class="sx-in">${list.map(o => `<option ${v === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+    return `<div class="pc-grid">
+      <label class="sx-lbl">نوع التعامل</label>${chk('p-is_deferred', f.is_deferred, 'آجل')}
+      ${L('سعر البيع', opt('p-price_level', ['سعر1','سعر2','سعر3'], f.price_level))}
+      ${L('حد الائتمان', `<input id="p-credit_limit" class="sx-in mono" ${err('credit_limit')} value="${escapeHtml(f.credit_limit)}" />`)}${L('مدة الائتمان (يوم)', `<input id="p-credit_period_days" class="sx-in mono" ${err('credit_period_days')} value="${escapeHtml(f.credit_period_days)}" />`)}
+      ${L('نسبة الخصم %', `<input id="p-discount_percent" class="sx-in mono" style="text-align:left;" value="${escapeHtml(f.discount_percent)}" />`)}${L('العملة', opt('p-currency', ['ريال سعودي','دولار أمريكي','درهم إماراتي'], f.currency))}
+      ${L('الرصيد الافتتاحي', `<input class="sx-in sx-ro sx-beige mono" style="text-align:left;" value="${escapeHtml(f.opening_balance)}" disabled />`)}${L('الرصيد الحالي', `<input class="sx-in sx-ro sx-beige mono" style="text-align:left;font-weight:700;color:${Number(f.balance) > 0 ? '#C0392B' : '#0F6E56'};" value="${escapeHtml(f.balance)}" disabled />`)}
+    </div>
+    <fieldset style="border:1px solid #A9A48C;margin:14px 0 0;padding:6px 12px 10px;display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;">
+      <legend style="font-size:12px;font-weight:700;color:#1B3352;padding:0 4px;">خيارات</legend>
+      ${chk('p-vat_applicable', f.vat_applicable, 'تطبيق ضريبة القيمة المضافة')}
+      ${chk('p-is_individual', f.is_individual, 'عميل فردي')}
+      ${chk('p-auto_show_discount', f.auto_show_discount, 'إظهار الخصم تلقائياً')}
+      ${chk('p-auto_show_item_discount', f.auto_show_item_discount, 'إظهار خصم الصنف تلقائياً')}
+      ${chk('p-whatsapp_enabled', f.whatsapp_enabled, 'يمكنه استقبال رسائل واتساب')}
+    </fieldset>`;
   }
   if (tab === 'الرصيد الافتتاحي') {
-    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      ${partyField('الرصيد الافتتاحي', `<input id="p-opening_balance" class="input" value="${escapeHtml(f.opening_balance)}" />`)}
-      ${partyField('تاريخ الرصيد الافتتاحي', `<input id="p-opening_balance_date" type="date" class="input" value="${escapeHtml(f.opening_balance_date)}" />`)}
-      ${partyField('الرصيد الحالي', `<input id="p-balance" class="input" value="${escapeHtml(f.balance)}" />`)}
+    return `<div class="pc-grid" style="grid-template-columns:130px 200px 1fr;">
+      <label class="sx-lbl">الرصيد الافتتاحي</label><input id="p-opening_balance" class="sx-in mono" style="text-align:left;" value="${escapeHtml(f.opening_balance)}" /><span style="font-size:11px;color:#6E6D5F;">موجب = عليه (مدين) — سالب = له (دائن)</span>
+      <label class="sx-lbl">تاريخ الرصيد</label><input id="p-opening_balance_date" type="date" class="sx-in" value="${escapeHtml(f.opening_balance_date)}" /><span></span>
+      <label class="sx-lbl">الرصيد الحالي</label><input id="p-balance" class="sx-in mono" style="text-align:left;" value="${escapeHtml(f.balance)}" /><span></span>
     </div>`;
   }
   if (tab === 'المستندات') {
     const docs = f.documents || [];
-    return `
-    <div>
-      <div style="font-size:11.5px;color:#5F5E5A;margin-bottom:12px;">أضف روابط لمستندات هذا العميل/المورد (صورة الهوية، السجل التجاري، عقد...) — تُخزَّن كرابط (مثلاً من Google Drive)، مو رفع ملف مباشر.</div>
-      <div style="border:1px solid #E4E2DA;border-radius:8px;overflow:hidden;margin-bottom:12px;">
-        <div style="display:grid;grid-template-columns:1fr 1.4fr 0.3fr;background:#F4F5F7;padding:7px 10px;font-size:11px;color:#5F5E5A;">
-          <div>اسم المستند</div><div>الرابط</div><div></div>
-        </div>
-        ${docs.map((doc, idx) => `
-          <div style="display:grid;grid-template-columns:1fr 1.4fr 0.3fr;padding:6px 10px;border-top:1px solid #F0EEE5;align-items:center;gap:6px;">
-            <input data-doc-name="${idx}" class="input" style="padding:5px 8px;" value="${escapeHtml(doc.name||'')}" placeholder="مثلاً: صورة الهوية" />
-            <input data-doc-url="${idx}" class="input" style="padding:5px 8px;" value="${escapeHtml(doc.url||'')}" dir="ltr" placeholder="https://..." />
-            <button data-doc-remove="${idx}" style="border:1px solid #F5D5D0;background:#FCEBEB;color:#C0392B;border-radius:6px;width:26px;height:26px;cursor:pointer;">✕</button>
-          </div>`).join('') || `<div style="padding:14px;text-align:center;font-size:11.5px;color:#8B8A7A;">ما فيه مستندات مضافة بعد</div>`}
-      </div>
-      <button id="p-doc-add" class="btn" style="padding:7px 14px;font-size:12px;">+ إضافة مستند</button>
+    return `<div>
+      <div style="font-size:11.5px;color:#5F5E5A;margin-bottom:10px;">روابط مستندات ${f.party_type === 'supplier' ? 'المورد' : 'العميل'} (صورة الهوية، السجل التجاري، عقد...) — تُخزَّن كرابط (مثلاً من Google Drive).</div>
+      <table class="sx-grid">
+        <tr><th style="width:36px;">م</th><th style="width:34%;">اسم المستند</th><th>الرابط</th><th style="width:44px;"></th></tr>
+        ${docs.map((doc, idx) => `<tr><td class="sx-num" style="text-align:center;">${idx + 1}</td>
+          <td style="padding:1px;"><input data-doc-name="${idx}" class="sx-in" style="width:100%;border:none;" value="${escapeHtml(doc.name||'')}" placeholder="مثلاً: صورة الهوية" /></td>
+          <td style="padding:1px;"><input data-doc-url="${idx}" class="sx-in" style="width:100%;border:none;" value="${escapeHtml(doc.url||'')}" dir="ltr" placeholder="https://..." /></td>
+          <td style="text-align:center;"><button data-doc-remove="${idx}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;"></i></button></td></tr>`).join('') || `<tr><td colspan="4" style="text-align:center;color:#6E6D5F;">ما فيه مستندات مضافة بعد</td></tr>`}
+      </table>
+      <button id="p-doc-add" type="button" class="sx-btn" style="margin-top:8px;"><i class="ti ti-plus" style="color:#0F6E56;"></i>إضافة مستند</button>
     </div>`;
   }
-  return `<div style="text-align:center;padding:40px 16px;color:#5F5E5A;">
-    <div style="font-size:13px;">تبويب "${tab}" قيد الإنشاء</div>
-  </div>`;
+  return '';
 }
 
 function renderQuotationsSection() {
@@ -5761,7 +5801,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.21-17';
+const APP_VERSION = '2026.10.21-18';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -9506,8 +9546,8 @@ function voucherAccName(code) {
 }
 // تغيير طريقة الدفع في السند يحدّث «حساب النقدية» على طول
 document.addEventListener('change', ev => {
-  const t = ev.target; if (!t || !/^(rv|pv)-method$/.test(t.id)) return;
-  const p = t.id.slice(0, 2), code = cashOrBankAccount(t.value);
+  const t = ev.target; if (!t || !/^(rv-method|pv-method|cdv-payment-method)$/.test(t.id)) return;
+  const p = t.id.split('-')[0], code = cashOrBankAccount(t.value);
   const c = document.getElementById(p + '-cash-code'), n = document.getElementById(p + '-cash-name');
   if (c) c.value = code; if (n) n.value = voucherAccName(code);
 }, true);
@@ -10550,6 +10590,7 @@ const KB_FORMS = [
   ['showSalesForm', 'sales', '#sales-overlay', 'si'], ['showPurchaseForm', 'purchase', '#purchase-overlay', 'pi'], ['showQuoteForm', 'quote', '#quote-overlay', 'qt'],
   ['showSalesReturnForm', 'sr', '#sr-overlay', 'sr'], ['showPurchaseReturnForm', 'pr', '#pr-overlay', 'pr'],
   ['showReceiptVoucherForm', 'rv', '#rv-overlay', 'rv'], ['showPaymentVoucherForm', 'pv', '#pv-overlay', 'pv'],
+  ['showSettlementVoucher', 'stv', '#stv-overlay', 'stv'], ['showCashDisbursement', 'cdv', '#cdv-overlay', 'cdv'],
 ];
 function kbActiveForm() {
   if (state.cmdk || state.payChange || state.showSalesPayDialog || state.itemPickerOpen || state.priceReview) return null;
@@ -11908,7 +11949,8 @@ function renderSettlementVoucherModal() {
   const sortedVouchers = [...state.settlementVouchers].sort((a,b) => a.voucher_number.localeCompare(b.voucher_number));
   return `
   <div id="stv-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
-    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    ${sxStyles()}
+    <div class="print-area sx-win" style="border:1px solid #1B3352;border-radius:6px;width:100%;max-width:760px;max-height:94vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${t('stv_title')}</span><button id="stv-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       <div class="print-only" style="padding:16px 18px 0;${printStyleVars()}">
         <div dir="ltr" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px double #1B3352;padding-bottom:10px;">
@@ -11945,31 +11987,51 @@ function renderSettlementVoucherModal() {
           <div style="text-align:center;"><div style="border-top:1px solid #3A3826;padding-top:6px;font-size:12px;">توقيع المدير</div></div>
         </div>
       </div>
-      <div class="no-print" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
-        <div style="display:flex;align-items:center;gap:8px;position:relative;">
-          <label style="font-size:12.5px;color:#3A3826;">${t('voucher_number_label')}</label>
-          ${renderNumberNavHtml('stv', f.voucher_number, state.editingSettlementVoucherId, sortedVouchers, 'voucher_number', v => v.parties?.name)}
+      <div class="no-print" style="padding:12px 14px 4px;">
+        <div style="display:grid;grid-template-columns:110px 1fr 110px 170px;gap:6px 8px;align-items:center;">
+          <label class="sx-lbl">رقم السند</label>
+          <div class="sx-in" style="position:relative;max-width:170px;display:flex;align-items:center;">${renderNumberNavHtml('stv', f.voucher_number, state.editingSettlementVoucherId, sortedVouchers, 'voucher_number', v => v.parties?.name)}</div>
+          <label class="sx-lbl">التاريخ</label>
+          <input id="stv-date" type="date" class="sx-in" value="${escapeHtml(f.voucher_date)}" ${f.approved?'disabled':''} />
+          <label class="sx-lbl">نوع الطرف</label>
+          <select id="stv-party-type" class="sx-in" style="max-width:170px;" ${f.approved?'disabled':''}><option value="customer" ${f.party_type==='customer'?'selected':''}>${t('stv_party_customer')}</option><option value="supplier" ${f.party_type==='supplier'?'selected':''}>${t('stv_party_supplier')}</option></select>
+          <label class="sx-lbl">ت/الهجري</label>
+          <input class="sx-in sx-ro mono" value="${escapeHtml(voucherHijri(f.voucher_date))}" disabled />
+          <label class="sx-lbl">${f.party_type === 'supplier' ? 'المورد' : 'العميل'}</label>
+          <div style="grid-column:2 / span 3;">${partyPickerButton('stv-party', f.party_type, f.party_id, f.approved)}</div>
+          <label class="sx-lbl">ر/القيد</label>
+          <input class="sx-in sx-ro mono sx-beige" style="max-width:170px;" value="${state.editingSettlementVoucherId && f.approved ? escapeHtml((state.docJournalNumbers || []).join(' ، ')) : ''}" disabled />
+          <label class="sx-lbl">الرصيد الحالي</label>
+          ${(() => { const pt = partiesFiltered.find(p => p.id === f.party_id); return `<input class="sx-in sx-ro mono sx-beige" style="text-align:left;font-weight:700;color:${Number(pt?.balance) > 0 ? '#C0392B' : '#0F6E56'};" value="${pt ? fmt(pt.balance) : '0.00'}" disabled />`; })()}
         </div>
-
-        ${partyField(t('stv_party_type'), `<select id="stv-party-type" class="input" ${f.approved?'disabled':''}><option value="customer" ${f.party_type==='customer'?'selected':''}>${t('stv_party_customer')}</option><option value="supplier" ${f.party_type==='supplier'?'selected':''}>${t('stv_party_supplier')}</option></select>`)}
-        ${partyField(t('stv_party'), partyPickerButton('stv-party', f.party_type, f.party_id, f.approved))}
-        ${partyField(t('stv_direction'), `<select id="stv-direction" class="input" ${f.approved?'disabled':''}><option value="decrease" ${f.direction==='decrease'?'selected':''}>${t('stv_decrease')}</option><option value="increase" ${f.direction==='increase'?'selected':''}>${t('stv_increase')}</option></select>`)}
-        ${partyField(t('stv_amount'), `<input id="stv-amount" class="input mono" value="${escapeHtml(f.amount)}" ${f.approved?'disabled':''} />`)}
-        ${partyField('طريقة السداد', `<select id="stv-payment-method" class="input" ${f.approved?'disabled':''}><option value="كاش" ${f.payment_method==='كاش'?'selected':''}>كاش</option><option value="تحويل" ${f.payment_method==='تحويل'?'selected':''}>تحويل</option><option value="شبكة" ${f.payment_method==='شبكة'?'selected':''}>شبكة</option></select>`)}
-        ${partyField(t('stv_date'), `<input id="stv-date" type="date" class="input" value="${escapeHtml(f.voucher_date)}" ${f.approved?'disabled':''} />`)}
-        ${partyField(t('stv_reason'), `<textarea id="stv-notes" class="input" rows="2" ${f.approved?'disabled':''}>${escapeHtml(f.notes)}</textarea>`)}
+        <div style="display:grid;grid-template-columns:110px 170px 1fr 110px 170px;gap:6px 8px;align-items:center;margin-top:14px;">
+          <label class="sx-lbl">نوع التسوية</label>
+          <select id="stv-direction" class="sx-in" ${f.approved?'disabled':''}><option value="decrease" ${f.direction==='decrease'?'selected':''}>${t('stv_decrease')}</option><option value="increase" ${f.direction==='increase'?'selected':''}>${t('stv_increase')}</option></select>
+          <span></span>
+          <label class="sx-lbl">طريقة السداد</label>
+          <select id="stv-payment-method" class="sx-in" ${f.approved?'disabled':''}><option value="كاش" ${f.payment_method==='كاش'?'selected':''}>كاش</option><option value="تحويل" ${f.payment_method==='تحويل'?'selected':''}>تحويل</option><option value="شبكة" ${f.payment_method==='شبكة'?'selected':''}>شبكة</option></select>
+          <label class="sx-lbl">مبلغ التسوية</label>
+          <input id="stv-amount" class="sx-in mono" style="font-weight:700;text-align:left;font-size:13.5px;" value="${escapeHtml(f.amount)}" ${f.approved?'disabled':''} placeholder="0.00" inputmode="decimal" />
+          <div style="grid-column:3 / span 3;font-size:11px;color:#5F5E5A;">${Number(f.amount) > 0 ? escapeHtml(numberToArabicWords(Number(f.amount)||0)) : ''}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:110px 1fr;gap:6px 8px;align-items:start;margin-top:14px;">
+          <label class="sx-lbl" style="padding-top:4px;">سبب التسوية</label>
+          <textarea id="stv-notes" class="sx-in" style="height:54px;resize:vertical;" ${f.approved?'disabled':''}>${escapeHtml(f.notes||'')}</textarea>
+        </div>
         <div id="stv-error" class="err-text"></div>
       </div>
-      ${approvedStrip(f, t('approved_short'), 'margin:0 16px 8px;')}
-      <div style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;flex-wrap:wrap;">
-        ${iconBtn('stv-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
-        ${iconBtn('stv-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number || !hasPerm('settlement_voucher','can_print'))}
-        ${hasPerm('settlement_voucher','can_print') ? iconBtn('stv-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number) : ''}
-        ${iconBtn('stv-next', 'ti-player-track-next', '#27AE60', t('btn_next'), sortedVouchers.length===0)}
-        ${iconBtn('stv-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), sortedVouchers.length===0)}
-        ${!state.editingSettlementVoucherId ? iconBtn('stv-save', 'ti-device-floppy', '#1E5AC0', t('btn_save')) : ''}
-        ${(state.editingSettlementVoucherId && !f.approved && hasPerm('settlement_voucher','can_approve')) ? iconBtn('stv-approve', 'ti-lock', '#0F6E56', t('btn_approve')) : ''}
-        ${(state.editingSettlementVoucherId && f.approved && isDesigner()) ? iconBtn('stv-unlock', 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
+      <div class="no-print" style="display:flex;align-items:flex-end;gap:10px;padding:10px 14px 12px;flex-wrap:wrap;">
+        ${approvedStrip(f, t('approved_short'), '')}
+        <div style="display:flex;gap:3px;flex-wrap:wrap;margin-inline-start:auto;margin-inline-end:auto;">
+          ${!state.editingSettlementVoucherId ? `<button id="stv-save" type="button" class="sx-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ</button>` : ''}
+          ${(state.editingSettlementVoucherId && !f.approved && hasPerm('settlement_voucher','can_approve')) ? `<button id="stv-approve" type="button" class="sx-btn"><i class="ti ti-lock" style="color:#0F6E56;"></i>ترحيل</button>` : ''}
+          <button id="stv-print" type="button" class="sx-btn" ${(!f.voucher_number || !hasPerm('settlement_voucher','can_print')) ? 'disabled' : ''}><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+          ${hasPerm('settlement_voucher','can_print') ? `<button id="stv-pdf" type="button" class="sx-btn" ${!f.voucher_number ? 'disabled' : ''}><i class="ti ti-file-type-pdf" style="color:#D9534F;"></i>PDF</button>` : ''}
+          <button id="stv-prev" type="button" class="sx-btn" ${sortedVouchers.length===0?'disabled':''}><i class="ti ti-arrow-big-right" style="color:#27AE60;"></i>السابق</button>
+          <button id="stv-next" type="button" class="sx-btn" ${sortedVouchers.length===0?'disabled':''}><i class="ti ti-arrow-big-left" style="color:#27AE60;"></i>التالي</button>
+          ${(state.editingSettlementVoucherId && f.approved && isDesigner()) ? `<button id="stv-unlock" type="button" class="sx-btn"><i class="ti ti-lock-open" style="color:#C0392B;"></i>${t('unlock_btn')}</button>` : ''}
+          <button id="stv-exit" type="button" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
+        </div>
       </div>
     </div>
   </div>`;
@@ -11981,7 +12043,8 @@ function renderCashDisbursementModal() {
   const sortedVouchers = [...state.cashDisbursementVouchers].sort((a,b) => a.voucher_number.localeCompare(b.voucher_number));
   return `
   <div id="cdv-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
-    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    ${sxStyles()}
+    <div class="print-area sx-win" style="border:1px solid #1B3352;border-radius:6px;width:100%;max-width:760px;max-height:94vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${t('cdv_title')}</span><button id="cdv-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
       <div class="print-only" style="padding:16px 18px 0;${printStyleVars()}">
         <div dir="ltr" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px double #1B3352;padding-bottom:10px;">
@@ -12018,30 +12081,50 @@ function renderCashDisbursementModal() {
           <div style="text-align:center;"><div style="border-top:1px solid #3A3826;padding-top:6px;font-size:12px;">توقيع المستلم</div></div>
         </div>
       </div>
-      <div class="no-print" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
-        <div style="display:flex;align-items:center;gap:8px;position:relative;">
-          <label style="font-size:12.5px;color:#3A3826;">${t('voucher_number_label')}</label>
-          ${renderNumberNavHtml('cdv', f.voucher_number, state.editingCashDisbursementId, sortedVouchers, 'voucher_number', v => v.expense_account_code||'')}
+      <div class="no-print" style="padding:12px 14px 4px;">
+        <div style="display:grid;grid-template-columns:110px 1fr 110px 170px;gap:6px 8px;align-items:center;">
+          <label class="sx-lbl">رقم السند</label>
+          <div class="sx-in" style="position:relative;max-width:170px;display:flex;align-items:center;">${renderNumberNavHtml('cdv', f.voucher_number, state.editingCashDisbursementId, sortedVouchers, 'voucher_number', v => v.expense_account_code||'')}</div>
+          <label class="sx-lbl">التاريخ</label>
+          <input id="cdv-date" type="date" class="sx-in" value="${escapeHtml(f.voucher_date)}" ${f.approved?'disabled':''} />
+          <label class="sx-lbl">ر/القيد</label>
+          <input class="sx-in sx-ro mono sx-beige" style="max-width:170px;" value="${state.editingCashDisbursementId && f.approved ? escapeHtml((state.docJournalNumbers || []).join(' ، ')) : ''}" disabled />
+          <label class="sx-lbl">ت/الهجري</label>
+          <input class="sx-in sx-ro mono" value="${escapeHtml(voucherHijri(f.voucher_date))}" disabled />
         </div>
-
-        <div style="font-size:11px;color:#5F5E5A;background:#F4F1EA;padding:8px 10px;border-radius:6px;">${t('cdv_hint')}</div>
-        ${partyField(t('cdv_expense_account'), `<select id="cdv-account" class="input" ${f.approved?'disabled':''}><option value="">${t('cdv_choose_account')}</option>${expenseAccounts.map(a => `<option value="${a.code}" ${f.expense_account_code===a.code?'selected':''}>${a.code} - ${escapeHtml(a.name)}</option>`).join('')}</select>`)}
-        ${partyField(t('cdv_amount'), `<input id="cdv-amount" class="input mono" value="${escapeHtml(f.amount)}" ${f.approved?'disabled':''} />`)}
-        ${partyField(t('cdv_payment_method'), `<select id="cdv-payment-method" class="input" ${f.approved?'disabled':''}>${activePaymentMethods().map(m => `<option value="${escapeHtml(m.name)}" ${f.payment_method===m.name?'selected':''}>${escapeHtml(m.name)}</option>`).join('')}</select>`)}
-        ${partyField(t('cdv_date'), `<input id="cdv-date" type="date" class="input" value="${escapeHtml(f.voucher_date)}" ${f.approved?'disabled':''} />`)}
-        ${partyField(t('cdv_notes'), `<input id="cdv-notes" class="input" value="${escapeHtml(f.notes)}" ${f.approved?'disabled':''} />`)}
+        <div style="display:grid;grid-template-columns:110px 1fr;gap:6px 8px;align-items:center;margin-top:14px;">
+          <label class="sx-lbl">الحساب المصروف</label>
+          <select id="cdv-account" class="sx-in" ${f.approved?'disabled':''}><option value="">${t('cdv_choose_account')}</option>${expenseAccounts.map(a => `<option value="${a.code}" ${f.expense_account_code===a.code?'selected':''}>${a.code} - ${escapeHtml(a.name)}</option>`).join('')}</select>
+        </div>
+        <div style="display:grid;grid-template-columns:110px 170px 1fr;gap:6px 8px;align-items:center;margin-top:12px;">
+          <label class="sx-lbl">المبلغ المصروف</label>
+          <input id="cdv-amount" class="sx-in mono" style="font-weight:700;text-align:left;font-size:13.5px;" value="${escapeHtml(f.amount)}" ${f.approved?'disabled':''} placeholder="0.00" inputmode="decimal" />
+          <div style="font-size:11px;color:#5F5E5A;">${Number(f.amount) > 0 ? escapeHtml(numberToArabicWords(Number(f.amount)||0)) : ''}</div>
+          <label class="sx-lbl">طريقة الدفع</label>
+          <select id="cdv-payment-method" class="sx-in" ${f.approved?'disabled':''}>${activePaymentMethods().map(m => `<option value="${escapeHtml(m.name)}" ${f.payment_method===m.name?'selected':''}>${escapeHtml(m.name)}</option>`).join('')}${f.payment_method && !activePaymentMethods().some(m => m.name === f.payment_method) ? `<option selected>${escapeHtml(f.payment_method)}</option>` : ''}</select>
+          <span></span>
+          <label class="sx-lbl">حساب النقدية</label>
+          <input id="cdv-cash-code" class="sx-in sx-ro mono" value="${escapeHtml(cashOrBankAccount(f.payment_method || (activePaymentMethods()[0]||{}).name || ''))}" disabled />
+          <input id="cdv-cash-name" class="sx-in sx-ro sx-beige" value="${escapeHtml(voucherAccName(cashOrBankAccount(f.payment_method || (activePaymentMethods()[0]||{}).name || '')))}" disabled />
+        </div>
+        <div style="display:grid;grid-template-columns:110px 1fr;gap:6px 8px;align-items:start;margin-top:12px;">
+          <label class="sx-lbl" style="padding-top:4px;">البيــــان</label>
+          <textarea id="cdv-notes" class="sx-in" style="height:54px;resize:vertical;" ${f.approved?'disabled':''}>${escapeHtml(f.notes||'')}</textarea>
+        </div>
         <div id="cdv-error" class="err-text"></div>
       </div>
-      ${approvedStrip(f, t('approved_short'), 'margin:0 16px 8px;')}
-      <div style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;flex-wrap:wrap;">
-        ${iconBtn('cdv-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
-        ${iconBtn('cdv-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number || !hasPerm('cash_disbursement','can_print'))}
-        ${hasPerm('cash_disbursement','can_print') ? iconBtn('cdv-pdf', 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number) : ''}
-        ${iconBtn('cdv-next', 'ti-player-track-next', '#27AE60', t('btn_next'), sortedVouchers.length===0)}
-        ${iconBtn('cdv-prev', 'ti-player-track-prev', '#2E86C1', t('btn_prev'), sortedVouchers.length===0)}
-        ${(!state.editingCashDisbursementId && hasPerm('cash_disbursement','can_add')) ? iconBtn('cdv-save', 'ti-device-floppy', '#1E5AC0', t('btn_save')) : ''}
-        ${(state.editingCashDisbursementId && !f.approved && hasPerm('cash_disbursement','can_approve')) ? iconBtn('cdv-approve', 'ti-lock', '#0F6E56', t('btn_approve')) : ''}
-        ${payChangeBtn('cdv', 'icon')}
+      <div class="no-print" style="display:flex;align-items:flex-end;gap:10px;padding:10px 14px 12px;flex-wrap:wrap;">
+        ${approvedStrip(f, t('approved_short'), '')}
+        <div style="display:flex;gap:3px;flex-wrap:wrap;margin-inline-start:auto;margin-inline-end:auto;">
+          ${(!state.editingCashDisbursementId && hasPerm('cash_disbursement','can_add')) ? `<button id="cdv-save" type="button" class="sx-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ</button>` : ''}
+          ${(state.editingCashDisbursementId && !f.approved && hasPerm('cash_disbursement','can_approve')) ? `<button id="cdv-approve" type="button" class="sx-btn"><i class="ti ti-lock" style="color:#0F6E56;"></i>ترحيل</button>` : ''}
+          <button id="cdv-print" type="button" class="sx-btn" ${(!f.voucher_number || !hasPerm('cash_disbursement','can_print')) ? 'disabled' : ''}><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+          ${hasPerm('cash_disbursement','can_print') ? `<button id="cdv-pdf" type="button" class="sx-btn" ${!f.voucher_number ? 'disabled' : ''}><i class="ti ti-file-type-pdf" style="color:#D9534F;"></i>PDF</button>` : ''}
+          ${payChangeBtn('cdv')}
+          <button id="cdv-prev" type="button" class="sx-btn" ${sortedVouchers.length===0?'disabled':''}><i class="ti ti-arrow-big-right" style="color:#27AE60;"></i>السابق</button>
+          <button id="cdv-next" type="button" class="sx-btn" ${sortedVouchers.length===0?'disabled':''}><i class="ti ti-arrow-big-left" style="color:#27AE60;"></i>التالي</button>
+          <button id="cdv-exit" type="button" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
+        </div>
       </div>
     </div>
   </div>`;
@@ -12969,76 +13052,69 @@ function renderTabContent() {
       </div>` : ''}`;
   }
   if (state.activeTab === 'صور') {
-    return `<div style="display:flex;flex-direction:column;gap:12px;">
+    return `<div style="display:grid;grid-template-columns:240px 1fr;gap:16px;align-items:start;">
       <input id="f-image-file" type="file" accept="image/*" style="display:none;" />
-      <div style="text-align:center;">
-        <div style="cursor:pointer;" onclick="document.getElementById('f-image-file').click()">
-          ${f.image_url ? `<img id="f-image-preview" src="${escapeHtml(f.image_url)}" style="max-width:220px;max-height:220px;border:1px solid #A9A48C;border-radius:4px;" onerror="this.style.display='none'" />` : `<div style="width:180px;height:180px;margin:0 auto;background:#F4F1EA;border:2px dashed #A9A48C;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8B8A7A;font-size:12px;">اضغط لاختيار صورة</div>`}
-        </div>
-        <div id="f-image-status" style="font-size:10.5px;color:#8B8A7A;margin-top:6px;">${f.image_url ? 'اضغط على الصورة لاستبدالها' : ''}</div>
+      <div style="cursor:pointer;background:#fff;border:2px inset #D4D0C8;height:220px;display:flex;align-items:center;justify-content:center;" onclick="document.getElementById('f-image-file').click()" title="اضغط لاختيار صورة">
+        ${f.image_url ? `<img id="f-image-preview" src="${escapeHtml(f.image_url)}" style="max-width:230px;max-height:214px;" onerror="this.style.display='none'" />` : `<div style="color:#8B8A7A;font-size:12px;text-align:center;"><i class="ti ti-photo" style="font-size:36px;display:block;color:#A9A48C;"></i>اضغط لاختيار صورة</div>`}
       </div>
-      <input id="f-image_url" type="hidden" value="${escapeHtml(f.image_url||'')}" />
-      <button id="save-image-btn" class="btn primary" style="padding:6px 14px;align-self:flex-start;">حفظ الصورة</button>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="sx-lbl" style="text-align:right;">صورة الصنف</div>
+        <div style="font-size:11.5px;color:#5F5E5A;line-height:1.7;">الصورة بتظهر في شريط معلومات الصنف وعند البحث. يفضّل صورة مربعة واضحة.</div>
+        <div id="f-image-status" style="font-size:11px;color:#6E6D5F;">${f.image_url ? 'اضغط على الصورة لاستبدالها' : ''}</div>
+        <input id="f-image_url" type="hidden" value="${escapeHtml(f.image_url||'')}" />
+        <div style="display:flex;gap:3px;">
+          <button type="button" class="sx-btn" onclick="document.getElementById('f-image-file').click()"><i class="ti ti-folder-open" style="color:#C9A227;"></i>استعراض</button>
+          <button id="save-image-btn" type="button" class="sx-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ الصورة</button>
+        </div>
+      </div>
     </div>`;
   }
   if (state.activeTab === 'التجميع') {
     const others = state.items.filter(it => it.id !== state.editingId);
     return `<div>
-      <div style="font-size:12px;color:#5F5E5A;margin-bottom:10px;">حدد أصناف أخرى تدخل ضمن تركيب هذا الصنف (مثل: كرتون = 12 حبة).</div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <select id="bundle-item-select" class="input">
-          <option value="">اختر صنف...</option>
-          ${others.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}
-        </select>
-        <input id="bundle-qty" class="input" style="max-width:100px;" placeholder="الكمية" value="1" />
-        <button id="bundle-add-btn" class="btn primary" style="padding:6px 14px;">إضافة</button>
+      <div class="ic-grid" style="grid-template-columns:110px 1fr 60px 90px auto;">
+        <label class="sx-lbl">الصنف المكوّن</label>
+        <select id="bundle-item-select" class="sx-in"><option value="">اختر صنف...</option>${others.map(it => `<option value="${it.id}">${escapeHtml(it.sku)} - ${escapeHtml(it.name)}</option>`).join('')}</select>
+        <label class="sx-lbl">الكمية</label>
+        <input id="bundle-qty" class="sx-in mono" style="text-align:left;" value="1" />
+        <button id="bundle-add-btn" type="button" class="sx-btn"><i class="ti ti-plus" style="color:#0F6E56;"></i>إضافة</button>
       </div>
-      <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-        ${(state.bundleComponents||[]).map(c => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;">
-            <span>${escapeHtml(c.component_name)} × ${c.quantity}</span>
-            <button data-remove-bundle="${c.id}" style="border:none;background:none;color:#C0392B;cursor:pointer;">✕</button>
-          </div>`).join('') || `<div style="padding:12px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد مكوّنات بعد</div>`}
-      </div>
+      <div style="font-size:11px;color:#6E6D5F;margin:6px 0 10px;">الأصناف اللي تدخل في تركيب هذا الصنف (مثل: كرتون = 12 حبة).</div>
+      <table class="sx-grid">
+        <tr><th style="width:36px;">م</th><th style="width:130px;">رقم الصنف</th><th>اسم الصنف</th><th style="width:90px;">الكمية</th><th style="width:44px;"></th></tr>
+        ${(state.bundleComponents||[]).map((c, i) => { const ci = state.items.find(x => x.id === c.component_item_id) || {}; return `<tr><td class="sx-num" style="text-align:center;">${i + 1}</td><td class="mono">${escapeHtml(ci.sku || '')}</td><td>${escapeHtml(c.component_name)}</td><td class="sx-num">${c.quantity}</td><td style="text-align:center;"><button data-remove-bundle="${c.id}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;"></i></button></td></tr>`; }).join('') || `<tr><td colspan="5" style="text-align:center;color:#6E6D5F;">لا توجد مكوّنات بعد</td></tr>`}
+      </table>
     </div>`;
   }
   if (state.activeTab === 'العلاقات') {
     const others = state.items.filter(it => it.id !== state.editingId);
     return `<div>
-      <div style="font-size:12px;color:#5F5E5A;margin-bottom:10px;">اربط هذا الصنف بأصناف بديلة أو مكمّلة له.</div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <select id="relation-item-select" class="input">
-          <option value="">اختر صنف...</option>
-          ${others.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}
-        </select>
-        <button id="relation-add-btn" class="btn primary" style="padding:6px 14px;">ربط</button>
+      <div class="ic-grid" style="grid-template-columns:110px 1fr auto;">
+        <label class="sx-lbl">الصنف البديل</label>
+        <select id="relation-item-select" class="sx-in"><option value="">اختر صنف...</option>${others.map(it => `<option value="${it.id}">${escapeHtml(it.sku)} - ${escapeHtml(it.name)}</option>`).join('')}</select>
+        <button id="relation-add-btn" type="button" class="sx-btn"><i class="ti ti-link" style="color:#1B5FA8;"></i>ربط</button>
       </div>
-      <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-        ${(state.itemRelations||[]).map(r => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;">
-            <span>${escapeHtml(r.related_name)}</span>
-            <button data-remove-relation="${r.id}" style="border:none;background:none;color:#C0392B;cursor:pointer;">✕</button>
-          </div>`).join('') || `<div style="padding:12px;text-align:center;font-size:12px;color:#6E6D5F;">لا توجد أصناف مرتبطة بعد</div>`}
-      </div>
+      <div style="font-size:11px;color:#6E6D5F;margin:6px 0 10px;">الأصناف البديلة أو المكمّلة — بتظهر في شريط معلومات الصنف أسفل الشاشة.</div>
+      <table class="sx-grid">
+        <tr><th style="width:36px;">م</th><th style="width:130px;">رقم الصنف</th><th>اسم الصنف</th><th style="width:90px;">الرصيد</th><th style="width:44px;"></th></tr>
+        ${(state.itemRelations||[]).map((r, i) => { const ri = state.items.find(x => x.id === r.related_item_id) || {}; return `<tr><td class="sx-num" style="text-align:center;">${i + 1}</td><td class="mono">${escapeHtml(ri.sku || '')}</td><td>${escapeHtml(r.related_name)}</td><td class="sx-num">${ri.qty != null ? roundQty(ri.qty) : ''}</td><td style="text-align:center;"><button data-remove-relation="${r.id}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;"></i></button></td></tr>`; }).join('') || `<tr><td colspan="5" style="text-align:center;color:#6E6D5F;">لا توجد أصناف مرتبطة بعد</td></tr>`}
+      </table>
     </div>`;
   }
   if (state.activeTab === 'توافق السيارات') {
     return `<div>
-      <div style="font-size:12px;color:#5F5E5A;margin-bottom:10px;">سجّل كل سيارة (ماركة وموديل، ونطاق سنوات لو تعرفه) تناسبها هذي القطعة.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 0.7fr 0.7fr auto;gap:8px;margin-bottom:12px;">
-        <input id="veh-make-input" class="input" placeholder="الماركة (مثلاً: تويوتا)" />
-        <input id="veh-model-input" class="input" placeholder="الموديل (مثلاً: كامري)" />
-        <input id="veh-year-from-input" class="input mono" placeholder="من سنة" />
-        <input id="veh-year-to-input" class="input mono" placeholder="إلى سنة" />
-        <button id="veh-add-btn" class="btn primary" style="padding:6px 14px;">إضافة</button>
+      <div class="ic-grid" style="grid-template-columns:60px 1fr 60px 1fr 50px 70px 50px 70px auto;">
+        <label class="sx-lbl">الماركة</label><input id="veh-make-input" class="sx-in" placeholder="تويوتا" />
+        <label class="sx-lbl">الموديل</label><input id="veh-model-input" class="sx-in" placeholder="كامري" />
+        <label class="sx-lbl">من سنة</label><input id="veh-year-from-input" class="sx-in mono" />
+        <label class="sx-lbl">إلى</label><input id="veh-year-to-input" class="sx-in mono" />
+        <button id="veh-add-btn" type="button" class="sx-btn"><i class="ti ti-plus" style="color:#0F6E56;"></i>إضافة</button>
       </div>
-      <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
-        ${(state.itemVehicleCompat||[]).map(v => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:12.5px;border-bottom:1px solid #E4E2DA;">
-            <span>${escapeHtml(v.vehicle_make)} ${escapeHtml(v.vehicle_model)} ${v.year_from||v.year_to ? `(${v.year_from||'—'} - ${v.year_to||'—'})` : ''}</span>
-            <button data-remove-vehicle="${v.id}" style="border:none;background:none;color:#C0392B;cursor:pointer;">✕</button>
-          </div>`).join('') || `<div style="padding:12px;text-align:center;font-size:12px;color:#6E6D5F;">ما فيه سيارات مسجّلة بعد لهذي القطعة</div>`}
-      </div>
+      <div style="font-size:11px;color:#6E6D5F;margin:6px 0 10px;">كل سيارة تناسبها هذي القطعة — بيستخدمها البحث بالسيارة.</div>
+      <table class="sx-grid">
+        <tr><th style="width:36px;">م</th><th>الماركة</th><th>الموديل</th><th style="width:80px;">من سنة</th><th style="width:80px;">إلى سنة</th><th style="width:44px;"></th></tr>
+        ${(state.itemVehicleCompat||[]).map((v, i) => `<tr><td class="sx-num" style="text-align:center;">${i + 1}</td><td>${escapeHtml(v.vehicle_make)}</td><td>${escapeHtml(v.vehicle_model)}</td><td class="sx-num">${v.year_from || ''}</td><td class="sx-num">${v.year_to || ''}</td><td style="text-align:center;"><button data-remove-vehicle="${v.id}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;"></i></button></td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#6E6D5F;">ما فيه سيارات مسجّلة بعد لهذي القطعة</td></tr>`}
+      </table>
     </div>`;
   }
   if (state.activeTab === 'احصائيات') {
@@ -13065,15 +13141,23 @@ function renderTabContent() {
       </div>
       <div style="font-size:10.5px;color:#6E6D5F;margin-top:8px;">م.أ.ش = متوسط المبيعات الشهري لآخر 12 شهر. الأرقام من المستندات المعتمدة بس.</div>`;
   }
-  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-    ${field('رقم الشركة', `<input id="f-company" class="input" value="${escapeHtml(f.company)}" />`)}
-    ${field('رقم السجل', `<input id="f-registry_number" class="input" value="${escapeHtml(f.registry_number || (state.editingId ? '' : t('auto_generated')))}" disabled style="background:#EDEAE0;color:#5F5E5A;" />`)}
-    ${field('رقم المجموعة', `<input id="f-group_number" class="input" value="${escapeHtml(f.group_number)}" />`)}
-    ${field('الباركود', `<input id="f-barcode" class="input mono" dir="ltr" value="${escapeHtml(f.barcode||'')}" />`)}
-    ${field('المورد الافتراضي', `<select id="f-default_supplier_id" class="input"><option value="">بدون تحديد</option>${state.parties.filter(p=>p.party_type==='supplier').map(p => `<option value="${p.id}" ${f.default_supplier_id===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}</select>`)}
-    <div>${field('عدم الإضافة بمخطط الطلبيات', `<input id="f-exclude_from_order_plan" type="checkbox" ${f.exclude_from_order_plan?'checked':''} style="width:18px;height:18px;" />`)}</div>
-    <div>${field('الجمع والفك التلقائي', `<input id="f-auto_bundle" type="checkbox" ${f.auto_bundle?'checked':''} style="width:18px;height:18px;" />`)}</div>
-    <div style="grid-column:1/-1;">${field('ملاحظات', `<textarea id="f-notes" class="input" rows="3">${escapeHtml(f.notes)}</textarea>`)}</div>
+  const sups = state.parties.filter(p => p.party_type === 'supplier');
+  return `<div class="ic-grid" style="grid-template-columns:120px 220px 1fr;">
+    <label class="sx-lbl">رقم الشركة</label><input id="f-company" class="sx-in mono" value="${escapeHtml(f.company)}" /><span style="font-size:11px;color:#6E6D5F;">رقم القطعة الأصلي (OEM)</span>
+    <label class="sx-lbl">رقم السجل</label><input id="f-registry_number" class="sx-in sx-ro sx-beige mono" value="${escapeHtml(f.registry_number || (state.editingId ? '' : t('auto_generated')))}" disabled /><span></span>
+    <label class="sx-lbl">رقم المجموعة</label><input id="f-group_number" class="sx-in mono" value="${escapeHtml(f.group_number)}" /><span></span>
+    <label class="sx-lbl">الباركود</label><input id="f-barcode" class="sx-in mono" dir="ltr" value="${escapeHtml(f.barcode||'')}" /><span></span>
+    <label class="sx-lbl">المورد الافتراضي</label>
+    <select id="f-default_supplier_id" class="sx-in" style="grid-column:2 / span 2;max-width:440px;"><option value="">بدون تحديد</option>${sups.map(p => `<option value="${p.id}" ${f.default_supplier_id===p.id?'selected':''}>${escapeHtml(p.code ? p.code + ' - ' : '')}${escapeHtml(p.name)}</option>`).join('')}</select>
+  </div>
+  <fieldset style="border:1px solid #A9A48C;margin:14px 0 0;padding:6px 12px 10px;display:flex;gap:28px;flex-wrap:wrap;">
+    <legend style="font-size:12px;font-weight:700;color:#1B3352;padding:0 4px;">خيارات</legend>
+    <label class="ic-radio"><input id="f-exclude_from_order_plan" type="checkbox" ${f.exclude_from_order_plan?'checked':''} /> عدم الإضافة بمخطط الطلبيات</label>
+    <label class="ic-radio"><input id="f-auto_bundle" type="checkbox" ${f.auto_bundle?'checked':''} /> الجمع والفك التلقائي</label>
+  </fieldset>
+  <div class="ic-grid" style="grid-template-columns:120px 1fr;margin-top:12px;align-items:start;">
+    <label class="sx-lbl" style="padding-top:4px;">ملاحظات</label>
+    <textarea id="f-notes" class="sx-in" style="height:70px;resize:vertical;">${escapeHtml(f.notes)}</textarea>
   </div>`;
 }
 
