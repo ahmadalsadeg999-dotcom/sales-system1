@@ -90,20 +90,39 @@
   .cmdk-row.sel .star{color:rgba(255,255,255,.6);} .cmdk-row.sel .star.on{color:#F5C26B;}
   .cmdk-foot{display:flex;gap:14px;flex-wrap:wrap;padding:8px 14px;border-top:1px solid #EEECE4;background:#FAF9F5;font-size:11px;color:#8B8A7A;}
   .cmdk-empty{padding:26px;text-align:center;color:#8B8A7A;font-size:13px;}
-  body.ws-on{padding-bottom:34px;}
-  body.ws-on [style*="position:fixed;inset:0"]{bottom:34px !important;}
-  .ws-bar{position:fixed;left:0;right:0;bottom:0;height:34px;z-index:1150;display:flex;align-items:stretch;gap:3px;padding:3px 6px 0;background:#1B3352;box-shadow:0 -4px 14px rgba(0,0,0,.18);overflow-x:auto;font-family:inherit;}
-  .ws-tab{display:flex;align-items:center;gap:6px;max-width:220px;min-width:110px;padding:0 10px;border-radius:7px 7px 0 0;background:#2C4A6E;color:#D7E1EE;font-size:12px;cursor:pointer;white-space:nowrap;user-select:none;}
+  body.bars-on{padding-bottom:var(--bottom-h,0px);}
+  body.bars-on [style*="position:fixed;inset:0"]{bottom:var(--bottom-h,0px) !important;}
+  body.bars-on [style*="position:fixed;inset:0"] > div:not(.cmdk){max-height:calc(100vh - var(--bottom-h,0px) - 16px) !important;}
+  body.bars-on [style*="position:fixed;inset:0"]{padding-top:8px !important;padding-bottom:8px !important;}
+  body.bars-on .sx-panel{min-height:120px;max-height:max(140px, calc(100vh - var(--bottom-h,0px) - 440px));overflow:auto;}
+  .ibar{position:fixed;right:0;left:0;bottom:0;z-index:1140;background:#ECE9D8;border-top:2px solid #919B9C;box-shadow:0 -4px 14px rgba(0,0,0,.15);font-family:Tahoma,'IBM Plex Sans Arabic',sans-serif;}
+  .ibar-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 8px;font-size:12px;color:#000;border-bottom:1px solid #C9C4B0;}
+  .ibar-head > b{font-size:12.5px;color:#1B3352;margin-inline-end:6px;}
+  .ibar-tag{font-size:11px;color:#5F5E5A;display:inline-flex;align-items:center;gap:3px;}
+  .ibar-code{border:1px solid #ACA899;background:#fff;font-size:11px;padding:0 6px;height:18px;cursor:pointer;border-radius:2px;}
+  .ibar-code:hover{background:#FFF8C6;}
+  .ibar-btn{border:1px solid #7F7F7F;background:linear-gradient(#FFFFFF,#D6D3C6);font-size:11.5px;font-weight:700;height:22px;padding:0 8px;cursor:pointer;border-radius:2px;font-family:inherit;display:inline-flex;align-items:center;gap:3px;}
+  .ibar-grid{overflow:auto;max-height:84px;background:#fff;}
+  .ibar-grid table{border-collapse:collapse;font-size:12px;min-width:100%;}
+  .ibar-grid th{position:sticky;top:0;background:linear-gradient(#FFFFFF,#E3E1D5);border:1px solid #ACA899;padding:2px 8px;font-weight:700;font-size:11.5px;white-space:nowrap;color:#000;}
+  .ibar-grid td{border:1px solid #D4D0C8;padding:1px 8px;height:20px;white-space:nowrap;text-align:center;font-family:Tahoma,monospace;}
+  .ibar-grid td.nm{text-align:right;font-family:inherit;max-width:260px;overflow:hidden;text-overflow:ellipsis;}
+  .ibar-grid tr.main td{background:#FFFDE0;}
+  .ibar-grid tr.alt td{background:#DDF2F2;cursor:pointer;}
+  .ibar-grid tr.alt:hover td{background:#66CCCC;color:#000;}
+  @media print{ .ibar{display:none !important;} }
+  .ws-bar{position:fixed;left:0;right:0;bottom:0;height:32px;z-index:1150;display:flex;align-items:stretch;gap:3px;padding:3px 6px 0;background:#D4D0C8;border-top:1px solid #FFFFFF;box-shadow:inset 0 1px 0 #919B9C;overflow-x:auto;font-family:Tahoma,'IBM Plex Sans Arabic',sans-serif;}
+  .ws-tab{display:flex;align-items:center;gap:6px;max-width:220px;min-width:110px;padding:0 10px;border:1px solid #919B9C;border-bottom:none;border-radius:3px 3px 0 0;background:linear-gradient(#FFFFFF,#E3E1D5);color:#000;font-size:12px;cursor:pointer;white-space:nowrap;user-select:none;}
   .ws-tab span{overflow:hidden;text-overflow:ellipsis;flex:1;}
   .ws-tab .ti{font-size:14px;}
-  .ws-tab:hover{background:#355A84;color:#fff;}
-  .ws-tab.on{background:#F4F1EA;color:#1B3352;font-weight:700;}
+  .ws-tab:hover{background:linear-gradient(#FFFFFF,#F2E4B8);}
+  .ws-tab.on{background:#fff;color:#C0392B;font-weight:700;}
   .ws-x{border:none;background:none;color:inherit;opacity:.6;cursor:pointer;padding:2px;border-radius:4px;display:flex;}
   .ws-x:hover{opacity:1;background:rgba(0,0,0,.12);}
-  .ws-new{display:flex;align-items:center;gap:5px;border:none;background:none;color:#D7E1EE;font-size:12px;cursor:pointer;padding:0 10px;font-family:inherit;white-space:nowrap;}
-  .ws-new:hover{color:#fff;}
-  .ws-hint{color:#7F95B2;font-size:11px;align-self:center;margin-inline-start:auto;white-space:nowrap;padding:0 6px;}
-  @media print{ .ws-bar{display:none !important;} body.ws-on{padding-bottom:0;} }
+  .ws-new{display:flex;align-items:center;gap:5px;border:none;background:none;color:#1B3352;font-size:12px;font-weight:700;cursor:pointer;padding:0 10px;font-family:inherit;white-space:nowrap;}
+  .ws-new:hover{color:#C0392B;}
+  .ws-hint{color:#6E6D5F;font-size:11px;align-self:center;margin-inline-start:auto;white-space:nowrap;padding:0 6px;}
+  @media print{ .ws-bar{display:none !important;} body.bars-on{padding-bottom:0;} }
   .appr-strip{display:flex;flex-direction:column;gap:3px;width:max-content;min-width:180px;}
   .appr-lbl{background:#D99694;color:#fff;font-weight:800;font-size:13px;padding:3px 10px;font-family:Tahoma,sans-serif;}
   .appr-j{font-size:11.5px;color:#5F5E5A;padding:0 2px;}
@@ -3728,7 +3747,13 @@ function navFitDrops() {
     if (r.left < 8) d.style.right = (r.left - 8) + 'px';
   });
 }
-new MutationObserver(() => { if (document.querySelector('.nav-drop')) navFitDrops(); }).observe(document.documentElement, { childList: true, subtree: true });
+let _bbSig = '';
+new MutationObserver(() => {
+  if (document.querySelector('.nav-drop')) navFitDrops();
+  const ws = document.querySelector('.ws-bar'), ib = document.getElementById('active-item-bar');
+  const sig = (ws ? ws.offsetHeight : 0) + '|' + (ib ? ib.offsetHeight + ':' + ib.style.bottom : 'x');
+  if (sig !== _bbSig) { syncBottomBars(); _bbSig = (ws ? ws.offsetHeight : 0) + '|' + (ib ? ib.offsetHeight + ':' + ib.style.bottom : 'x'); }
+}).observe(document.documentElement, { childList: true, subtree: true });
 document.addEventListener('mouseover', ev => {
   // لو قائمة مفتوحة، المرور على قائمة تانية يفتحها (زي برامج الويندوز)
   const b = ev.target.closest && ev.target.closest('[data-dropdown]');
@@ -5680,7 +5705,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.21-7';
+const APP_VERSION = '2026.10.21-8';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -8384,42 +8409,57 @@ function renderActiveItemBar() {
   if (!it) return '';
   const admin = isAdmin();
   const alts = (state.itemAltNumbersMap || {})[it.id] || [];
-  const altShown = alts.slice(0, 6);
-  const altItems = findAlternativeItems(it);
-  const altAvail = altItems.filter(x => Number(x.qty || 0) > 0);
-  const outOfStock = itemQtyForUser(it) <= 0;
-  const chip = 'display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.35);color:#fff;border-radius:12px;padding:2px 9px;font-size:11.5px;cursor:pointer;';
-  const secondRow = (alts.length || altItems.length) ? `
-    <div style="flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,0.25);padding-top:8px;">
-      ${alts.length ? `<span style="font-size:11px;opacity:0.85;"><i class="ti ti-arrows-exchange"></i> الأرقام البديلة:</span>
-        ${altShown.map(a => `<button type="button" data-bar-copy="${escapeHtml(a)}" class="mono" style="${chip}" title="اضغط للنسخ">${escapeHtml(a)}</button>`).join('')}
-        ${alts.length > altShown.length ? `<span style="font-size:11px;opacity:0.85;" title="${escapeHtml(alts.slice(6).join(' · '))}">+${alts.length - altShown.length}</span>` : ''}` : ''}
-      ${altItems.length ? `<span style="font-size:11px;opacity:0.85;margin-right:${alts.length ? '10px' : '0'};"><i class="ti ti-replace"></i> ${outOfStock ? '<b style="color:#FFE08A;">بديل متوفر:</b>' : 'أصناف بديلة:'}</span>
-        ${(altAvail.length ? altAvail : altItems).slice(0, 4).map(x => `<button type="button" data-bar-alt-item="${x.id}" style="${chip}${Number(x.qty) > 0 ? '' : 'opacity:0.6;'}" title="اضغط لاختياره بدل هذا الصنف">${escapeHtml(x.name)} <span class="mono" style="opacity:0.8;">(${escapeHtml(x.sku || '')})</span> — <span class="mono" style="font-weight:700;">${x.qty}</span></button>`).join('')}
-        ${outOfStock && !altAvail.length ? '<span style="font-size:11px;color:#FFD8D8;">كل البدائل خلصانة</span>' : ''}` : ''}
-    </div>` : '';
+  const altItems = findAlternativeItems(it).slice(0, 30);
+  const vr = vatRate();
+  const n = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? '' : fmt(v);
+  const wt = (p, x) => (Number(p) > 0 ? fmt(Number(p) * (1 + ((x.vat_applicable === false ? 0 : vr) / 100))) : '0.00');
+  const cols = [
+    ['رقم الصنف', x => `<span class="mono">${escapeHtml(x.sku || '')}</span>`, 'w'],
+    ['اسم الصنف', x => escapeHtml(x.name || ''), 'nm'],
+    [isBranchUser() ? 'رصيد فرعك' : 'الرصيد', x => { const q = itemQtyForUser(x); return `<b style="color:${q > 0 ? '#0F6E56' : '#C0392B'};">${roundQty(q)}</b>`; }],
+    ...isBranchUser() ? [['فروع أخرى', x => itemQtyOtherBranches(x).map(o => `${escapeHtml(o.name)}: ${roundQty(o.qty)}`).join(' · ')]] : [],
+    ['س/بيع1', x => n(x.price)], ['س/بيع2', x => n(x.price2)], ['س/بيع3', x => n(x.price3)],
+    ['س.البيع1/ض', x => wt(x.price, x)], ['س.البيع2/ض', x => wt(x.price2, x)], ['س.البيع3/ض', x => wt(x.price3, x)],
+    ['ض.ق.م%', x => fmt(x.vat_applicable === false ? 0 : vr)],
+    ...(admin ? [['ت/افتتاحية', x => n(x.opening_cost)], ['ت/حالية', x => n(x.cost)], ['ت/اجنبية', x => n(x.foreign_cost)], ['اخر تكلفة', x => n(x.last_cost)], ['ت/دفترية', x => n(x.book_cost)]] : []),
+    ['الشركة', x => escapeHtml(x.company || '')], ['الموديل', x => escapeHtml(x.model || '')], ['المقاس', x => escapeHtml(x.size || '')],
+    ['الموقع 1', x => escapeHtml(x.location1 || '')], ['الموقع 2', x => escapeHtml(x.location2 || '')], ['الموقع 3', x => escapeHtml(x.location3 || '')], ['الموقع 4', x => escapeHtml(x.location4 || '')],
+    ['الماركة', x => escapeHtml(x.brand || '')],
+    ...(pharmacyOn() ? [['العلمي', x => escapeHtml(x.generic_name || '')]] : []),
+  ];
+  const row = (x, main) => `<tr class="${main ? 'main' : 'alt'}" ${main ? '' : `data-bar-alt-item="${x.id}" title="بديل — اضغط لاختياره بدل الصنف"`}>${cols.map(c => `<td class="${c[2] || ''}">${c[1](x)}</td>`).join('')}</tr>`;
   return `
-  <div id="active-item-bar" class="no-print" style="position:fixed;bottom:0;right:0;left:0;background:linear-gradient(90deg,#6C3FA8,#8E5BC7);color:#fff;padding:10px 20px;display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap;z-index:45;box-shadow:0 -4px 16px rgba(0,0,0,0.25);">
-    <div style="font-weight:700;font-size:13px;">${escapeHtml(it.name)} <span class="mono" style="font-weight:400;opacity:0.8;">(${escapeHtml(it.sku)})</span></div>
-    <div style="display:flex;align-items:center;gap:6px;"><i class="ti ti-tag"></i><span style="font-size:11px;opacity:0.85;">سعر 1:</span><span class="mono" style="font-weight:700;">${fmt(it.price)}</span></div>
-    ${Number(it.price2) > 0 ? `<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;opacity:0.85;">سعر 2:</span><span class="mono" style="font-weight:700;">${fmt(it.price2)}</span></div>` : ''}
-    ${Number(it.price3) > 0 ? `<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;opacity:0.85;">سعر 3:</span><span class="mono" style="font-weight:700;">${fmt(it.price3)}</span></div>` : ''}
-    ${admin ? `<div style="display:flex;align-items:center;gap:6px;"><i class="ti ti-receipt"></i><span style="font-size:11px;opacity:0.85;">التكلفة:</span><span class="mono" style="font-weight:700;">${fmt(it.cost)}</span></div>` : ''}
-    <div style="display:flex;align-items:center;gap:6px;"><i class="ti ti-map-pin"></i><span style="font-size:11px;opacity:0.85;">الموقع:</span><span class="mono" style="font-weight:700;">${escapeHtml([it.location1,it.location2,it.location3,it.location4].filter(Boolean).join(' / ') || '—')}</span></div>
-    <div style="display:flex;align-items:center;gap:6px;"><i class="ti ti-boxes"></i><span style="font-size:11px;opacity:0.85;">${isBranchUser() ? 'رصيد فرعك:' : 'الكمية بالمخزون:'}</span><span class="mono" style="font-weight:700;color:${outOfStock?'#FFD8D8':'#fff'};">${itemQtyForUser(it)}</span></div>
-    ${itemQtyOtherBranches(it).length ? `<div style="display:flex;align-items:center;gap:6px;"><i class="ti ti-building-store"></i><span style="font-size:11px;opacity:0.85;">فروع أخرى:</span>${itemQtyOtherBranches(it).map(o => `<span style="background:rgba(255,255,255,0.18);border-radius:10px;padding:1px 8px;font-size:11.5px;">${escapeHtml(o.name)} <b class="mono">${o.qty}</b></span>`).join('')}</div>` : ''}
-    ${pharmacyOn() && it.generic_name ? `<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;opacity:0.85;">💊 العلمي:</span><span style="font-weight:700;" dir="ltr">${escapeHtml(it.generic_name)}</span></div>` : ''}
-    ${pharmacyOn() && itemBatches(it.id).length ? `<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;"><i class="ti ti-calendar-time"></i><span style="font-size:11px;opacity:0.85;">الصلاحية:</span>${itemBatches(it.id).slice(0, 4).map(b => { const st = expiryStatus(b.expiry_date); return `<span class="mono" title="تشغيلة ${escapeHtml(b.batch_no || '—')}" style="background:${st.k === 'ok' ? 'rgba(255,255,255,0.18)' : st.bg};color:${st.k === 'ok' ? '#fff' : st.c};border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;">${fmtExp(b.expiry_date)} (${Number(b.qty)})</span>`; }).join('')}</div>` : ''}
-    <button type="button" data-bar-history="${it.id}" style="${chip}font-size:12px;padding:4px 12px;" title="سجل أسعار البيع بالتواريخ (F6)"><i class="ti ti-history"></i> سجل الأسعار</button>
-    <button id="active-item-bar-close" class="no-print" style="margin-right:auto;background:rgba(255,255,255,0.2);border:none;color:#fff;width:22px;height:22px;border-radius:50%;cursor:pointer;">✕</button>
-    ${secondRow}
+  <div id="active-item-bar" class="no-print ibar">
+    <div class="ibar-head">
+      <b>${escapeHtml(it.name)}</b>
+      ${altItems.length ? `<span class="ibar-tag"><i class="ti ti-replace"></i> ${altItems.length} صنف بديل${itemQtyForUser(it) <= 0 && altItems.some(x => itemQtyForUser(x) > 0) ? ' — <b style="color:#0F6E56;">في بديل متوفر</b>' : ''}</span>` : ''}
+      ${alts.length ? `<span class="ibar-tag"><i class="ti ti-arrows-exchange"></i> الأرقام البديلة:</span>${alts.slice(0, 8).map(a2 => `<button type="button" data-bar-copy="${escapeHtml(a2)}" class="ibar-code mono" title="اضغط للنسخ">${escapeHtml(a2)}</button>`).join('')}${alts.length > 8 ? `<span class="ibar-tag" title="${escapeHtml(alts.slice(8).join(' · '))}">+${alts.length - 8}</span>` : ''}` : ''}
+      ${pharmacyOn() && itemBatches(it.id).length ? `<span class="ibar-tag"><i class="ti ti-calendar-time"></i> ${itemBatches(it.id).slice(0, 3).map(b2 => escapeHtml((b2.batch_no || '') + ' ' + (b2.expiry_date || ''))).join(' · ')}</span>` : ''}
+      <span style="flex:1;"></span>
+      <button type="button" data-bar-history="${it.id}" class="ibar-btn" title="سجل أسعار البيع بالتواريخ (F6)"><i class="ti ti-history"></i> سجل الأسعار</button>
+      <button id="active-item-bar-close" type="button" class="ibar-btn" title="قفل">✕</button>
+    </div>
+    <div class="ibar-grid"><table>
+      <thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead>
+      <tbody>${row(it, true)}${altItems.map(x => row(x, false)).join('')}</tbody>
+    </table></div>
   </div>`;
+}
+// الشرائط اللي تحت (معلومات الصنف + النوافذ): نرصّها فوق بعض والنوافذ المفتوحة ما تغطيها
+function syncBottomBars() {
+  const ws = document.querySelector('.ws-bar'), ib = document.getElementById('active-item-bar');
+  const wsH = ws ? ws.offsetHeight : 0;
+  if (ib) ib.style.bottom = wsH + 'px';
+  const total = wsH + (ib ? ib.offsetHeight : 0);
+  document.documentElement.style.setProperty('--bottom-h', total + 'px');
+  document.body.classList.toggle('bars-on', total > 0);
 }
 function refreshActiveItemBar() {
   const bar = document.getElementById('active-item-bar');
   const html = phTheme(renderActiveItemBar());
   if (bar) { if (html) bar.outerHTML = html; else bar.remove(); }
   else if (html) document.body.insertAdjacentHTML('beforeend', html);
+  syncBottomBars();
 }
 
 // ---------- سجل أسعار بيع الصنف (من فاتورة البيع، ومن التقارير) ----------
