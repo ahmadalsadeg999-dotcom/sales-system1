@@ -90,6 +90,24 @@
   .cmdk-row.sel .star{color:rgba(255,255,255,.6);} .cmdk-row.sel .star.on{color:#F5C26B;}
   .cmdk-foot{display:flex;gap:14px;flex-wrap:wrap;padding:8px 14px;border-top:1px solid #EEECE4;background:#FAF9F5;font-size:11px;color:#8B8A7A;}
   .cmdk-empty{padding:26px;text-align:center;color:#8B8A7A;font-size:13px;}
+  body.ws-on{padding-bottom:34px;}
+  body.ws-on [style*="position:fixed;inset:0"]{bottom:34px !important;}
+  .ws-bar{position:fixed;left:0;right:0;bottom:0;height:34px;z-index:1150;display:flex;align-items:stretch;gap:3px;padding:3px 6px 0;background:#1B3352;box-shadow:0 -4px 14px rgba(0,0,0,.18);overflow-x:auto;font-family:inherit;}
+  .ws-tab{display:flex;align-items:center;gap:6px;max-width:220px;min-width:110px;padding:0 10px;border-radius:7px 7px 0 0;background:#2C4A6E;color:#D7E1EE;font-size:12px;cursor:pointer;white-space:nowrap;user-select:none;}
+  .ws-tab span{overflow:hidden;text-overflow:ellipsis;flex:1;}
+  .ws-tab .ti{font-size:14px;}
+  .ws-tab:hover{background:#355A84;color:#fff;}
+  .ws-tab.on{background:#F4F1EA;color:#1B3352;font-weight:700;}
+  .ws-x{border:none;background:none;color:inherit;opacity:.6;cursor:pointer;padding:2px;border-radius:4px;display:flex;}
+  .ws-x:hover{opacity:1;background:rgba(0,0,0,.12);}
+  .ws-new{display:flex;align-items:center;gap:5px;border:none;background:none;color:#D7E1EE;font-size:12px;cursor:pointer;padding:0 10px;font-family:inherit;white-space:nowrap;}
+  .ws-new:hover{color:#fff;}
+  .ws-hint{color:#7F95B2;font-size:11px;align-self:center;margin-inline-start:auto;white-space:nowrap;padding:0 6px;}
+  @media print{ .ws-bar{display:none !important;} body.ws-on{padding-bottom:0;} }
+  .appr-strip{display:flex;flex-direction:column;gap:3px;width:max-content;min-width:180px;}
+  .appr-lbl{background:#D99694;color:#fff;font-weight:800;font-size:13px;padding:3px 10px;font-family:Tahoma,sans-serif;}
+  .appr-j{font-size:11.5px;color:#5F5E5A;padding:0 2px;}
+  .appr-j > span{margin-right:0 !important;}
   .si-qr-mini{width:58px;height:58px;flex:none;background:#fff;border:1px solid #ACA899;padding:2px;box-sizing:border-box;}
   .si-qr-mini canvas{width:100% !important;height:100% !important;display:block;}
   .btn { display:flex; flex-direction:row; align-items:center; justify-content:center; gap:6px; background:linear-gradient(180deg,#F9F7F1,#E4E0D2); border:1px solid #B8B3A0; border-radius:10px; padding:0 16px; height:38px; cursor:pointer; min-width:58px; font-size:12px; color:#3A3826; transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.07); white-space:nowrap; }
@@ -662,6 +680,7 @@ function appBrandName() { return pharmacyOn() ? '💊 Coin Pharma' : 'Coin Soft 
 
 function render() {
   const root = document.getElementById('root');
+  try { document.body.classList.toggle('ws-on', !!state.session && !state.licenseExpired); } catch (e) {}
   try { applyThemeStyles(); } catch (e) {}
   if (state.licenseExpired) {
     root.innerHTML = phTheme(renderLicenseExpiredScreen());
@@ -1766,9 +1785,28 @@ function filteredSalesInvoices() {
   if (state.salesFilterToNum.trim()) { const to = extractNum(state.salesFilterToNum); if (to !== null) list = list.filter(x => { const n = extractNum(x.invoice_number); return n !== null && n <= to; }); }
   return list;
 }
+// المدفوع الفعلي للترحيل: تفصيل طرق الدفع لو مجموعه = المبلغ المدفوع، وإلا المبلغ المدفوع بطريقة الدفع
+// (يمنع «القيد غير متوازن» لما المدفوع يتعدّل بعد تفصيل المدفوعات)
+function effectivePayments(f) {
+  const paid = Math.round((Number(f.paid_amount) || 0) * 100) / 100;
+  const pays = (Array.isArray(f.payments) ? f.payments : []).filter(p => Number(p.amount) > 0).map(p => ({ ...p, amount: Number(p.amount) }));
+  const sum = Math.round(pays.reduce((a, p) => a + p.amount, 0) * 100) / 100;
+  if (pays.length && Math.abs(sum - paid) <= 0.01) return pays;
+  if (paid <= 0) return [];
+  const method = (pays.length === 1 && pays[0].method) || f.payment_method || (activePaymentMethods()[0] || {}).name || 'نقدي';
+  return [{ method, amount: paid }];
+}
+// لما المدفوع يتغيّر يدوياً: نحدّث تفصيل الدفع (طريقة وحدة = نفس المبلغ، أكتر من طريقة = نرجع للطريقة الأساسية)
+function syncPaymentsToPaid(f) {
+  if (!Array.isArray(f.payments) || !f.payments.length) return;
+  const real = f.payments.filter(p => Number(p.amount) > 0);
+  const paid = Number(f.paid_amount) || 0;
+  if (real.length <= 1) { const m = (real[0] || f.payments[0]).method; f.payments = paid > 0 ? [{ method: m, amount: paid }] : []; if (m) f.payment_method = m; }
+  else if (Math.abs(real.reduce((a, p) => a + Number(p.amount), 0) - paid) > 0.01) { f.payment_method = real[0].method; f.payments = []; }
+}
 function buildSalesPayload(f) {
   const t = calcLineTotals(f);
-  const headerPayload = { invoice_type:f.invoice_type, customer_id:f.customer_id||null, walkin_customer_name: !f.customer_id ? (f.walkin_customer_name||null) : null, walkin_customer_tax_number: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_tax_number||null) : null, walkin_customer_address: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_address||null) : null, customer_ref:f.customer_ref||null, order_number:f.order_number||null, warehouse_id: f.warehouse_id||null, payment_method: f.payment_method||null, quotation_id:f.quotation_id||null, invoice_date:f.invoice_date, discount:t.discount, paid_amount:Number(f.paid_amount)||0, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal, no_tax:!!f.no_tax, sales_rep_id: f.sales_rep_id||null, customer_mobile: f.customer_mobile||null, payment_details: (f.payments||[]).length ? f.payments : null, customer_national_address: f.national_address && Object.values(f.national_address).some(Boolean) ? f.national_address : null,
+  const headerPayload = { invoice_type:f.invoice_type, customer_id:f.customer_id||null, walkin_customer_name: !f.customer_id ? (f.walkin_customer_name||null) : null, walkin_customer_tax_number: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_tax_number||null) : null, walkin_customer_address: (!f.customer_id && !f.no_tax) ? (f.walkin_customer_address||null) : null, customer_ref:f.customer_ref||null, order_number:f.order_number||null, warehouse_id: f.warehouse_id||null, payment_method: f.payment_method||null, quotation_id:f.quotation_id||null, invoice_date:f.invoice_date, discount:t.discount, paid_amount:Number(f.paid_amount)||0, notes:f.notes||null, subtotal:t.subtotal, tax_total:t.taxTotal, total:t.grandTotal, no_tax:!!f.no_tax, sales_rep_id: f.sales_rep_id||null, customer_mobile: f.customer_mobile||null, payment_details: (f.payments||[]).length ? effectivePayments(f) : null, customer_national_address: f.national_address && Object.values(f.national_address).some(Boolean) ? f.national_address : null,
     ...(fxOn() && fxRate() ? { exchange_rate: Number(f.exchange_rate) || fxRate() } : {}) };
   const lineRows = f.lines.map(l => { const sub=lineAmt(l), tax=sub*(Number(taxPctOf(l))/100); return { item_id:l.item_id, quantity:l.quantity, unit_price:l.unit_price, discount_percent:Number(l.disc_pct)||0, tax_percent:taxPctOf(l), tax_amount:tax, line_total:sub, total_with_tax:sub+tax }; });
   return { headerPayload, lineRows, t };
@@ -3718,6 +3756,136 @@ document.addEventListener('click', ev => {
   const sb2 = t.closest('[data-section]');
   if (sb2 && sb2.dataset.section !== 'خروج') navRecord({ menu: '', target: sb2.dataset.section, label: menuLabel(sb2.dataset.section), icon: NAV_TOP_ICONS[sb2.dataset.section] });
 }, true);
+// =====================================================================
+// 🗂️ النوافذ المفتوحة (تبويبات): كل نافذة شغلها لوحدها — فاتورة، كشف حساب، صنف…
+//  • البيانات (الأصناف، العملاء، الفواتير…) مشتركة بين كل النوافذ
+//  • حالة الشاشة (المستند المفتوح، الفلاتر، نتائج الكشف) خاصة بكل نافذة
+// =====================================================================
+const WS_SHARED = new Set(('lang session view authError authLoading profile items users company chartOfAccounts journalEntries alerts settlementVouchers cashDisbursementVouchers '
+  + 'reportTemplates stockCounts warehouses transfers paymentMethods shift shiftsAvailable shiftHistory myPermissions permScreens permRoles permMatrixData salesReps '
+  + 'receiptVouchers paymentVouchers parties purchases quotations salesInvoices salesReturns purchaseReturns partiesAll purchasesAll salesInvoicesAll salesReturnsAll '
+  + 'purchaseReturnsAll quotationsAll receiptVouchersAll paymentVouchersAll fxReady fxRates batches batchesReady branches branchesReady branchesTried jeBranchCol '
+  + 'branchReorderCol branchPrices branchPricesOk whStock itemsSoldQuantities itemLastPurchasePrices itemAltNumbersMap itemRelations bundleComponents employees '
+  + 'employeeLeaves eosbSettlements fixedAssets cashReconciliations openingInvDocs crmClients crmLogs activityLog customerTotalPurchases backupSettings backupHistory '
+  + 'maintenanceLog fiscalClosings licenseSettings licenseInfo licenseTrial licenseExpired licenseExpiryDate licenseWarningDays licenseContact licenseReason authUser '
+  + 'loginBranchChoice loginBranchInfo windowPositions salesPrintTemplate designerUnlocked autoPosting pendingAutoPrint cmdk payChange wsTabs wsActive psPrinters '
+  + 'openDropdown itemPickerOpen branchPickOpen showAlertsPanel showSalesPayDialog showPrintDoctor showBarcodeScanner barcodeScannerCallback barcodeScannerError '
+  + 'homeCogs homeCogsLoading ownerData ownerLoading offlineSnapAt').split(/\s+/));
+const WS_DOCS = [
+  ['showSalesForm', 'ti-receipt', 'بيع', f => f.salesForm?.invoice_number], ['showPurchaseForm', 'ti-shopping-cart', 'شراء', f => f.purchaseForm?.invoice_number],
+  ['showQuoteForm', 'ti-file-dollar', 'عرض سعر', f => f.quoteForm?.quote_number || f.quoteForm?.quotation_number], ['showSalesReturnForm', 'ti-receipt-refund', 'مردود بيع', f => f.salesReturnForm?.return_number],
+  ['showPurchaseReturnForm', 'ti-truck-return', 'مردود شراء', f => f.purchaseReturnForm?.return_number], ['showReceiptVoucherForm', 'ti-cash', 'سند قبض', f => f.receiptVoucherForm?.voucher_number],
+  ['showPaymentVoucherForm', 'ti-cash-off', 'سند صرف', f => f.paymentVoucherForm?.voucher_number], ['showSettlementVoucher', 'ti-scale', 'سند تسوية', f => f.settlementVoucherForm?.voucher_number],
+  ['showCashDisbursement', 'ti-moneybag', 'صرف صندوق', f => f.cashDisbursementForm?.voucher_number], ['showStockCountForm', 'ti-clipboard-list', 'جرد', f => f.stockCountForm?.count_number],
+  ['showTransferForm', 'ti-arrows-exchange', 'تحويل', f => f.transferForm?.transfer_number], ['showPartyForm', 'ti-user', 'عميل/مورد', f => f.partyForm?.name],
+  ['showForm', 'ti-box', 'صنف', f => f.form?.name],
+];
+let WS_INIT = null;
+const wsClone = v => { try { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); } catch (e) { return v; } };
+function wsCaptureInit() { if (!WS_INIT) WS_INIT = wsClone(Object.fromEntries(Object.keys(state).filter(k => !WS_SHARED.has(k) && typeof state[k] !== 'function').map(k => [k, state[k]]))); }
+const wsIsTabKey = k => !WS_SHARED.has(k) && !/^(license|offline|ws)/.test(k);
+function wsSnap() { const o = {}; Object.keys(state).forEach(k => { if (wsIsTabKey(k)) o[k] = state[k]; }); return o; }
+function wsLoad(snap) {
+  Object.keys(state).forEach(k => { if (wsIsTabKey(k) && !(k in snap)) state[k] = (WS_INIT && k in WS_INIT) ? wsClone(WS_INIT[k]) : (typeof state[k] === 'boolean' ? false : undefined); });
+  Object.keys(snap).forEach(k => { state[k] = snap[k]; });
+}
+function wsFresh() { const o = {}; Object.keys(WS_INIT || {}).forEach(k => { o[k] = wsClone(WS_INIT[k]); }); o.activeSection = 'الرئيسية'; return o; }
+function wsEnsure() {
+  wsCaptureInit();
+  if (!state.wsTabs || !state.wsTabs.length) { state.wsTabs = [{ id: 1, snap: null }]; state.wsActive = 1; state.wsSeq = 1; }
+}
+function wsAnyModal(st) { st = st || state; return Object.keys(st).some(k => /^show[A-Z]/.test(k) && wsIsTabKey(k) && st[k] === true) || !!st.invStmt || !!st.accountForm || !!st.crmShowForm || !!st.crmShowDetail; }
+function wsTitle(st) {
+  st = st || state;
+  for (const [flag, icon, label, num] of WS_DOCS) if (st[flag]) { const n = num(st); return { icon, t: label + (n ? ' ' + n : ' جديد') }; }
+  if (wsAnyModal(st) && st.tabLabel) return st.tabLabel;
+  const sec = st.activeSection || 'الرئيسية', m = navSectionOf(sec), it = m ? SUBMENUS[m].find(i => i.target === sec) : null;
+  return it ? { icon: it.icon || 'ti-point', t: it.label } : { icon: NAV_TOP_ICONS[sec] || 'ti-point', t: menuLabel(sec) || sec };
+}
+function wsCloseTransient() { state.cmdk = null; state.payChange = null; state.showSalesPayDialog = false; state.itemPickerOpen = false; state.openDropdown = null; }
+function wsNewTab(silent) {
+  wsEnsure();
+  if (state.wsTabs.length >= 10) { showToast('وصلت لأقصى عدد نوافذ (10) — اقفل نافذة الأول', 'error'); return false; }
+  wsCloseTransient();
+  const cur = state.wsTabs.find(t => t.id === state.wsActive); if (cur) cur.snap = wsSnap();
+  const id = ++state.wsSeq;
+  const at = state.wsTabs.findIndex(t => t.id === state.wsActive);
+  state.wsTabs.splice(at + 1, 0, { id, snap: null });
+  wsLoad(wsFresh());
+  state.wsActive = id;
+  if (!silent) render();
+  return true;
+}
+function wsSwitch(id) {
+  wsEnsure();
+  if (id === state.wsActive) return;
+  const to = state.wsTabs.find(t => t.id === id); if (!to) return;
+  wsCloseTransient();
+  const cur = state.wsTabs.find(t => t.id === state.wsActive); if (cur) cur.snap = wsSnap();
+  wsLoad(to.snap || wsFresh());
+  state.wsActive = id;
+  render();
+  if (state.showSalesForm && typeof refreshSalesQR === 'function') try { refreshSalesQR(); } catch (e) {}
+}
+function wsTabDirty(st) { return WS_DOCS.slice(0, 11).some(([flag, , , ], i) => { if (!st[flag]) return false; const fk = ['salesForm', 'purchaseForm', 'quoteForm', 'salesReturnForm', 'purchaseReturnForm', 'receiptVoucherForm', 'paymentVoucherForm', 'settlementVoucherForm', 'cashDisbursementForm', 'stockCountForm', 'transferForm'][i]; const f = st[fk]; return f && !f.approved && ((f.lines && f.lines.length) || Number(f.amount) > 0); }); }
+function wsClose(id) {
+  wsEnsure();
+  const i = state.wsTabs.findIndex(t => t.id === id); if (i < 0) return;
+  const st = id === state.wsActive ? state : (state.wsTabs[i].snap || {});
+  if (wsTabDirty(st) && !confirm('النافذة دي فيها مستند ما اتعتمد — لو ما حفظته بيضيع. تقفلها؟')) return;
+  if (state.wsTabs.length === 1) { wsCloseTransient(); wsLoad(wsFresh()); render(); return; }
+  if (id === state.wsActive) {
+    const next = state.wsTabs[i + 1] || state.wsTabs[i - 1];
+    state.wsTabs.splice(i, 1);
+    wsLoad(next.snap || wsFresh()); state.wsActive = next.id; render();
+  } else { state.wsTabs.splice(i, 1); render(); }
+}
+function renderWsBar() {
+  if (!state.session) return '';
+  wsEnsure();
+  const tabs = state.wsTabs.map(t => ({ id: t.id, ...(t.id === state.wsActive ? wsTitle(state) : wsTitle(t.snap || { activeSection: 'الرئيسية' })) }));
+  return `<div class="ws-bar no-print">
+    ${tabs.map((t, i) => `<div class="ws-tab ${t.id === state.wsActive ? 'on' : ''}" data-ws-tab="${t.id}" title="${escapeHtml(t.t)}${i < 9 ? ' (Alt+' + (i + 1) + ')' : ''}"><i class="ti ${t.icon}"></i><span>${escapeHtml(t.t)}</span>${tabs.length > 1 || wsAnyModal(t.id === state.wsActive ? state : (state.wsTabs.find(x => x.id === t.id).snap || {})) ? `<button class="ws-x" data-ws-close="${t.id}" title="قفل النافذة"><i class="ti ti-x"></i></button>` : ''}</div>`).join('')}
+    <button class="ws-new" data-ws-new title="نافذة جديدة (Ctrl+T)"><i class="ti ti-plus"></i><span>نافذة جديدة</span></button>
+    <span class="ws-hint">أي شاشة تفتحها وانت شغال على مستند بتفتح في نافذة جديدة</span>
+  </div>`;
+}
+// فتح شاشة من القائمة وانت فاتح مستند/كشف = نافذة جديدة (ما يضيع شغلك)
+function wsBeforeNav() { if (state.session && wsAnyModal()) wsNewTab(true); }
+document.addEventListener('click', ev => {
+  const t = ev.target;
+  const tab = t.closest('[data-ws-close]');
+  if (tab) { ev.preventDefault(); ev.stopPropagation(); wsClose(Number(tab.dataset.wsClose)); return; }
+  const tb = t.closest('[data-ws-tab]');
+  if (tb) { ev.preventDefault(); ev.stopPropagation(); wsSwitch(Number(tb.dataset.wsTab)); return; }
+  if (t.closest('[data-ws-new]')) { ev.preventDefault(); ev.stopPropagation(); wsNewTab(); return; }
+  const sm = t.closest('[data-submenu], [data-section]');
+  if (sm && !(sm.dataset.section === 'خروج')) {
+    const label = sm.dataset.submenu || menuLabel(sm.dataset.section);
+    const m = state.openDropdown; const it = m ? (SUBMENUS[m] || []).find(i => (i.target || i.label) === (sm.dataset.submenuTarget || sm.dataset.submenu)) : null;
+    wsBeforeNav();
+    state.tabLabel = { icon: (it && it.icon) || NAV_TOP_ICONS[sm.dataset.section] || 'ti-point', t: label };
+    if (m && !state.openDropdown) state.openDropdown = m;   // النافذة الجديدة: نخلي القائمة زي ما هي عشان أمر الفتح يكمّل
+  }
+}, true);
+document.addEventListener('keydown', ev => {
+  if (!state.session) return;
+  if ((ev.key === 'F2' || ev.key === 'F3' || ev.key === 'F4') && !ev.ctrlKey && !ev.altKey) {
+    const tag = (ev.target.tagName || '').toLowerCase();
+    if (!['input', 'textarea', 'select'].includes(tag)) wsBeforeNav();
+    return;
+  }
+  if (ev.ctrlKey && !ev.altKey && ev.code === 'KeyT') { ev.preventDefault(); wsNewTab(); return; }
+  if (ev.ctrlKey && ev.key === 'Tab') {
+    ev.preventDefault(); wsEnsure();
+    const i = state.wsTabs.findIndex(t => t.id === state.wsActive), n = state.wsTabs.length;
+    wsSwitch(state.wsTabs[(i + (ev.shiftKey ? n - 1 : 1)) % n].id); return;
+  }
+  if (ev.altKey && !ev.ctrlKey && /^Digit[1-9]$/.test(ev.code)) {
+    wsEnsure(); const t = state.wsTabs[Number(ev.code.slice(5)) - 1];
+    if (t) { ev.preventDefault(); wsSwitch(t.id); }
+  }
+}, true);
 function renderApp() {
   const items = filteredItems();
   const lowStock = state.items.filter(it => Number(it.qty) <= Number(it.reorder_at || 0)).length;
@@ -3838,6 +4006,7 @@ function renderApp() {
   ${state.showSalesPayDialog ? renderSalesPayDialog() : ''}
   ${state.payChange ? renderPayChangeModal() : ''}
   ${state.cmdk ? renderCmdk() : ''}
+  ${renderWsBar()}
   ${state.showWalkinPicker ? renderWalkinPicker() : ''}
   ${state.showOwnerDash ? renderOwnerDash() : ''}
   ${state.showWaChooser ? renderWaChooser() : ''}
@@ -4601,9 +4770,7 @@ function renderPurchaseFormModal() {
         <span>${t('title_purchase_invoice')}</span>
         <button id="purchase-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button>
       </div>
-      ${f.approved ? `<div class="no-print" style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">${t('approved_label')}</div>` : ''}
       ${state.editingPurchaseId && !f.approved ? `<div style="padding:6px 16px 0;font-size:11px;color:#BA7517;" class="no-print">✓ محفوظة كمسودة — الرقم: <span class="mono">${escapeHtml(f.invoice_number)}</span></div>` : ''}
-      ${f.approved ? `<div class="no-print" style="padding:6px 16px 0;">${journalNumbersBadge()}</div>` : ''}
 
       ${sxStyles()}
       ${(() => {
@@ -4752,6 +4919,7 @@ function renderPurchaseFormModal() {
           </div>
         </div>
 
+        ${approvedStrip(f, 'معتمدة', 'margin-top:10px;')}
         <div style="display:grid;grid-template-columns:1fr 200px 250px;gap:14px;margin-top:10px;align-items:end;">
           <div style="display:flex;gap:3px;flex-wrap:nowrap;align-items:flex-end;overflow-x:auto;">
             ${f.approved ? '' : `<button id="purchase-save" type="button" class="sx-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ</button>`}
@@ -5512,7 +5680,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.21-4';
+const APP_VERSION = '2026.10.21-7';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -7095,7 +7263,6 @@ function renderSalesReturnFormModal() {
         };
       })())}
       <div class="win-title"><span>${t('ret_title_sales')}</span><button id="sr-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
-      ${f.approved ? `<div class="no-print" style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">${t('approved_short')}</div><div class="no-print" style="padding:6px 16px 0;text-align:center;">${journalNumbersBadge()}</div>` : ''}
 
       ${sxStyles()}
       ${(() => {
@@ -7203,6 +7370,7 @@ function renderSalesReturnFormModal() {
           </div>
         </div>
 
+        ${approvedStrip(f, t('approved_short'), 'margin-top:10px;')}
         <div style="display:grid;grid-template-columns:1fr 160px 250px;gap:14px;margin-top:10px;align-items:end;">
           <div style="display:flex;gap:3px;flex-wrap:nowrap;align-items:flex-end;overflow-x:auto;">
             ${f.approved ? '' : `<button id="sr-save" type="button" class="sx-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ</button>`}
@@ -7291,7 +7459,6 @@ function renderPurchaseReturnFormModal() {
         };
       })())}
       <div class="win-title"><span>${t('ret_title_purchase')}</span><button id="pr-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
-      ${f.approved ? `<div class="no-print" style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">${t('approved_short')}</div><div class="no-print" style="padding:6px 16px 0;text-align:center;">${journalNumbersBadge()}</div>` : ''}
 
       ${sxStyles()}
       ${(() => {
@@ -7399,6 +7566,7 @@ function renderPurchaseReturnFormModal() {
           </div>
         </div>
 
+        ${approvedStrip(f, t('approved_short'), 'margin-top:10px;')}
         <div style="display:grid;grid-template-columns:1fr 160px 250px;gap:14px;margin-top:10px;align-items:end;">
           <div style="display:flex;gap:3px;flex-wrap:nowrap;align-items:flex-end;overflow-x:auto;">
             ${f.approved ? '' : `<button id="pr-save" type="button" class="sx-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ</button>`}
@@ -7452,7 +7620,6 @@ function renderStockCountFormModal() {
   <div id="sc-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
     <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:900px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${t('sc_title')}</span><button id="sc-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
-      ${f.approved ? `<div class="no-print" style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">${t('sc_updated')}</div><div class="no-print" style="padding:6px 16px 0;text-align:center;">${journalNumbersBadge()}</div>` : ''}
 
       <div class="print-only" style="padding:14px 16px 0;${printStyleVars()}">
         <div dir="ltr" style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1B3352;padding-bottom:10px;">
@@ -7515,6 +7682,7 @@ function renderStockCountFormModal() {
         </div>
       </div>
 
+      ${approvedStrip(f, t('sc_updated'), 'margin:8px 16px;')}
       <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;flex-wrap:wrap;">
         ${iconBtn('sc-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('sc-next', 'ti-player-track-next', '#27AE60', t('btn_next'), state.stockCounts.length===0)}
@@ -8074,7 +8242,7 @@ function renderOpeningInvFormModal() {
   <div id="oif-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40;" onclick="event.stopPropagation()">
     <div style="background:#fff;border-radius:12px;width:100%;max-width:750px;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
       <div class="win-title"><span>مستند مخزون افتتاحي</span><button id="oif-close" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
-      ${f.approved ? `<div style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">معتمد</div>` : ''}
+      ${approvedStrip(f, 'معتمد', 'margin:8px 16px 0;')}
       <div style="padding:14px 16px 0;display:flex;align-items:center;gap:8px;">
         <label style="font-size:12.5px;color:#3A3826;">رقم المستند</label>
         <input class="input mono" value="${escapeHtml(f.doc_number || t('auto_generated'))}" disabled style="background:#EDEAE0;color:#5F5E5A;max-width:140px;" />
@@ -9229,6 +9397,21 @@ function renderPaymentVouchersSection() {
       ${state.showPaymentVoucherForm ? renderVoucherFormModal('payment') : ''}`;
 }
 
+function voucherHijri(d) {
+  if (!d) return '';
+  try { return new Date(d + 'T12:00:00').toLocaleDateString('en-US-u-ca-islamic-umalqura', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\s*AH$/, '').replace(/(\d+)\/(\d+)\/(\d+)/, '$3/$1/$2'); } catch (e) { return ''; }
+}
+function voucherAccName(code) {
+  if (!(state.chartOfAccounts || []).length && !window.__coaLoading && typeof loadChartOfAccounts === 'function') { window.__coaLoading = true; loadChartOfAccounts().then(() => { if (state.showReceiptVoucherForm || state.showPaymentVoucherForm) render(); }).catch(() => {}); }
+  const a = (state.chartOfAccounts || []).find(x => x.code === code); return a ? (a.name_ar || a.name || '') : '';
+}
+// تغيير طريقة الدفع في السند يحدّث «حساب النقدية» على طول
+document.addEventListener('change', ev => {
+  const t = ev.target; if (!t || !/^(rv|pv)-method$/.test(t.id)) return;
+  const p = t.id.slice(0, 2), code = cashOrBankAccount(t.value);
+  const c = document.getElementById(p + '-cash-code'), n = document.getElementById(p + '-cash-name');
+  if (c) c.value = code; if (n) n.value = voucherAccName(code);
+}, true);
 function renderVoucherFormModal(kind) {
   const isReceipt = kind === 'receipt';
   const f = isReceipt ? state.receiptVoucherForm : state.paymentVoucherForm;
@@ -9244,10 +9427,10 @@ function renderVoucherFormModal(kind) {
   const accentBg2 = isReceipt ? '#EAF8F2' : '#FDF3E2';
   const icon = isReceipt ? 'ti-arrow-down-left' : 'ti-arrow-up-right';
   return `
-  <div id="${prefix}-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
-    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:14px;width:100%;max-width:620px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+  <div id="${prefix}-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
+    ${sxStyles()}
+    <div class="print-area sx-win" style="border:1px solid #1B3352;border-radius:6px;width:100%;max-width:780px;max-height:94vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
       <div class="win-title"><span>${title}</span><button id="${prefix}-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
-      ${f.approved ? `<div class="no-print" style="margin:8px 16px 0;text-align:center;background:#D9534F;color:#fff;padding:6px;border-radius:3px;font-weight:600;font-size:13px;">${t('approved_short')}</div><div class="no-print" style="padding:6px 16px 0;text-align:center;">${journalNumbersBadge()}</div>` : ''}
 
       <div class="print-only" style="padding:16px 18px 0;${printStyleVars()}">
         <div dir="ltr" style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px double #1B3352;padding-bottom:10px;">
@@ -9289,58 +9472,74 @@ function renderVoucherFormModal(kind) {
         </div>
       </div>
 
-      <div class="no-print" style="background:linear-gradient(135deg,${accent},${isReceipt?'#0a5443':'#8f5c12'});padding:16px 18px;display:flex;align-items:center;gap:12px;">
-        <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <i class="ti ${icon}" style="color:#fff;font-size:19px;"></i>
-        </div>
-        <div style="flex:1;position:relative;">
-          <div style="color:#fff;font-weight:700;font-size:14.5px;">${title}</div>
-          <div id="${prefix}-number-nav-toggle" class="no-print mono" style="color:rgba(255,255,255,0.9);font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
-            ${escapeHtml(f.voucher_number || 'رقم تلقائي عند الحفظ')} <i class="ti ti-chevron-down" style="font-size:11px;"></i>
+      <div class="no-print" style="padding:12px 14px 4px;">
+        ${parties.length === 0 ? `<div style="font-size:11.5px;color:#C0392B;margin-bottom:6px;">ما فيه ${isReceipt?'عملاء':'موردين'} آجل مسجّلين — فعّل خيار "آجل" بكرت الطرف أول</div>` : ''}
+        <div style="display:grid;grid-template-columns:110px 1fr 110px 170px;gap:6px 8px;align-items:center;">
+          <label class="sx-lbl">رقم السند</label>
+          <div style="position:relative;">
+            <div id="${prefix}-number-nav-toggle" class="sx-in" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-family:Tahoma,monospace;max-width:170px;" title="تنقّل بين السندات"><span>${escapeHtml(f.voucher_number || 'تلقائي')}</span><i class="ti ti-chevron-down" style="font-size:12px;"></i></div>
+            ${state.voucherNumberNavOpen === prefix ? `
+            <div style="position:absolute;top:26px;right:0;background:#fff;border:1px solid #1B3352;box-shadow:0 8px 24px rgba(0,0,0,0.25);width:240px;z-index:15;" onclick="event.stopPropagation()">
+              <input id="${prefix}-number-nav-search" class="sx-in" style="border:none;border-bottom:1px solid #DEDACB;" placeholder="بحث برقم السند..." value="${escapeHtml(state.voucherNumberNavQuery||'')}" />
+              <div style="max-height:220px;overflow-y:auto;">
+                ${(isReceipt?state.receiptVouchers:state.paymentVouchers).filter(v => !state.voucherNumberNavQuery || (v.voucher_number||'').toLowerCase().includes(state.voucherNumberNavQuery.toLowerCase())).slice(0,30).map(v => `
+                  <div data-voucher-nav-pick="${v.id}" style="padding:5px 8px;font-size:12px;cursor:pointer;border-bottom:1px solid #F0EEE5;font-weight:${v.id===(isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId)?'700':'400'};">${escapeHtml(v.voucher_number)} <span style="color:#8B8A7A;font-size:10.5px;">— ${escapeHtml(v.parties?.name||'')}</span></div>`).join('') || `<div style="padding:10px;font-size:11px;color:#8B8A7A;text-align:center;">ما فيه نتائج</div>`}
+              </div>
+            </div>` : ''}
           </div>
-          <div class="print-only mono" style="color:rgba(255,255,255,0.8);font-size:11px;">${escapeHtml(f.voucher_number || 'رقم تلقائي عند الحفظ')}</div>
-          ${state.voucherNumberNavOpen === prefix ? `
-          <div class="no-print" style="position:absolute;margin-top:4px;background:#fff;border:1px solid #1B3352;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.25);width:220px;z-index:15;overflow:hidden;" onclick="event.stopPropagation()">
-            <input id="${prefix}-number-nav-search" class="input" style="border:none;border-radius:0;border-bottom:1px solid #DEDACB;" placeholder="بحث برقم السند..." value="${escapeHtml(state.voucherNumberNavQuery||'')}" />
-            <div style="max-height:200px;overflow-y:auto;">
-              ${(isReceipt?state.receiptVouchers:state.paymentVouchers).filter(v => !state.voucherNumberNavQuery || (v.voucher_number||'').toLowerCase().includes(state.voucherNumberNavQuery.toLowerCase())).slice(0,30).map(v => `
-                <div data-voucher-nav-pick="${v.id}" style="padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid #F0EEE5;color:${v.id===(isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId)?'#1B3352':'#3A3826'};font-weight:${v.id===(isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId)?'700':'400'};">${escapeHtml(v.voucher_number)} <span style="color:#8B8A7A;font-size:10.5px;">— ${escapeHtml(v.parties?.name||'')}</span></div>`).join('') || `<div style="padding:10px;font-size:11px;color:#8B8A7A;text-align:center;">ما فيه نتائج</div>`}
-            </div>
-          </div>` : ''}
-        </div>
-      </div>
-      <div class="no-print" style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
-        ${parties.length === 0 ? `<div class="err-text">ما فيه ${isReceipt?'عملاء':'موردين'} آجل مسجّلين — فعّل خيار "آجل" بكرت الطرف أول</div>` : ''}
-        <div style="background:#FAF9F4;border:1px solid #DEDACB;border-radius:10px;padding:12px 14px;">
-          <div style="font-size:11px;font-weight:600;color:#5F5E5A;margin-bottom:8px;display:flex;align-items:center;gap:5px;"><i class="ti ti-user" style="font-size:13px;"></i> ${partyLabel}</div>
-          ${partyField('', partyPickerButton(`${prefix}-party`, isReceipt?'customer':'supplier', f[partyField_], f.approved, true))}
-          ${selectedParty ? `<div style="margin-top:8px;padding:8px 10px;background:#fff;border-radius:6px;border:1px solid #EDEAE0;font-size:11.5px;display:flex;justify-content:space-between;"><span style="color:#5F5E5A;">الرصيد الحالي</span><span class="mono" style="font-weight:600;color:${Number(selectedParty.balance)>0?'#C0392B':'#0F6E56'};">${fmt(selectedParty.balance)}</span></div>` : ''}
+          <label class="sx-lbl">التاريخ</label>
+          <input id="${prefix}-date" type="date" class="sx-in" value="${escapeHtml(f.voucher_date)}" ${f.approved?'disabled':''} />
+
+          <label class="sx-lbl">${isReceipt ? 'العميل' : 'المورد'}</label>
+          <div style="display:grid;grid-template-columns:90px 1fr;gap:4px;">
+            <input class="sx-in sx-ro mono" value="${escapeHtml(selectedParty?.code || '')}" disabled title="رقم ${isReceipt?'العميل':'المورد'}" />
+            <div>${partyPickerButton(`${prefix}-party`, isReceipt?'customer':'supplier', f[partyField_], f.approved, true)}</div>
+          </div>
+          <label class="sx-lbl">ت/الهجري</label>
+          <input class="sx-in sx-ro mono" value="${escapeHtml(voucherHijri(f.voucher_date))}" disabled />
+
+          <label class="sx-lbl">ر/القيد</label>
+          <input class="sx-in sx-ro mono sx-beige" style="max-width:170px;" value="${(isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && f.approved ? escapeHtml((state.docJournalNumbers || []).join(' ، ')) : ''}" disabled />
+          <span></span><span></span>
         </div>
 
-        <div style="background:${accentBg};border:1.5px solid ${accent};border-radius:10px;padding:14px;text-align:center;">
-          <div style="font-size:11px;font-weight:600;color:${accent};margin-bottom:6px;">${t('voucher_amount')} *</div>
-          <input id="${prefix}-amount" class="input mono" style="font-size:22px;font-weight:700;text-align:center;border-color:${accent};background:#fff;" value="${escapeHtml(f.amount)}" ${f.approved?'disabled':''} placeholder="0.00" />
-          ${Number(f.amount) > 0 ? `<div style="margin-top:8px;font-size:11px;color:#5F5E5A;">${numberToArabicWords(Number(f.amount)||0)}</div>` : ''}
+        <div style="display:grid;grid-template-columns:110px 170px 1fr 110px 170px;gap:6px 8px;align-items:center;margin-top:16px;">
+          <label class="sx-lbl">${isReceipt ? 'المبلغ المقبوض' : 'المبلغ المدفوع'}</label>
+          <input id="${prefix}-amount" class="sx-in mono" style="font-weight:700;text-align:left;font-size:13.5px;" value="${escapeHtml(f.amount)}" ${f.approved?'disabled':''} placeholder="0.00" inputmode="decimal" />
+          <span></span>
+          <label class="sx-lbl">الرصيد الحالي</label>
+          <input class="sx-in sx-ro mono sx-beige" style="text-align:left;font-weight:700;color:${Number(selectedParty?.balance)>0?'#C0392B':'#0F6E56'};" value="${selectedParty ? fmt(selectedParty.balance) : '0.00'}" disabled />
+
+          <span></span>
+          <div style="grid-column:2 / span 4;font-size:11px;color:#5F5E5A;min-height:14px;">${Number(f.amount) > 0 ? escapeHtml(numberToArabicWords(Number(f.amount)||0)) : ''}</div>
+
+          <label class="sx-lbl">طريقة الدفع</label>
+          <select id="${prefix}-method" class="sx-in" ${f.approved?'disabled':''}>${activePaymentMethods().map(m => `<option value="${escapeHtml(m.name)}" ${f.payment_method===m.name?'selected':''}>${escapeHtml(m.name)}</option>`).join('')}${f.payment_method && !activePaymentMethods().some(m => m.name === f.payment_method) ? `<option selected>${escapeHtml(f.payment_method)}</option>` : ''}</select>
+          <span></span><span></span><span></span>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          ${partyField('<i class="ti ti-calendar" style="font-size:12px;"></i> '+t('voucher_date'), `<input id="${prefix}-date" type="date" class="input" value="${escapeHtml(f.voucher_date)}" ${f.approved?'disabled':''} />`)}
-          ${partyField('<i class="ti ti-credit-card" style="font-size:12px;"></i> '+t('voucher_payment_method'), `<select id="${prefix}-method" class="input" ${f.approved?'disabled':''}>${activePaymentMethods().map(m => `<option value="${escapeHtml(m.name)}" ${f.payment_method===m.name?'selected':''}>${escapeHtml(m.name)}</option>`).join('')}</select>`)}
-        </div>
-        <div style="border-top:1px dashed #DEDACB;padding-top:10px;">
-          ${partyField('<i class="ti ti-note" style="font-size:12px;"></i> '+t('voucher_notes'), `<input id="${prefix}-notes" class="input" value="${escapeHtml(f.notes)}" ${f.approved?'disabled':''} />`)}
+        <div style="display:grid;grid-template-columns:110px 170px 1fr;gap:6px 8px;align-items:center;margin-top:14px;">
+          <label class="sx-lbl">حساب النقدية</label>
+          <input id="${prefix}-cash-code" class="sx-in sx-ro mono" value="${escapeHtml(cashOrBankAccount(f.payment_method || (activePaymentMethods()[0]||{}).name || ''))}" disabled />
+          <input id="${prefix}-cash-name" class="sx-in sx-ro sx-beige" value="${escapeHtml(voucherAccName(cashOrBankAccount(f.payment_method || (activePaymentMethods()[0]||{}).name || '')))}" disabled />
+          <label class="sx-lbl" style="align-self:start;padding-top:4px;">البيــــان</label>
+          <textarea id="${prefix}-notes" class="sx-in" style="grid-column:2 / span 2;height:54px;resize:vertical;" ${f.approved?'disabled':''}>${escapeHtml(f.notes||'')}</textarea>
         </div>
       </div>
-      <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;flex-wrap:wrap;">
-        ${iconBtn(`${prefix}-cancel`, 'ti-x', '#C0392B', 'الغاء')}
-        ${iconBtn(`${prefix}-next`, 'ti-player-track-next', '#27AE60', 'التالي', (isReceipt?state.receiptVouchers:state.paymentVouchers).length===0)}
-        ${iconBtn(`${prefix}-prev`, 'ti-player-track-prev', '#2E86C1', 'السابق', (isReceipt?state.receiptVouchers:state.paymentVouchers).length===0)}
-        ${iconBtn(`${prefix}-print`, 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number || !hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_print'))}
-        ${hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_print') ? iconBtn(`${prefix}-pdf`, 'ti-file-type-pdf', '#D9534F', 'حفظ PDF (طباعة)', !f.voucher_number) : ''}
-        ${f.approved ? '' : iconBtn(`${prefix}-save`, 'ti-device-floppy', '#2C4A6E', 'حفظ')}
-        ${(!f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_approve')) ? iconBtn(`${prefix}-approve`, 'ti-lock', '#0F6E56', 'ترحيل') : ''}
-        ${payChangeBtn(isReceipt ? 'rv' : 'pv', 'icon')}
-        ${(f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && isDesigner()) ? iconBtn(`${prefix}-unlock`, 'ti-lock-open', '#C0392B', t('unlock_btn')) : ''}
+
+      <div class="no-print" style="display:flex;align-items:flex-end;gap:10px;padding:10px 14px 12px;flex-wrap:wrap;">
+        ${approvedStrip(f, t('approved_short'), '')}
+        <div style="display:flex;gap:3px;flex-wrap:wrap;margin-inline-start:auto;margin-inline-end:auto;">
+          ${f.approved ? '' : `<button id="${prefix}-save" type="button" class="sx-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ</button>`}
+          ${(!f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_approve')) ? `<button id="${prefix}-approve" type="button" class="sx-btn"><i class="ti ti-lock" style="color:#0F6E56;"></i>ترحيل</button>` : ''}
+          <button id="${prefix}-print" type="button" class="sx-btn" ${(!f.voucher_number || !hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_print')) ? 'disabled' : ''}><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+          ${hasPerm(isReceipt?'receipt_voucher':'payment_voucher','can_print') ? `<button id="${prefix}-pdf" type="button" class="sx-btn" ${!f.voucher_number ? 'disabled' : ''}><i class="ti ti-file-type-pdf" style="color:#D9534F;"></i>PDF</button>` : ''}
+          ${payChangeBtn(isReceipt ? 'rv' : 'pv')}
+          <button id="${prefix}-prev" type="button" class="sx-btn" ${(isReceipt?state.receiptVouchers:state.paymentVouchers).length===0?'disabled':''}><i class="ti ti-arrow-big-right" style="color:#27AE60;"></i>السابق</button>
+          <button id="${prefix}-next" type="button" class="sx-btn" ${(isReceipt?state.receiptVouchers:state.paymentVouchers).length===0?'disabled':''}><i class="ti ti-arrow-big-left" style="color:#27AE60;"></i>التالي</button>
+          ${(f.approved && (isReceipt?state.editingReceiptVoucherId:state.editingPaymentVoucherId) && isDesigner()) ? `<button id="${prefix}-unlock" type="button" class="sx-btn"><i class="ti ti-lock-open" style="color:#C0392B;"></i>${t('unlock_btn')}</button>` : ''}
+          <button id="${prefix}-cancel" type="button" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
+        </div>
       </div>
     </div>
   </div>`;
@@ -11340,7 +11539,7 @@ function renderSettlementVoucherModal() {
           <label style="font-size:12.5px;color:#3A3826;">${t('voucher_number_label')}</label>
           ${renderNumberNavHtml('stv', f.voucher_number, state.editingSettlementVoucherId, sortedVouchers, 'voucher_number', v => v.parties?.name)}
         </div>
-        ${f.approved ? `<div>${journalNumbersBadge()}</div>` : ''}
+
         ${partyField(t('stv_party_type'), `<select id="stv-party-type" class="input" ${f.approved?'disabled':''}><option value="customer" ${f.party_type==='customer'?'selected':''}>${t('stv_party_customer')}</option><option value="supplier" ${f.party_type==='supplier'?'selected':''}>${t('stv_party_supplier')}</option></select>`)}
         ${partyField(t('stv_party'), partyPickerButton('stv-party', f.party_type, f.party_id, f.approved))}
         ${partyField(t('stv_direction'), `<select id="stv-direction" class="input" ${f.approved?'disabled':''}><option value="decrease" ${f.direction==='decrease'?'selected':''}>${t('stv_decrease')}</option><option value="increase" ${f.direction==='increase'?'selected':''}>${t('stv_increase')}</option></select>`)}
@@ -11350,6 +11549,7 @@ function renderSettlementVoucherModal() {
         ${partyField(t('stv_reason'), `<textarea id="stv-notes" class="input" rows="2" ${f.approved?'disabled':''}>${escapeHtml(f.notes)}</textarea>`)}
         <div id="stv-error" class="err-text"></div>
       </div>
+      ${approvedStrip(f, t('approved_short'), 'margin:0 16px 8px;')}
       <div style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;flex-wrap:wrap;">
         ${iconBtn('stv-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('stv-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number || !hasPerm('settlement_voucher','can_print'))}
@@ -11412,7 +11612,7 @@ function renderCashDisbursementModal() {
           <label style="font-size:12.5px;color:#3A3826;">${t('voucher_number_label')}</label>
           ${renderNumberNavHtml('cdv', f.voucher_number, state.editingCashDisbursementId, sortedVouchers, 'voucher_number', v => v.expense_account_code||'')}
         </div>
-        ${f.approved ? `<div>${journalNumbersBadge()}</div>` : ''}
+
         <div style="font-size:11px;color:#5F5E5A;background:#F4F1EA;padding:8px 10px;border-radius:6px;">${t('cdv_hint')}</div>
         ${partyField(t('cdv_expense_account'), `<select id="cdv-account" class="input" ${f.approved?'disabled':''}><option value="">${t('cdv_choose_account')}</option>${expenseAccounts.map(a => `<option value="${a.code}" ${f.expense_account_code===a.code?'selected':''}>${a.code} - ${escapeHtml(a.name)}</option>`).join('')}</select>`)}
         ${partyField(t('cdv_amount'), `<input id="cdv-amount" class="input mono" value="${escapeHtml(f.amount)}" ${f.approved?'disabled':''} />`)}
@@ -11421,6 +11621,7 @@ function renderCashDisbursementModal() {
         ${partyField(t('cdv_notes'), `<input id="cdv-notes" class="input" value="${escapeHtml(f.notes)}" ${f.approved?'disabled':''} />`)}
         <div id="cdv-error" class="err-text"></div>
       </div>
+      ${approvedStrip(f, t('approved_short'), 'margin:0 16px 8px;')}
       <div style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;flex-wrap:wrap;">
         ${iconBtn('cdv-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
         ${iconBtn('cdv-print', 'ti-printer', '#5F5E5A', 'طباعة', !f.voucher_number || !hasPerm('cash_disbursement','can_print'))}
@@ -15687,6 +15888,11 @@ async function loadDocJournalNumbers(sourceType, sourceId) {
   const { data } = await sb.from('journal_entries').select('entry_number').eq('source_type', sourceType).eq('source_id', sourceId).order('entry_number');
   state.docJournalNumbers = (data||[]).map(e => e.entry_number);
 }
+function approvedStrip(f, label, style) {
+  if (!f || !f.approved) return '';
+  const j = journalNumbersBadge();
+  return `<div class="no-print appr-strip" style="${style || ''}"><div class="appr-lbl">${escapeHtml(label || 'معتمدة')}</div>${j ? `<div class="appr-j">${j}</div>` : ''}</div>`;
+}
 function journalNumbersBadge() {
   if (!state.docJournalNumbers || state.docJournalNumbers.length === 0) return '';
   return `<span style="font-size:11px;color:#2C4A6E;margin-right:10px;">رقم القيد: <span class="mono" style="font-weight:600;">${state.docJournalNumbers.join(' ، ')}</span></span>`;
@@ -17736,10 +17942,12 @@ function bindAppEvents() {
     if (document.getElementById('pi-copy-total')) document.getElementById('pi-copy-total').onclick = () => {
       const t = calcPurchaseTotals(state.purchaseForm);
       state.purchaseForm.paid_amount = String(t.grandTotal.toFixed(2));
+      syncPaymentsToPaid(state.purchaseForm);
       render();
     };
     if (document.getElementById('pi-paid')) document.getElementById('pi-paid').oninput = (ev) => {
       state.purchaseForm.paid_amount = ev.target.value;
+      syncPaymentsToPaid(state.purchaseForm);
       const pos = ev.target.selectionStart;
       render();
       const el = document.getElementById('pi-paid');
@@ -17872,7 +18080,7 @@ function bindAppEvents() {
           invoice_date: f.invoice_date, discount: t.discount, paid_amount: t.paid,
           notes: f.notes || null, total: t.grandTotal, subtotal: t.subtotal, tax_total: t.taxTotal, no_tax: !!f.no_tax, warehouse_id: f.warehouse_id || null, payment_method: f.payment_method || null,
           additional_expenses: f.additional_expenses || [],
-          payment_details: (f.payments||[]).length ? f.payments : null,
+          payment_details: (f.payments||[]).length ? effectivePayments(f) : null,
         };
         const lineRows = f.lines.map(l => {
           const sub = l.quantity * l.unit_cost;
@@ -17933,7 +18141,7 @@ function bindAppEvents() {
               { account_code: acc('inventory'), debit: t.subtotalSAR - t.discount * t.rate, credit: 0, description: 'مخزون - ' + f.invoice_number },
               { account_code: acc('input_vat'), debit: t.taxTotalSAR, credit: 0, description: 'ضريبة مدخلات' },
             ];
-            const payLines = (Array.isArray(f.payments) && f.payments.length ? f.payments : (Number(f.paid_amount) > 0 ? [{ method: f.payment_method, amount: Number(f.paid_amount) }] : []))
+            const payLines = effectivePayments(f)
               .filter(p => Number(p.amount) > 0)
               .map(p => ({ account_code: cashOrBankAccount(p.method), debit: 0, credit: Number(p.amount) * t.rate, description: 'مدفوع - ' + (p.method || 'نقدي') + (p.ref ? ' #' + p.ref : '') }));
             const paidSAR = payLines.reduce((s2, l) => s2 + l.credit, 0);
@@ -17994,7 +18202,7 @@ function bindAppEvents() {
               { account_code:acc('input_vat'), debit: t.taxTotalSAR, credit:0, description:'ضريبة مدخلات' },
             ];
             // تفصيل المدفوعات: سطر دائن لكل طريقة دفع حسب ربطها بالحسابات
-            const payLines = (Array.isArray(f.payments) && f.payments.length ? f.payments : (Number(f.paid_amount) > 0 ? [{ method: f.payment_method, amount: Number(f.paid_amount) }] : []))
+            const payLines = effectivePayments(f)
               .filter(p => Number(p.amount) > 0)
               .map(p => ({ account_code: cashOrBankAccount(p.method), debit:0, credit: Number(p.amount) * t.rate, description: 'مدفوع - ' + (p.method || 'نقدي') + (p.ref ? ' #' + p.ref : '') }));
             const paidSAR = payLines.reduce((s, l) => s + l.credit, 0);
@@ -18606,10 +18814,12 @@ function bindAppEvents() {
     if (document.getElementById('si-copy-total')) document.getElementById('si-copy-total').onclick = () => {
       const t = calcLineTotals(state.salesForm);
       state.salesForm.paid_amount = String(t.grandTotal.toFixed(2));
+      syncPaymentsToPaid(state.salesForm);
       render();
     };
     if (document.getElementById('si-paid')) document.getElementById('si-paid').oninput = (ev) => {
       state.salesForm.paid_amount = ev.target.value;
+      syncPaymentsToPaid(state.salesForm);
       const pos = ev.target.selectionStart;
       render();
       const el = document.getElementById('si-paid');
@@ -18650,6 +18860,8 @@ function bindAppEvents() {
             }
           }
         }
+        // فاتورة نقدي لزبون غير مسجّل والمدفوع فاضي = مدفوعة بالكامل
+        if (f.invoice_type !== 'آجل' && !f.customer_id && !(Number(f.paid_amount) > 0)) { f.paid_amount = calcLineTotals(f).grandTotal.toFixed(2); syncPaymentsToPaid(f); }
         setBtnLoading(document.getElementById('sales-save'), true, 'جاري الحفظ');
         const { headerPayload, lineRows } = buildSalesPayload(f);
         if (state.editingSalesId) {
@@ -18690,9 +18902,9 @@ function bindAppEvents() {
           }
         }
         const t0 = calcLineTotals(f);
-        if (Number(f.paid_amount) > t0.grandTotal) {
-          if (!confirm(`المبلغ المدفوع (${fmt(f.paid_amount)}) أكبر من إجمالي الفاتورة (${fmt(t0.grandTotal)}) — تأكد إنك ما كتبت رقم غلط. متابعة؟`)) return;
-        }
+        const paid0 = Math.round((Number(f.paid_amount) || 0) * 100) / 100, total0 = Math.round(t0.grandTotal * 100) / 100;
+        if (paid0 - total0 > 0.01) { alert(`المبلغ المدفوع (${fmt(paid0)}) أكبر من إجمالي الفاتورة (${fmt(total0)}).\n\nصحّح المدفوع (الباقي يرجع للزبون ما بيتسجّل) وبعدها رحّل.`); return; }
+        if (!f.customer_id && total0 - paid0 > 0.01) { alert(`الفاتورة لزبون غير مسجّل لازم تكون مدفوعة بالكامل.\n\nالمدفوع ${fmt(paid0)} من ${fmt(total0)} — كمّل المدفوع (زر >> جنب المدفوع)، أو اختر عميل مسجّل عشان الباقي يتسجّل عليه.`); return; }
         if (!state.autoPosting && !confirm('اعتماد الفاتورة ينقص المخزون تلقائياً ويربط رصيد العميل لو آجل، ولا يمكن التراجع من هنا. متابعة؟')) return;
         // ===== الترحيل الآمن: كل التغييرات بعملية واحدة داخل قاعدة البيانات (دالة post_document) =====
         {
@@ -18708,7 +18920,7 @@ function bindAppEvents() {
           const due = t.grandTotal - (Number(f.paid_amount) || 0);
           const parties = (f.customer_id && (f.invoice_type === 'آجل' || Math.abs(due) > 0.005)) ? [{ party_id: f.customer_id, delta: Math.round(due * 100) / 100 }] : [];
           const jLines = [];
-          const payLines = (Array.isArray(f.payments) && f.payments.length ? f.payments : (Number(f.paid_amount) > 0 ? [{ method: f.payment_method, amount: Number(f.paid_amount) }] : []))
+          const payLines = effectivePayments(f)
             .filter(p => Number(p.amount) > 0)
             .map(p => ({ account_code: cashOrBankAccount(p.method), debit: Number(p.amount), credit: 0, description: 'مقبوض - ' + (p.method || 'نقدي') + (p.ref ? ' #' + p.ref : '') }));
           const paidTotal = payLines.reduce((s, l) => s + l.debit, 0);
@@ -18789,7 +19001,7 @@ function bindAppEvents() {
         {
           const jLines = [];
           // تفصيل المدفوعات: سطر مدين لكل طريقة دفع (صندوق/بنك/شبكة...) حسب ربطها بالحسابات
-          const payLines = (Array.isArray(f.payments) && f.payments.length ? f.payments : (Number(f.paid_amount) > 0 ? [{ method: f.payment_method, amount: Number(f.paid_amount) }] : []))
+          const payLines = effectivePayments(f)
             .filter(p => Number(p.amount) > 0)
             .map(p => ({ account_code: cashOrBankAccount(p.method), debit: Number(p.amount), credit:0, description: 'مقبوض - ' + (p.method || 'نقدي') + (p.ref ? ' #' + p.ref : '') }));
           const paidTotal = payLines.reduce((s, l) => s + l.debit, 0);
@@ -23997,6 +24209,7 @@ function handleGlobalShortcuts(ev) {
 }
 
 async function init() {
+  try { wsCaptureInit(); } catch (e) {}
   try {
     // لو النت بطيء جداً أو معلّق (بدون رد) أكتر من 10 ثواني نعتبره مقطوع
     const { data: license, error: licErr } = await Promise.race([
