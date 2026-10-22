@@ -2200,12 +2200,14 @@ const PRINT_DOC_TYPES = [
   { key: 'stock_count', label: 'جرد مخزون', icon: 'ti-clipboard-list' },
   { key: 'account_statement', label: 'كشف حساب', icon: 'ti-file-invoice' },
   { key: 'general_report', label: 'التقارير', icon: 'ti-report' },
+  { key: 'barcode_label', label: 'ملصقات الباركود', icon: 'ti-barcode', printerOnly: true, hint: 'طابعة الملصقات (الحرارية)' },
 ];
 const PRINT_DOC_LABEL = Object.fromEntries(PRINT_DOC_TYPES.map(d => [d.key, d.label]));
 // أي مستند مفتوح الحين؟ (عشان نطبّق إعداداته وطابعته)
 function printDocType() {
   if (state.psTestDoc) return state.psTestDoc;
   if (state.showPrintSettings) return state.printSettingsDocType || 'sales_invoice';
+  if (state.labels) return 'barcode_label';
   if (state.showSalesForm) return state.salesForm?.invoice_type === 'آجل' ? 'sales_invoice_credit' : 'sales_invoice';
   if (state.showSalesReturnForm) return 'sales_return';
   if (state.showQuoteForm) return 'quotation';
@@ -2251,7 +2253,7 @@ window.print = function () {
   if (!hasDesktopPrint() || !dev.printer) return __nativePrint();
   if (__printBusy) return;
   __printBusy = true;
-  window.csDesktop.print({ deviceName: dev.printer, silent: dev.silent !== false })
+  window.csDesktop.print({ deviceName: dev.printer, silent: dev.silent !== false, ...(dt === 'barcode_label' ? labelPageMm() : {}) })
     .then(r => {
       if (r && r.ok) showToast('🖨️ اتطبع على: ' + dev.printer);
       else if (r && r.reason && r.reason !== 'cancelled') showToast('ما اتطبع على «' + dev.printer + '»: ' + r.reason + ' — راجع الطابعات في إعدادات الطباعة', 'error');
@@ -3446,7 +3448,7 @@ const PARTIES_SUBMENU = [
   { header: 'الكشوفات', icon: 'ti-list-details' },
   { label: 'كشف حساب عميل/مورد', target: '__statement__', icon: 'ti-file-invoice' },
   { label: 'كشف العملاء والموردين', target: '__parties_report__', icon: 'ti-address-book' },
-  { label: 'كشف اعمار الذمم', target: '__aging_report__', icon: 'ti-hourglass' },
+  { label: 'أعمار الديون وتذكير العملاء', target: '__aging_report__', icon: 'ti-hourglass' },
   { label: 'تذكير استحقاق العملاء', target: '__due_reminders__', icon: 'ti-bell-ringing' },
   { label: 'كشف سندات قبض', target: '__receipt_vouchers_report__', icon: 'ti-list' },
   { label: 'كشف سندات صرف', target: '__payment_vouchers_report__', icon: 'ti-list' },
@@ -4128,6 +4130,7 @@ function renderApp() {
   ${state.priceReview ? renderPriceReviewModal() : ''}
   ${state.showPricingRules ? renderPricingRulesModal() : ''}
   ${autoPostNoticeDue() ? renderAutoPostNotice() : ''}
+  ${state.labels ? renderLabelsModal() : ''}
   ${renderWsBar()}
   ${state.showWalkinPicker ? renderWalkinPicker() : ''}
   ${state.showOwnerDash ? renderOwnerDash() : ''}
@@ -4365,7 +4368,7 @@ function renderPartyTabContent() {
         ${docs.map((doc, idx) => `<tr><td class="sx-num" style="text-align:center;">${idx + 1}</td>
           <td style="padding:1px;"><input data-doc-name="${idx}" class="sx-in" style="width:100%;border:none;" value="${escapeHtml(doc.name||'')}" placeholder="مثلاً: صورة الهوية" /></td>
           <td style="padding:1px;"><input data-doc-url="${idx}" class="sx-in" style="width:100%;border:none;" value="${escapeHtml(doc.url||'')}" dir="ltr" placeholder="https://..." /></td>
-          <td style="text-align:center;"><button data-doc-remove="${idx}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;"></i></button></td></tr>`).join('') || `<tr><td colspan="4" style="text-align:center;color:#6E6D5F;">ما فيه مستندات مضافة بعد</td></tr>`}
+          <td style="text-align:center;"><button data-doc-remove="${idx}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;font-size:13px;"></i></button></td></tr>`).join('') || `<tr><td colspan="4" style="text-align:center;color:#6E6D5F;">ما فيه مستندات مضافة بعد</td></tr>`}
       </table>
       <button id="p-doc-add" type="button" class="sx-btn" style="margin-top:8px;"><i class="ti ti-plus" style="color:#0F6E56;"></i>إضافة مستند</button>
     </div>`;
@@ -5050,6 +5053,7 @@ function renderPurchaseFormModal() {
             ${(!f.approved && state.editingPurchaseId && hasPerm('purchase_invoice','can_approve')) ? `<button id="purchase-approve" type="button" class="sx-btn"><i class="ti ti-lock" style="color:#0F6E56;"></i>ترحيل</button>` : ''}
             ${payChangeBtn('purchase')}
             ${(f.approved && state.editingPurchaseId && isDesigner()) ? `<button id="purchase-unlock" type="button" class="sx-btn"><i class="ti ti-lock-open" style="color:#C0392B;"></i>${t('unlock_btn')}</button>` : ''}
+            <button data-labels-purchase type="button" class="sx-btn" ${(f.lines || []).some(l => l.item_id) ? '' : 'disabled'} title="ملصقات باركود لأصناف الفاتورة بعدد الكميات"><i class="ti ti-barcode" style="color:#1B3352;"></i>ملصقات</button>
             ${hasPerm('purchase_invoice','can_print') ? `<button id="purchase-pdf" type="button" class="sx-btn" ${!state.editingPurchaseId?'disabled':''}><i class="ti ti-file-type-pdf" style="color:#D9534F;"></i>PDF</button>` : ''}
             <button id="purchase-exit" type="button" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>${t('btn_exit')}</button>
           </div>
@@ -5801,7 +5805,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.21-18';
+const APP_VERSION = '2026.10.21-19';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -5877,6 +5881,7 @@ function renderHomeSection() {
                 ${homeShortcut('ti-cash', t('sc_receipt'), '__receipt_vouchers__')}
                 ${homeShortcut('ti-chart-bar', t('sc_reports'), 'تقارير عامة')}
                 ${(isAdmin() || canViewReports()) ? homeShortcut('ti-calendar-stats', 'المتابعة اليومية', '__daily_followup__') : ''}
+                ${(isAdmin() || canViewReports()) ? homeShortcut('ti-hourglass', 'أعمار الديون والتحصيل', '__aging_report__') : ''}
               </div>
               ${homeSpeedCard()}
             </div>
@@ -10639,6 +10644,7 @@ function renderItemsSection(items, lowStock) {
           </div>
           ${hasPerm('items','can_add') ? `<button id="new-item-btn" class="btn primary" style="padding:8px 14px;">${t('items_new_btn')}</button>` : ''}
           ${hasPerm('items','can_add') ? `<button id="bulk-import-items-btn" class="btn" style="padding:8px 14px;"><i class="ti ti-file-spreadsheet" style="font-size:14px;"></i> استيراد من Excel</button>` : ''}
+          <button data-labels-open type="button" class="btn" style="padding:8px 14px;"><i class="ti ti-barcode" style="font-size:14px;"></i> ملصقات باركود</button>
         </div>
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${state.items.length} ${t('items_count')}${lowStock > 0 ? ` · ${lowStock} ${t('items_needs_reorder')}` : ''}</div>
         <div style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);">
@@ -12452,61 +12458,6 @@ function renderDueRemindersModal() {
   </div>`;
 }
 
-function renderAgingReportModal() {
-  const rows = state.agingReportRows;
-  const totals = rows.reduce((s,r) => ({
-    b0_30: s.b0_30 + r.buckets.b0_30, b31_60: s.b31_60 + r.buckets.b31_60,
-    b61_90: s.b61_90 + r.buckets.b61_90, b90plus: s.b90plus + r.buckets.b90plus, total: s.total + r.total,
-  }), { b0_30:0, b31_60:0, b61_90:0, b90plus:0, total:0 });
-  return `
-  <div id="aging-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
-    <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:900px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
-      <div class="win-title"><span>${t('ar_title')}</span><button id="aging-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
-      <div class="no-print" style="padding:16px;display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
-        <div>${partyField(t('ar_type'), `<select id="aging-type" class="input"><option value="customer" ${state.agingReportType==='customer'?'selected':''}>${t('ar_customers')}</option><option value="supplier" ${state.agingReportType==='supplier'?'selected':''}>${t('ar_suppliers')}</option></select>`)}</div>
-        <div>${partyField(t('ar_as_of'), `<input id="aging-asof" type="date" class="input" value="${escapeHtml(state.agingAsOf)}" />`)}</div>
-        <button id="aging-apply" class="btn primary" style="padding:8px 16px;">${t('je_apply')}</button>
-        <button id="aging-excel" class="btn" style="padding:8px 16px;">${t('je_excel')}</button>
-        <button id="aging-print" class="btn" style="padding:8px 16px;">${t('tb_print')}</button>
-      </div>
-      <div style="padding:0 16px 16px;">
-        <div class="print-only" style="${printStyleVars()}">
-          <div style="text-align:center;font-weight:700;font-size:14px;margin:8px 0;">${escapeHtml(state.company?.name_ar||'')} — ${t('ar_title')} (${state.agingReportType==='customer'?t('ar_customers'):t('ar_suppliers')})</div>
-          <div style="text-align:center;font-size:11px;color:#5F5E5A;margin-bottom:10px;">${t('ar_as_of')} ${escapeHtml(state.agingAsOf||new Date().toISOString().slice(0,10))}</div>
-        </div>
-        <div class="print-scroll" style="border:1px solid #E4E2DA;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(27,51,82,0.06);overflow-x:auto;">
-          <table style="width:100%;border-collapse:collapse;">
-            <thead><tr>
-              ${[t('ar_col_name'),t('ar_col_0_30'),t('ar_col_31_60'),t('ar_col_61_90'),t('ar_col_90plus'),t('ar_col_total')].map(h => `<th style="padding:10px 10px;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-size:11px;font-weight:500;text-align:right;">${h}</th>`).join('')}
-            </tr></thead>
-            <tbody>
-              ${rows.map((r,i) => { const bg = i%2?'#F4F1EA':'#FFFDF6'; return `
-              <tr>
-              <td style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;">${escapeHtml(r.party.name)}</td>
-              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b0_30?fmt(r.buckets.b0_30):'—'}</td>
-              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b31_60?fmt(r.buckets.b31_60):'—'}</td>
-              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;color:${r.buckets.b61_90?'#BA7517':'inherit'};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b61_90?fmt(r.buckets.b61_90):'—'}</td>
-              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;color:${r.buckets.b90plus?'#C0392B':'inherit'};font-weight:${r.buckets.b90plus?'600':'400'};border-bottom:1px solid #E4E2DA;white-space:nowrap;">${r.buckets.b90plus?fmt(r.buckets.b90plus):'—'}</td>
-              <td class="mono" style="padding:9px 10px;background:${bg};font-size:11.5px;font-weight:600;border-bottom:1px solid #E4E2DA;white-space:nowrap;">${fmt(r.total)}</td>
-              </tr>`; }).join('') || `<tr><td colspan="6" style="padding:16px;text-align:center;font-size:12px;color:#6E6D5F;">${t('ar_no_dues')}</td></tr>`}
-              ${rows.length ? `
-              <tr>
-                <td style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;">${t('ar_col_total')}</td>
-                <td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${fmt(totals.b0_30)}</td>
-                <td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${fmt(totals.b31_60)}</td>
-                <td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${fmt(totals.b61_90)}</td>
-                <td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${fmt(totals.b90plus)}</td>
-                <td class="mono" style="padding:7px 8px;background:var(--print-accent,#FFF2CC);font-weight:700;font-size:11px;border-top:2px solid #000;white-space:nowrap;">${fmt(totals.total)}</td>
-              </tr>` : ''}
-            </tbody>
-          </table>
-        </div>
-        <div class="no-print" style="font-size:11px;color:#5F5E5A;margin-top:8px;">${t('ar_fifo_note')}</div>
-      </div>
-      <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;">${iconBtn('aging-exit','ti-door-exit','#C0392B',t('btn_exit'))}</div>
-    </div>
-  </div>`;
-}
 
 function renderPartiesReportModal() {
   const q = state.partiesReportQuery.trim().toLowerCase();
@@ -12825,6 +12776,229 @@ document.addEventListener('click', async ev => {
     }
   }
 }, true);
+// =====================================================================
+// 🏷️ ملصقات الباركود: طباعة ملصقات للأصناف (من قائمة الأصناف، كرت الصنف، فاتورة الشراء)
+// =====================================================================
+// باركود Code128 (B، و C للأرقام) — يرجع سلسلة 1/0 لكل وحدة عرض
+const C128P = ['212222','222122','222221','121223','121322','131222','122213','122312','132212','221213','221312','231212','112232','122132','122231','113222','123122','123221','223211','221132','221231','213212','223112','312131','311222','321122','321221','312212','322112','322211','212123','212321','232121','111323','131123','131321','112313','132113','132311','211313','231113','231311','112133','112331','132131','113123','113321','133121','313121','211331','231131','213113','213311','213131','311123','311321','331121','312113','312311','332111','314111','221411','431111','111224','111422','121124','121421','141122','141221','112214','112412','122114','122411','142112','142211','241211','221114','413111','241112','134111','111242','121142','121241','114212','124112','124211','411212','421112','421211','212141','214121','412121','111143','111341','131141','114113','114311','411113','411311','113141','114131','311141','411131','211412','211214','211232','2331112'];
+function code128Bits(text) {
+  const s = String(text || '');
+  if (!s || /[^\x20-\x7E]/.test(s)) return null;
+  const codes = [];
+  if (/^\d+$/.test(s) && s.length >= 4) {
+    let i = 0;
+    if (s.length % 2) { codes.push(104, s.charCodeAt(0) - 32, 99); i = 1; } else codes.push(105);
+    for (; i < s.length; i += 2) codes.push(Number(s.substr(i, 2)));
+  } else {
+    codes.push(104); for (const ch of s) codes.push(ch.charCodeAt(0) - 32);
+  }
+  let sum = codes[0]; for (let i = 1; i < codes.length; i++) sum += codes[i] * i;
+  codes.push(sum % 103, 106);
+  let bits = '';
+  codes.forEach(c => { const p = C128P[c]; for (let k = 0; k < p.length; k++) bits += (k % 2 ? '0' : '1').repeat(Number(p[k])); });
+  return bits;
+}
+
+const LABEL_SIZES = [
+  { key: '50x25', label: 'رول 50×25 مم', w: 50, h: 25 },
+  { key: '40x30', label: 'رول 40×30 مم', w: 40, h: 30 },
+  { key: '38x25', label: 'رول 38×25 مم', w: 38, h: 25 },
+  { key: '60x40', label: 'رول 60×40 مم', w: 60, h: 40 },
+  { key: '58x30', label: 'رول 58×30 مم', w: 58, h: 30 },
+  { key: 'a4_24', label: 'ورق A4 — 24 ملصق (3×8)', w: 70, h: 37, a4: true, cols: 3, rows: 8, mt: 0, ml: 0 },
+  { key: 'a4_40', label: 'ورق A4 — 40 ملصق (4×10)', w: 52.5, h: 29.7, a4: true, cols: 4, rows: 10, mt: 0, ml: 0 },
+];
+const LABEL_DEF = { size: '50x25', co: true, name: true, sku: true, price: true, vat: false, level: 'price' };
+function labelCfg() { try { return { ...LABEL_DEF, ...(JSON.parse(localStorage.getItem('cs_label_cfg') || '{}') || {}) }; } catch (_) { return { ...LABEL_DEF }; } }
+function saveLabelCfg(c) { try { localStorage.setItem('cs_label_cfg', JSON.stringify(c)); } catch (_) {} }
+function labelSize() { const c = state.labels || labelCfg(); return LABEL_SIZES.find(s => s.key === c.size) || LABEL_SIZES[0]; }
+function labelPageMm() { const s = labelSize(); return s.a4 ? { pageWmm: 210, pageHmm: 297 } : { pageWmm: s.w, pageHmm: s.h }; }
+function labelCode(it) { return String(it.barcode || it.sku || '').trim(); }
+function labelPrice(it, c) {
+  let p = Number(it[c.level] || 0) || Number(it.price || 0);
+  if (c.vat) p = p * (1 + (vatRate() || 0) / 100);
+  return p;
+}
+function barcodeSvg(code, wmm, hmm) {
+  const bits = code128Bits(code);
+  if (!bits) return `<div style="height:${hmm}mm;display:flex;align-items:center;justify-content:center;font-size:2.4mm;color:#C0392B;">باركود غير صالح</div>`;
+  let rects = '', i = 0;
+  while (i < bits.length) { if (bits[i] === '1') { let j = i; while (j < bits.length && bits[j] === '1') j++; rects += `<rect x="${i}" y="0" width="${j - i}" height="10"/>`; i = j; } else i++; }
+  return `<svg viewBox="0 0 ${bits.length} 10" preserveAspectRatio="none" shape-rendering="crispEdges" style="display:block;width:${wmm}mm;height:${hmm}mm;margin:0 auto;fill:#000;">${rects}</svg>`;
+}
+function labelHtml(it, c, s) {
+  const code = labelCode(it), cur = feat('currency_abbr_ar') || '';
+  const W = s.w, H = s.h, fs = Math.min(3, Math.max(2.1, H / 10));
+  let used = 1.6;
+  const parts = [];
+  if (c.co && state.company?.name_ar) { parts.push(`<div style="font-size:${fs * 0.8}mm;line-height:1.15;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(state.company.name_ar)}</div>`); used += fs * 0.8 * 1.2; }
+  if (c.name) { const two = H >= 30; parts.push(`<div style="font-size:${fs}mm;line-height:1.15;font-weight:700;overflow:hidden;${two ? `max-height:${fs * 2.35}mm;` : 'white-space:nowrap;text-overflow:ellipsis;'}">${escapeHtml(it.name || '')}</div>`); used += fs * (two ? 2.35 : 1.2); }
+  const bottom = [];
+  if (c.sku && it.sku && it.sku !== code) bottom.push(`<span>${escapeHtml(it.sku)}</span>`);
+  if (c.price) bottom.push(`<b style="font-size:${fs * 1.25}mm;">${fmt(labelPrice(it, c))} <span style="font-size:${fs * 0.75}mm;font-weight:400;">${escapeHtml(cur)}</span></b>`);
+  const codeTxt = `<div dir="ltr" style="font-family:Consolas,'Courier New',monospace;font-size:${fs * 0.85}mm;line-height:1.1;letter-spacing:0.3mm;">${escapeHtml(code)}</div>`;
+  used += fs * 0.85 * 1.15 + (bottom.length ? fs * 1.25 * 1.2 : 0);
+  const barH = Math.max(5, H - used - 1.2);
+  return `<div class="lbl" style="width:${W}mm;height:${H}mm;box-sizing:border-box;padding:0.8mm 1.5mm;overflow:hidden;display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;text-align:center;color:#000;background:#fff;font-family:Tahoma,Arial,sans-serif;">
+    ${parts.join('')}
+    <div>${barcodeSvg(code, W - 5, barH)}${codeTxt}</div>
+    ${bottom.length ? `<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:${fs * 0.85}mm;line-height:1.2;gap:1mm;" dir="rtl">${bottom.join('')}</div>` : ''}
+  </div>`;
+}
+function labelsList() {
+  const L = state.labels; if (!L) return [];
+  const out = [];
+  L.rows.forEach(r => { const it = (state.items || []).find(x => x.id === r.id); if (!it) return; const n = Math.max(0, Math.min(999, Math.floor(Number(r.qty) || 0))); for (let i = 0; i < n; i++) out.push(it); });
+  return out;
+}
+function labelsPrintHtml() {
+  const L = state.labels, s = labelSize(), list = labelsList();
+  if (!s.a4) return list.map(it => `<div class="lpg" style="page-break-after:always;break-after:page;">${labelHtml(it, L, s)}</div>`).join('');
+  const per = s.cols * s.rows, pages = [];
+  for (let i = 0; i < list.length; i += per) pages.push(list.slice(i, i + per));
+  return pages.map(pg => `<div class="lpg" style="width:210mm;height:296mm;display:grid;grid-template-columns:repeat(${s.cols}, ${s.w}mm);grid-auto-rows:${s.h}mm;justify-content:center;align-content:start;page-break-after:always;break-after:page;" dir="rtl">${pg.map(it => labelHtml(it, L, s)).join('')}</div>`).join('');
+}
+// الملصقات بتنطبع من عنصر مباشر تحت body (عشان باقي الصفحة ما يعمل صفحات فاضية)
+function labelsPrintHost(on) {
+  let h = document.getElementById('lbl-print');
+  if (!on) { if (h) h.remove(); return; }
+  if (!h) { h = document.createElement('div'); h.id = 'lbl-print'; h.className = 'print-area'; h.style.cssText = 'position:fixed;left:-20000px;top:0;'; document.body.appendChild(h); }
+  h.innerHTML = labelsPrintHtml();
+}
+function labelPrintCss() {
+  const s = labelSize();
+  return `@page { size: ${s.a4 ? '210mm 297mm' : s.w + 'mm ' + s.h + 'mm'}; margin: 0; }
+    @media print { html, body { height: auto !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; background: #fff !important; }
+      body > *:not(#lbl-print) { display: none !important; }
+      #lbl-print { display: block !important; position: static !important; width: auto !important; max-width: none !important; padding: 0 !important; margin: 0 !important; visibility: visible !important; }
+      #lbl-print * { visibility: visible !important; } #lbl-print .lbl, #lbl-print .lbl * { font-family: Tahoma, Arial, sans-serif !important; }
+      #lbl-print > .lpg:last-child { page-break-after: auto !important; break-after: auto !important; } }
+    #lbl-print { display: none; }`;
+}
+async function openLabels(rows) {
+  if (!state.items || !state.items.length) await loadItems();
+  const c = labelCfg();
+  state.labels = { ...c, rows: (rows || []).filter(r => r && r.id), add: '' };
+  render();
+  setTimeout(() => document.getElementById('lbl-add')?.focus(), 50);
+}
+function labelsAddItem(q) {
+  const L = state.labels; if (!L) return false;
+  q = String(q || '').trim(); if (!q) return false;
+  const low = q.toLowerCase();
+  const it = (state.items || []).find(x => String(x.barcode || '') === q || String(x.sku || '') === q)
+    || (state.items || []).find(x => `${x.sku} - ${x.name}` === q)
+    || (state.items || []).find(x => String(x.sku || '').toLowerCase() === low);
+  if (!it) { showToast('ما لقيت صنف بالرقم ده', 'error'); return false; }
+  const ex = L.rows.find(r => r.id === it.id);
+  if (ex) ex.qty = (Number(ex.qty) || 0) + 1; else L.rows.push({ id: it.id, qty: 1 });
+  return true;
+}
+function renderLabelsModal() {
+  const L = state.labels, s = labelSize();
+  const items = state.items || [];
+  const total = labelsList().length;
+  const prevIt = items.find(x => x.id === (L.rows[0] || {}).id) || { name: 'فلتر زيت تويوتا كامري', sku: '90915-YZZD2', barcode: '4987654321012', price: 35 };
+  const chk = (k, l) => `<label class="pc-chk" style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" data-lbl-cfg="${k}" ${L[k] ? 'checked' : ''} /> ${l}</label>`;
+  const bad = L.rows.filter(r => { const it = items.find(x => x.id === r.id); return it && !code128Bits(labelCode(it)); }).length;
+  return `${sxStyles()}
+  <div id="lbl-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40;">
+    <div class="sx-win" style="border:1px solid #1B3352;border-radius:6px;width:100%;max-width:900px;max-height:94vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>طباعة ملصقات الباركود</span><button data-lbl-close type="button" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div style="display:grid;grid-template-columns:1fr 290px;gap:14px;padding:12px 14px 4px;">
+        <div style="min-width:0;">
+          <div style="display:grid;grid-template-columns:90px 1fr;gap:6px 8px;align-items:center;">
+            <label class="sx-lbl">إضافة صنف</label>
+            <input id="lbl-add" class="sx-in" list="lbl-dl" placeholder="امسح الباركود أو اكتب رقم الصنف واضغط Enter" autocomplete="off" />
+            <datalist id="lbl-dl">${items.slice(0, 3000).map(x => `<option value="${escapeHtml(x.sku + ' - ' + x.name)}"></option>`).join('')}</datalist>
+          </div>
+          <div style="margin-top:10px;max-height:min(46vh,380px);overflow:auto;border:1px solid #919B9C;background:#fff;">
+            <table class="sx-grid" style="border:none;">
+              <tr><th style="width:32px;">م</th><th style="width:120px;">رقم الصنف</th><th>اسم الصنف</th><th style="width:120px;">الباركود</th><th style="width:70px;">السعر</th><th style="width:64px;">العدد</th><th style="width:38px;"></th></tr>
+              ${L.rows.map((r, i) => { const it = items.find(x => x.id === r.id) || {}; const ok = !!code128Bits(labelCode(it)); return `<tr>
+                <td class="sx-num" style="text-align:center;">${i + 1}</td><td class="mono">${escapeHtml(it.sku || '')}</td><td>${escapeHtml(it.name || '')}</td>
+                <td class="mono" style="${ok ? '' : 'color:#C0392B;'}" title="${ok ? '' : 'الباركود فيه حروف عربية أو رموز ما تنطبع — عدّل الباركود في كرت الصنف'}">${escapeHtml(labelCode(it))}${ok ? '' : ' ⚠'}</td>
+                <td class="sx-num">${fmt(labelPrice(it, L))}</td>
+                <td style="padding:1px;"><input data-lbl-qty="${i}" class="sx-in mono" style="width:100%;border:none;text-align:center;" value="${escapeHtml(r.qty)}" inputmode="numeric" /></td>
+                <td style="text-align:center;"><button data-lbl-del="${i}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;font-size:13px;"></i></button></td></tr>`; }).join('') || `<tr><td colspan="7" style="text-align:center;color:#6E6D5F;padding:18px;">ما في أصناف — امسح باركود أو اختار صنف من فوق</td></tr>`}
+            </table>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:12px;">
+            <span>عدد الملصقات: <b class="mono">${total}</b>${s.a4 && total ? ` — <b class="mono">${Math.ceil(total / (s.cols * s.rows))}</b> ورقة A4` : ''}</span>
+            ${bad ? `<span style="color:#C0392B;">⚠ ${bad} صنف باركوده غير صالح للطباعة</span>` : ''}
+          </div>
+        </div>
+        <div>
+          <div style="display:grid;grid-template-columns:70px 1fr;gap:6px 8px;align-items:center;">
+            <label class="sx-lbl">المقاس</label>
+            <select data-lbl-cfg="size" class="sx-in">${LABEL_SIZES.map(z => `<option value="${z.key}" ${z.key === s.key ? 'selected' : ''}>${z.label}</option>`).join('')}</select>
+            <label class="sx-lbl">السعر</label>
+            <select data-lbl-cfg="level" class="sx-in">${[['price', 'سعر 1'], ['price2', 'سعر 2'], ['price3', 'سعر 3']].map(([v, l]) => `<option value="${v}" ${L.level === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          </div>
+          <fieldset style="border:1px solid #A9A48C;margin:10px 0 0;padding:6px 10px 8px;display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;">
+            <legend style="font-size:12px;font-weight:700;color:#1B3352;padding:0 4px;">يظهر في الملصق</legend>
+            ${chk('co', 'اسم المنشأة')}${chk('name', 'اسم الصنف')}${chk('sku', 'رقم الصنف')}${chk('price', 'السعر')}${taxOn() ? chk('vat', 'السعر شامل الضريبة') : ''}
+          </fieldset>
+          <div class="sx-lbl" style="text-align:right;margin:10px 0 4px;">معاينة (ضعف المقاس)</div>
+          <div style="background:#D4D0C8;border:2px inset #D4D0C8;padding:10px;display:flex;justify-content:center;overflow:hidden;">
+            <div style="zoom:${Math.min(2, 250 / (s.w * 3.78))};box-shadow:0 1px 4px rgba(0,0,0,0.35);">${labelHtml(prevIt, L, s)}</div>
+          </div>
+          <div style="font-size:10.5px;color:#6E6D5F;margin-top:6px;line-height:1.6;">حدد طابعة الملصقات من النظام › إعدادات الطباعة › الطابعات («ملصقات الباركود»).</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:center;gap:3px;padding:10px 14px 12px;">
+        <button data-lbl-print type="button" class="sx-btn" ${total ? '' : 'disabled'}><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+        <button data-lbl-one type="button" class="sx-btn" ${L.rows.length ? '' : 'disabled'} title="يخلي عدد كل صنف = 1"><i class="ti ti-number-1" style="color:#1B5FA8;"></i>واحد لكل صنف</button>
+        <button data-lbl-clear type="button" class="sx-btn" ${L.rows.length ? '' : 'disabled'}><i class="ti ti-trash" style="color:#5F7FA8;"></i>مسح القائمة</button>
+        <button data-lbl-close type="button" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
+      </div>
+    </div>
+  </div>`;
+}
+document.addEventListener('click', async ev => {
+  const t = ev.target; if (!t.closest) return;
+  const op = t.closest('[data-labels-open],[data-labels-item],[data-labels-purchase]');
+  if (op) {
+    ev.preventDefault(); ev.stopPropagation();
+    if (op.dataset.labelsItem !== undefined) { const id = state.editingId; if (id) openLabels([{ id, qty: 1 }]); return; }
+    if (op.dataset.labelsPurchase !== undefined) {
+      const rows = []; (state.purchaseForm?.lines || []).forEach(l => { if (!l.item_id) return; const q = Math.max(1, Math.round(Number(l.quantity) || 1)); const ex = rows.find(r => r.id === l.item_id); if (ex) ex.qty += q; else rows.push({ id: l.item_id, qty: q }); });
+      openLabels(rows); return;
+    }
+    openLabels([]); return;
+  }
+  if (!state.labels) return;
+  if (t.closest('[data-lbl-close]')) { state.labels = null; render(); return; }
+  const del = t.closest('[data-lbl-del]'); if (del) { state.labels.rows.splice(Number(del.dataset.lblDel), 1); render(); return; }
+  if (t.closest('[data-lbl-one]')) { state.labels.rows.forEach(r => r.qty = 1); render(); return; }
+  if (t.closest('[data-lbl-clear]')) { state.labels.rows = []; render(); return; }
+  if (t.closest('[data-lbl-print]')) {
+    if (!labelsList().length) return;
+    labelsPrintHost(true);
+    await new Promise(r => setTimeout(r, 60));
+    try { window.print(); } finally { setTimeout(() => labelsPrintHost(false), 4000); }
+    logActivity('طباعة ملصقات باركود', String(labelsList().length));
+  }
+}, true);
+document.addEventListener('input', ev => {
+  const t = ev.target; if (!state.labels || !t.matches) return;
+  if (t.matches('[data-lbl-qty]')) { const r = state.labels.rows[Number(t.dataset.lblQty)]; if (r) r.qty = t.value.replace(/[^\d]/g, ''); }
+}, true);
+document.addEventListener('change', ev => {
+  const t = ev.target; if (!state.labels || !t.matches) return;
+  if (t.matches('[data-lbl-qty]')) { render(); return; }
+  if (t.matches('[data-lbl-cfg]')) {
+    const k = t.dataset.lblCfg; state.labels[k] = t.type === 'checkbox' ? t.checked : t.value;
+    const { rows, add, ...cfg } = state.labels; saveLabelCfg(cfg); render(); return;
+  }
+  if (t.id === 'lbl-add' && t.value && (state.items || []).some(x => `${x.sku} - ${x.name}` === t.value)) { if (labelsAddItem(t.value)) { render(); setTimeout(() => document.getElementById('lbl-add')?.focus(), 30); } }
+}, true);
+document.addEventListener('keydown', ev => {
+  const t = ev.target; if (!state.labels) return;
+  if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); state.labels = null; render(); return; }
+  if (t && t.id === 'lbl-add' && ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); if (labelsAddItem(t.value)) { render(); setTimeout(() => document.getElementById('lbl-add')?.focus(), 30); } else t.select(); }
+}, true);
+
 function renderFormModal() {
   const f = state.form;
   const e = state.formErrors;
@@ -12863,6 +13037,7 @@ function renderFormModal() {
         <button id="form-save" type="button" class="sx-btn"><i class="ti ti-device-floppy" style="color:#1B5FA8;"></i>حفظ</button>
         <button id="form-cancel" type="button" class="sx-btn"><i class="ti ti-trash" style="color:#5F7FA8;"></i>الغاء</button>
         <button id="form-print" type="button" class="sx-btn" ${!state.editingId ? 'disabled' : ''}><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+        <button data-labels-item type="button" class="sx-btn" ${!state.editingId ? 'disabled' : ''} title="طباعة ملصق باركود للصنف"><i class="ti ti-barcode" style="color:#1B3352;"></i>ملصق</button>
         <button id="form-prev" type="button" class="sx-btn" ${!state.editingId ? 'disabled' : ''}><i class="ti ti-arrow-big-right" style="color:#27AE60;"></i>السابق</button>
         <button id="form-next" type="button" class="sx-btn" ${!state.editingId ? 'disabled' : ''}><i class="ti ti-arrow-big-left" style="color:#27AE60;"></i>التالي</button>
         <button id="form-exit" type="button" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
@@ -13082,7 +13257,7 @@ function renderTabContent() {
       <div style="font-size:11px;color:#6E6D5F;margin:6px 0 10px;">الأصناف اللي تدخل في تركيب هذا الصنف (مثل: كرتون = 12 حبة).</div>
       <table class="sx-grid">
         <tr><th style="width:36px;">م</th><th style="width:130px;">رقم الصنف</th><th>اسم الصنف</th><th style="width:90px;">الكمية</th><th style="width:44px;"></th></tr>
-        ${(state.bundleComponents||[]).map((c, i) => { const ci = state.items.find(x => x.id === c.component_item_id) || {}; return `<tr><td class="sx-num" style="text-align:center;">${i + 1}</td><td class="mono">${escapeHtml(ci.sku || '')}</td><td>${escapeHtml(c.component_name)}</td><td class="sx-num">${c.quantity}</td><td style="text-align:center;"><button data-remove-bundle="${c.id}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;"></i></button></td></tr>`; }).join('') || `<tr><td colspan="5" style="text-align:center;color:#6E6D5F;">لا توجد مكوّنات بعد</td></tr>`}
+        ${(state.bundleComponents||[]).map((c, i) => { const ci = state.items.find(x => x.id === c.component_item_id) || {}; return `<tr><td class="sx-num" style="text-align:center;">${i + 1}</td><td class="mono">${escapeHtml(ci.sku || '')}</td><td>${escapeHtml(c.component_name)}</td><td class="sx-num">${c.quantity}</td><td style="text-align:center;"><button data-remove-bundle="${c.id}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;font-size:13px;"></i></button></td></tr>`; }).join('') || `<tr><td colspan="5" style="text-align:center;color:#6E6D5F;">لا توجد مكوّنات بعد</td></tr>`}
       </table>
     </div>`;
   }
@@ -13097,7 +13272,7 @@ function renderTabContent() {
       <div style="font-size:11px;color:#6E6D5F;margin:6px 0 10px;">الأصناف البديلة أو المكمّلة — بتظهر في شريط معلومات الصنف أسفل الشاشة.</div>
       <table class="sx-grid">
         <tr><th style="width:36px;">م</th><th style="width:130px;">رقم الصنف</th><th>اسم الصنف</th><th style="width:90px;">الرصيد</th><th style="width:44px;"></th></tr>
-        ${(state.itemRelations||[]).map((r, i) => { const ri = state.items.find(x => x.id === r.related_item_id) || {}; return `<tr><td class="sx-num" style="text-align:center;">${i + 1}</td><td class="mono">${escapeHtml(ri.sku || '')}</td><td>${escapeHtml(r.related_name)}</td><td class="sx-num">${ri.qty != null ? roundQty(ri.qty) : ''}</td><td style="text-align:center;"><button data-remove-relation="${r.id}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;"></i></button></td></tr>`; }).join('') || `<tr><td colspan="5" style="text-align:center;color:#6E6D5F;">لا توجد أصناف مرتبطة بعد</td></tr>`}
+        ${(state.itemRelations||[]).map((r, i) => { const ri = state.items.find(x => x.id === r.related_item_id) || {}; return `<tr><td class="sx-num" style="text-align:center;">${i + 1}</td><td class="mono">${escapeHtml(ri.sku || '')}</td><td>${escapeHtml(r.related_name)}</td><td class="sx-num">${ri.qty != null ? roundQty(ri.qty) : ''}</td><td style="text-align:center;"><button data-remove-relation="${r.id}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;font-size:13px;"></i></button></td></tr>`; }).join('') || `<tr><td colspan="5" style="text-align:center;color:#6E6D5F;">لا توجد أصناف مرتبطة بعد</td></tr>`}
       </table>
     </div>`;
   }
@@ -13113,7 +13288,7 @@ function renderTabContent() {
       <div style="font-size:11px;color:#6E6D5F;margin:6px 0 10px;">كل سيارة تناسبها هذي القطعة — بيستخدمها البحث بالسيارة.</div>
       <table class="sx-grid">
         <tr><th style="width:36px;">م</th><th>الماركة</th><th>الموديل</th><th style="width:80px;">من سنة</th><th style="width:80px;">إلى سنة</th><th style="width:44px;"></th></tr>
-        ${(state.itemVehicleCompat||[]).map((v, i) => `<tr><td class="sx-num" style="text-align:center;">${i + 1}</td><td>${escapeHtml(v.vehicle_make)}</td><td>${escapeHtml(v.vehicle_model)}</td><td class="sx-num">${v.year_from || ''}</td><td class="sx-num">${v.year_to || ''}</td><td style="text-align:center;"><button data-remove-vehicle="${v.id}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;"></i></button></td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#6E6D5F;">ما فيه سيارات مسجّلة بعد لهذي القطعة</td></tr>`}
+        ${(state.itemVehicleCompat||[]).map((v, i) => `<tr><td class="sx-num" style="text-align:center;">${i + 1}</td><td>${escapeHtml(v.vehicle_make)}</td><td>${escapeHtml(v.vehicle_model)}</td><td class="sx-num">${v.year_from || ''}</td><td class="sx-num">${v.year_to || ''}</td><td style="text-align:center;"><button data-remove-vehicle="${v.id}" type="button" class="sx-btn" style="padding:0;height:20px;width:30px;min-width:0;flex:none;margin:auto;" title="حذف"><i class="ti ti-x" style="color:#C0392B;font-size:13px;"></i></button></td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#6E6D5F;">ما فيه سيارات مسجّلة بعد لهذي القطعة</td></tr>`}
       </table>
     </div>`;
   }
@@ -15054,7 +15229,7 @@ function renderPsPrintersTab() {
         return `<tr>
           <td><i class="ti ${d.icon}" style="color:#8B8A7A;"></i> ${d.label}${d.hint ? `<div class="ps-hint">${d.hint}</div>` : ''}</td>
           <td><select class="input" data-ps-printer="${d.key}" ${desk ? '' : 'disabled'}>${pOpts(own.printer || '')}</select></td>
-          <td><select class="input" data-ps-paper="${d.key}">${paperOpts(own.paper)}</select></td>
+          <td>${d.key === 'barcode_label' ? '<span class="ps-hint">حسب مقاس الملصق</span>' : `<select class="input" data-ps-paper="${d.key}">${paperOpts(own.paper)}</select>`}</td>
           ${desk ? `<td style="text-align:center;"><input type="checkbox" data-ps-silent="${d.key}" ${own.silent !== false ? 'checked' : ''} ${own.printer ? '' : 'disabled'} /></td>` : ''}
           <td><button class="btn" data-ps-test="${d.key}" title="طباعة صفحة تجربة على طابعة المستند ده" style="height:28px;min-width:0;padding:0 8px;"><i class="ti ti-file-check"></i></button></td>
         </tr>`; }).join('')}</tbody>
@@ -16037,17 +16212,161 @@ async function computeAgingForParty(partyId, isCustomer, asOf) {
   return { buckets, total, invoices: queue };
 }
 
+// كشف أعمار الذمم (بالدفعة: 4 استعلامات لكل العملاء بدل استعلامات لكل عميل) + تذكير واتساب
 async function loadAgingReport() {
-  const asOf = state.agingAsOf || new Date().toISOString().slice(0,10);
-  const parties = state.parties.filter(p => p.party_type === state.agingReportType);
-  const rows = [];
-  for (const p of parties) {
-    const result = await computeAgingForParty(p.id, state.agingReportType === 'customer', asOf);
-    if (result.total > 0.01) rows.push({ party: p, ...result });
-  }
-  rows.sort((a,b) => b.total - a.total);
-  state.agingReportRows = rows;
+  const asOf = state.agingAsOf || new Date().toISOString().slice(0, 10);
+  const type = state.agingReportType || 'customer', isC = type === 'customer';
+  const invT = isC ? 'sales_invoices' : 'purchase_invoices', pf = isC ? 'customer_id' : 'supplier_id';
+  const payT = isC ? 'receipt_vouchers' : 'payment_vouchers', retT = isC ? 'sales_returns' : 'purchase_returns';
+  state.agingLoading = true;
+  const q = async mk => { try { const r = await fetchAllQ(mk); return r.data || []; } catch (_) { return []; } };
+  const [inv, pay, ret, stv] = await Promise.all([
+    q(() => sb.from(invT).select(`id, ${pf}, invoice_number, invoice_date, total, paid_amount`).eq('approved', true).not(pf, 'is', null).lte('invoice_date', asOf).order('invoice_date').order('id')),
+    q(() => sb.from(payT).select(`id, ${pf}, amount, voucher_date`).eq('approved', true).not(pf, 'is', null).lte('voucher_date', asOf).order('id')),
+    q(() => sb.from(retT).select(`id, ${pf}, total, payment_method, return_date`).eq('approved', true).not(pf, 'is', null).lte('return_date', asOf).order('id')),
+    q(() => sb.from('settlement_vouchers').select('id, party_id, amount, direction, voucher_date').eq('approved', true).eq('party_type', type).lte('voucher_date', asOf).order('id')),
+  ]);
+  const by = {};
+  const P = id => (by[id] = by[id] || { debts: [], credit: 0 });
+  (state.parties || []).filter(p => p.party_type === type).forEach(p => {
+    const ob = Number(p.opening_balance) || 0, od = p.opening_balance_date || '2000-01-01';
+    if (ob && od <= asOf) { if (ob > 0) P(p.id).debts.push({ invoice_number: 'رصيد افتتاحي', invoice_date: od, due: ob }); else P(p.id).credit += -ob; }
+  });
+  inv.forEach(r => { const d = (Number(r.total) || 0) - (Number(r.paid_amount) || 0); if (d > 0.01) P(r[pf]).debts.push({ invoice_number: r.invoice_number, invoice_date: r.invoice_date, due: d }); else if (d < -0.01) P(r[pf]).credit += -d; });
+  pay.forEach(r => { P(r[pf]).credit += Number(r.amount) || 0; });
+  ret.forEach(r => { if (!r.payment_method) P(r[pf]).credit += Number(r.total) || 0; });
+  stv.forEach(r => { const a = Number(r.amount) || 0; if (r.direction === 'increase') P(r.party_id).debts.push({ invoice_number: 'سند تسوية', invoice_date: r.voucher_date, due: a }); else P(r.party_id).credit += a; });
+  const asOfDate = new Date(asOf), rows = [];
+  Object.entries(by).forEach(([pid, x]) => {
+    const party = (state.parties || []).find(p => p.id === pid); if (!party) return;
+    const queue = x.debts.sort((a, b) => (a.invoice_date || '').localeCompare(b.invoice_date || ''));
+    let pool = x.credit;
+    for (const d of queue) { if (pool <= 0.01) break; const ap = Math.min(d.due, pool); d.due -= ap; pool -= ap; }
+    const open = queue.filter(d => d.due > 0.01);
+    const buckets = { b0_30: 0, b31_60: 0, b61_90: 0, b90plus: 0 };
+    const limitDays = Number(party.credit_period_days) || 30;
+    let overdue = 0, oldestDays = 0;
+    open.forEach(d => {
+      const days = Math.max(0, Math.floor((asOfDate - new Date(d.invoice_date)) / 86400000)); d.days = days;
+      if (days <= 30) buckets.b0_30 += d.due; else if (days <= 60) buckets.b31_60 += d.due; else if (days <= 90) buckets.b61_90 += d.due; else buckets.b90plus += d.due;
+      if (days > limitDays) overdue += d.due;
+      oldestDays = Math.max(oldestDays, days);
+    });
+    const total = open.reduce((s, d) => s + d.due, 0);
+    if (total > 0.01) rows.push({ party, buckets, total, invoices: open, overdue, oldestDays, limitDays, oldest: open[0] || null });
+  });
+  rows.sort((a, b) => b.total - a.total);
+  state.agingReportRows = rows; state.agingLoading = false;
 }
+function agingSentKey() { return 'cs_ag_sent_' + new Date().toISOString().slice(0, 10); }
+function agingSent() { try { return JSON.parse(localStorage.getItem(agingSentKey()) || '[]') || []; } catch (_) { return []; } }
+function agingMarkSent(id) { try { const a = agingSent(); if (!a.includes(id)) a.push(id); localStorage.setItem(agingSentKey(), JSON.stringify(a)); } catch (_) {} }
+function agingFiltered() {
+  let rows = state.agingReportRows || [];
+  const qq = String(state.agingQuery || '').trim().toLowerCase();
+  if (qq) rows = rows.filter(r => (r.party.name || '').toLowerCase().includes(qq) || String(r.party.code || '').toLowerCase().includes(qq) || String(r.party.mobile || r.party.phone || '').includes(qq));
+  if (state.agingOnlyLate) rows = rows.filter(r => r.overdue > 0.01);
+  return rows;
+}
+function agingWhatsText(r) {
+  const c = state.company || {}, cur = feat('currency_abbr_ar') || '';
+  const late = r.buckets.b31_60 + r.buckets.b61_90 + r.buckets.b90plus;
+  let s = `السلام عليكم ${r.party.name}\n\nنفيدكم بأن رصيد حسابكم لدى ${c.name_ar || 'المحل'} بتاريخ ${state.agingAsOf || ''} هو: ${fmt(r.total)} ${cur}`;
+  if (late > 0.01) s += `\nمنها متأخر أكثر من 30 يوم: ${fmt(late)} ${cur}`;
+  if (r.oldest) s += `\nأقدم مبلغ غير مسدد: ${r.oldest.invoice_number} بتاريخ ${r.oldest.invoice_date} (${r.oldest.days} يوم)`;
+  s += `\n\nنرجو التكرم بالسداد في أقرب وقت، ولأي استفسار عن الكشف نحن في الخدمة.\nشاكرين تعاملكم معنا 🌹\n${c.name_ar || ''}${c.phone ? '\n' + c.phone : ''}`;
+  return s;
+}
+function renderAgingReportModal() {
+  const isC = (state.agingReportType || 'customer') === 'customer';
+  const rows = agingFiltered(), sent = agingSent();
+  const tot = rows.reduce((s, r) => ({ b0_30: s.b0_30 + r.buckets.b0_30, b31_60: s.b31_60 + r.buckets.b31_60, b61_90: s.b61_90 + r.buckets.b61_90, b90plus: s.b90plus + r.buckets.b90plus, total: s.total + r.total, overdue: s.overdue + r.overdue }), { b0_30: 0, b31_60: 0, b61_90: 0, b90plus: 0, total: 0, overdue: 0 });
+  const box = (l, v, c) => `<div style="background:#fff;border:2px inset #D4D0C8;padding:5px 8px;text-align:center;"><div style="font-size:11px;color:#3A3826;">${l}</div><div class="mono" style="font-size:14px;font-weight:800;color:${c || '#1B3352'};">${v}</div></div>`;
+  const n = v => v > 0.004 ? fmt(v) : '';
+  return `${sxStyles()}
+  <div id="aging-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div class="print-area sx-win" style="border:1px solid #1B3352;border-radius:6px;width:100%;max-width:1180px;max-height:94vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>${isC ? 'أعمار ديون العملاء والتحصيل' : 'أعمار مستحقات الموردين'}</span><button id="aging-close" class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div class="no-print" style="padding:10px 14px 0;display:grid;grid-template-columns:50px 170px 70px 140px 50px 1fr auto;gap:6px 8px;align-items:center;">
+        <label class="sx-lbl">النوع</label>
+        <select id="aging-type" class="sx-in"><option value="customer" ${isC ? 'selected' : ''}>العملاء (لنا)</option><option value="supplier" ${!isC ? 'selected' : ''}>الموردين (علينا)</option></select>
+        <label class="sx-lbl">حتى تاريخ</label>
+        <input id="aging-asof" type="date" class="sx-in" value="${escapeHtml(state.agingAsOf || '')}" />
+        <label class="sx-lbl">بحث</label>
+        <input id="aging-q" class="sx-in" value="${escapeHtml(state.agingQuery || '')}" placeholder="الاسم أو الرقم أو الجوال" />
+        <label class="pc-chk" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;white-space:nowrap;cursor:pointer;"><input id="aging-late" type="checkbox" ${state.agingOnlyLate ? 'checked' : ''} /> المتأخرين فقط</label>
+      </div>
+      <div class="print-only" style="padding:10px 14px 0;text-align:center;${printStyleVars()}">
+        <div style="font-weight:800;font-size:15px;">${escapeHtml(state.company?.name_ar || '')}</div>
+        <div style="font-weight:700;font-size:13px;margin-top:4px;">${isC ? 'كشف أعمار ديون العملاء' : 'كشف أعمار مستحقات الموردين'} — حتى ${escapeHtml(state.agingAsOf || '')}</div>
+      </div>
+      <div style="padding:10px 14px 0;display:grid;grid-template-columns:repeat(6,1fr);gap:6px;">
+        ${box('إجمالي المستحق', fmt(tot.total))}${box('0 - 30 يوم', fmt(tot.b0_30), '#0F6E56')}${box('31 - 60 يوم', fmt(tot.b31_60), '#8A6D00')}${box('61 - 90 يوم', fmt(tot.b61_90), '#BA7517')}${box('أكثر من 90', fmt(tot.b90plus), '#C0392B')}${box('متأخر عن مدة الائتمان', fmt(tot.overdue), '#C0392B')}
+      </div>
+      <div style="padding:8px 14px 0;">
+        <div class="print-scroll" style="max-height:min(52vh,460px);overflow:auto;border:1px solid #919B9C;background:#fff;">
+          <table class="sx-grid" style="border:none;">
+            <tr><th style="width:30px;">م</th><th style="width:70px;">الرقم</th><th>الاسم</th><th style="width:105px;">الجوال</th><th style="width:88px;">0-30</th><th style="width:88px;">31-60</th><th style="width:88px;">61-90</th><th style="width:88px;">+90</th><th style="width:98px;">الإجمالي</th><th style="width:62px;" title="عمر أقدم مبلغ غير مسدد بالأيام">أقدم دين</th><th style="width:52px;" title="مدة الائتمان بالأيام">المدة</th><th class="no-print" style="width:${isC ? 112 : 56}px;"></th></tr>
+            ${state.agingLoading ? `<tr><td colspan="12" style="text-align:center;padding:22px;color:#6E6D5F;">جاري الحساب...</td></tr>` : rows.map((r, i) => {
+              const late = r.overdue > 0.01, wasSent = sent.includes(r.party.id);
+              return `<tr style="${late ? 'background:#FFF4F2;' : ''}">
+              <td class="sx-num" style="text-align:center;">${i + 1}</td><td class="mono">${escapeHtml(r.party.code || '')}</td>
+              <td>${escapeHtml(r.party.name)}${late ? ` <span style="color:#C0392B;font-size:10.5px;font-weight:700;">● متأخر ${fmt(r.overdue)}</span>` : ''}</td>
+              <td class="mono" dir="ltr" style="text-align:right;">${escapeHtml(r.party.mobile || r.party.phone || '')}</td>
+              <td class="sx-num">${n(r.buckets.b0_30)}</td><td class="sx-num">${n(r.buckets.b31_60)}</td><td class="sx-num" style="color:#BA7517;">${n(r.buckets.b61_90)}</td><td class="sx-num" style="color:#C0392B;font-weight:700;">${n(r.buckets.b90plus)}</td>
+              <td class="sx-num" style="font-weight:800;">${fmt(r.total)}</td>
+              <td class="sx-num" style="text-align:center;${r.oldestDays > r.limitDays ? 'color:#C0392B;font-weight:700;' : ''}">${r.oldestDays}</td>
+              <td class="sx-num" style="text-align:center;">${Number(r.party.credit_period_days) || '—'}</td>
+              <td class="no-print" style="padding:1px 3px;white-space:nowrap;">
+                ${isC ? `<button data-ag-wa="${r.party.id}" type="button" class="sx-btn" style="display:inline-flex;flex-direction:row;height:22px;min-width:0;padding:0 6px;gap:3px;font-size:11px;" title="${wasSent ? 'اتبعت تذكير اليوم — اضغط لإرسال مرة تانية' : 'إرسال تذكير واتساب'}"><i class="ti ti-brand-whatsapp" style="color:#25D366;font-size:14px;"></i>${wasSent ? '✓' : 'تذكير'}</button>` : ''}
+                <button data-ag-stmt="${r.party.id}" type="button" class="sx-btn" style="display:inline-flex;flex-direction:row;height:22px;min-width:0;padding:0 6px;gap:3px;font-size:11px;" title="كشف الحساب"><i class="ti ti-file-invoice" style="color:#2C4A6E;font-size:14px;"></i>كشف</button>
+              </td></tr>`; }).join('') || `<tr><td colspan="12" style="text-align:center;padding:22px;color:#6E6D5F;">${isC ? 'ما في ديون على العملاء 👍' : 'ما في مستحقات للموردين'}</td></tr>`}
+            ${rows.length && !state.agingLoading ? `<tr style="background:#FFF2CC;font-weight:800;"><td colspan="4" style="text-align:center;">الإجمالي (${rows.length})</td><td class="sx-num">${fmt(tot.b0_30)}</td><td class="sx-num">${fmt(tot.b31_60)}</td><td class="sx-num">${fmt(tot.b61_90)}</td><td class="sx-num">${fmt(tot.b90plus)}</td><td class="sx-num">${fmt(tot.total)}</td><td colspan="2"></td><td class="no-print"></td></tr>` : ''}
+          </table>
+        </div>
+        <div class="no-print" style="font-size:10.5px;color:#6E6D5F;margin-top:6px;">المدفوعات والمرتجعات والتسويات بتتخصم من أقدم الديون أولاً. «متأخر» = عدّى مدة الائتمان المسجلة في كرت العميل (أو 30 يوم لو مش محددة). علامة ✓ = اتبعت له تذكير اليوم من الجهاز ده.</div>
+      </div>
+      <div class="no-print" style="display:flex;justify-content:center;gap:3px;padding:10px 14px 12px;">
+        <button id="aging-apply" type="button" class="sx-btn"><i class="ti ti-refresh" style="color:#1B5FA8;"></i>تحديث</button>
+        <button id="aging-print" type="button" class="sx-btn"><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+        <button id="aging-excel" type="button" class="sx-btn"><i class="ti ti-file-spreadsheet" style="color:#1D6F42;"></i>Excel</button>
+        <button id="aging-exit" type="button" class="sx-btn"><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
+      </div>
+    </div>
+  </div>`;
+}
+async function openAgingReport(type) {
+  await loadParties(); await loadCompany();
+  state.agingAsOf = new Date().toISOString().slice(0, 10);
+  if (type) state.agingReportType = type;
+  state.agingReportRows = []; state.agingLoading = true; state.showAgingReport = true; render();
+  await loadAgingReport(); render();
+}
+document.addEventListener('click', async ev => {
+  const t = ev.target; if (!state.showAgingReport || !t.closest) return;
+  const wa = t.closest('[data-ag-wa]');
+  if (wa) { const r = (state.agingReportRows || []).find(x => x.party.id === wa.dataset.agWa); if (!r) return; if (sendWhatsApp(r.party.mobile || r.party.phone, agingWhatsText(r), r.party.name)) { agingMarkSent(r.party.id); logActivity('تذكير سداد واتساب', r.party.name + ' — ' + fmt(r.total)); render(); } return; }
+  const st = t.closest('[data-ag-stmt]');
+  if (st) {
+    const p = (state.parties || []).find(x => x.id === st.dataset.agStmt); if (!p) return;
+    state.showAgingReport = false; state.showStatement = true; state.statementPartyId = p.id; state.statementInvoices = []; render();
+    state.statementInvoices = await loadPartyStatementRows(p.id, p.party_type); render(); return;
+  }
+}, true);
+document.addEventListener('input', ev => {
+  if (!state.showAgingReport || ev.target.id !== 'aging-q') return;
+  state.agingQuery = ev.target.value; const pos = ev.target.selectionStart; render();
+  const el = document.getElementById('aging-q'); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (_) {} }
+}, true);
+document.addEventListener('change', async ev => {
+  if (!state.showAgingReport) return;
+  const id = ev.target.id;
+  if (id === 'aging-late') { state.agingOnlyLate = ev.target.checked; render(); return; }
+  if (id === 'aging-type' || id === 'aging-asof') {
+    state.agingReportType = document.getElementById('aging-type').value; state.agingAsOf = document.getElementById('aging-asof').value || state.agingAsOf;
+    state.agingLoading = true; render(); await loadAgingReport(); render();
+  }
+}, true);
 
 // ---------- أفضل الأصناف مبيعاً / الأصناف الراكدة ----------
 async function loadTopSellingReport() {
@@ -17749,15 +18068,7 @@ function bindAppEvents() {
         await loadTransfers(); state.transferFilterStatus = target === '__transfers_reqs__' ? 'مطلوب' : 'مرسل';
         state.activeSection = '__transfers__'; render(); return;
       }
-      if (target === '__aging_report__') {
-        await loadParties();
-        state.agingAsOf = new Date().toISOString().slice(0,10);
-        state.agingReportRows = [];
-        await loadCompany();
-        state.showAgingReport = true;
-        render();
-        return;
-      }
+      if (target === '__aging_report__') { state.openDropdown = null; openAgingReport(); return; }
       if (target === '__performance_report__') {
         const today = new Date();
         const monthAgo = new Date(); monthAgo.setDate(monthAgo.getDate() - 30);
@@ -17792,6 +18103,7 @@ function bindAppEvents() {
       if (target === '__quotations__') { await loadParties(); await loadQuotations(); state.activeSection = '__quotations__'; render(); return; }
       if (target === '__owner_dash__') { openOwnerDash(); return; }
       if (target === '__daily_followup__') { openDailyFollowup(); return; }
+      if (target === '__aging_report__') { openAgingReport('customer'); return; }
       if (target === '__branch_compare__') { openBranchCompare(); return; }
       if (target === '__branch_reorder__') { openBranchReorder(); return; }
       if (target === '__shift__') { openShiftModal(); return; }
@@ -17889,15 +18201,7 @@ function bindAppEvents() {
         render();
         return;
       }
-      if (target === '__aging_report__') {
-        await loadParties();
-        state.agingAsOf = new Date().toISOString().slice(0,10);
-        state.agingReportRows = [];
-        await loadCompany();
-        state.showAgingReport = true;
-        render();
-        return;
-      }
+      if (target === '__aging_report__') { state.openDropdown = null; openAgingReport(); return; }
       if (target === '__settlement_voucher__') {
         await loadParties();
         await loadSettlementVouchers();
@@ -23242,8 +23546,8 @@ function bindAppEvents() {
       render();
     };
     document.getElementById('aging-excel').onclick = () => {
-      const headers = ['الاسم', '0-30 يوم', '31-60 يوم', '61-90 يوم', 'أكثر من 90', 'الإجمالي'];
-      const rows = state.agingReportRows.map(r => [r.party.name, r.buckets.b0_30, r.buckets.b31_60, r.buckets.b61_90, r.buckets.b90plus, r.total]);
+      const headers = ['الرقم', 'الاسم', 'الجوال', '0-30 يوم', '31-60 يوم', '61-90 يوم', 'أكثر من 90', 'الإجمالي', 'المتأخر', 'أقدم دين (يوم)', 'مدة الائتمان'];
+      const rows = agingFiltered().map(r => [r.party.code || '', r.party.name, r.party.mobile || r.party.phone || '', r.buckets.b0_30, r.buckets.b31_60, r.buckets.b61_90, r.buckets.b90plus, r.total, r.overdue, r.oldestDays, Number(r.party.credit_period_days) || '']);
       exportFormattedAccountingSheet('كشف أعمار الذمم.xlsx', 'أعمار الذمم', headers, rows);
     };
   }
@@ -24965,7 +25269,9 @@ async function init() {
     const marginMm = printCo().print_margin_mm ?? 10;
     printSizeStyleEl = document.createElement('style');
     const rcEl = document.getElementById('print-test-host') ? null : document.getElementById('si-receipt');
-    if (isReceiptPaper() && rcEl) {
+    if (state.labels) {
+      printSizeStyleEl.textContent = labelPrintCss();
+    } else if (isReceiptPaper() && rcEl) {
       // إيصال فاتورة البيع: نقيس طوله ونخلي الورقة على قده بالظبط (80مم × الطول)
       const prev = rcEl.style.cssText;
       rcEl.style.cssText = prev + ';display:block !important;position:absolute;visibility:hidden;left:-9999px;top:0;';
@@ -25053,7 +25359,7 @@ async function init() {
     }
     // نكرّر منطقة الطباعة الظاهرة حالياً حسب "عدد النسخ الافتراضي" — الطباعة العادية من المتصفح ما تدعم تعيين عدد النسخ برمجياً،
     // فبدلها نكرّر المحتوى نفسه كصفحات متتالية بنفس مهمة الطباعة الواحدة
-    const copies = printCo().print_copies || 1;
+    const copies = state.labels ? 1 : (printCo().print_copies || 1);
     if (copies > 1) {
       const visibleArea = Array.from(document.querySelectorAll('.print-area')).find(el => el.offsetParent !== null);
       if (visibleArea) {
