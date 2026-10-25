@@ -3354,6 +3354,7 @@ function hasPerm(screenKey, action) {
 }
 // الشاشة المرتبطة بكل قائمة (لصلاحية «قراءة»)
 const SCREEN_OF_TARGET = {
+  '__pos__': 'sales_invoice',
   'الاصناف': 'items', 'العملاء والموردين': 'parties', '__quotations__': 'quotation', 'المبيعات': 'sales_invoice',
   '__sales_returns__': 'sales_return', 'المشتريات': 'purchase_invoice', '__purchase_returns__': 'purchase_return',
   '__receipt_vouchers__': 'receipt_voucher', '__payment_vouchers__': 'payment_voucher', '__settlement_voucher__': 'settlement_voucher',
@@ -3468,6 +3469,7 @@ const PURCHASES_SUBMENU = [
 const SALES_SUBMENU = [
   { header: 'مستندات البيع', icon: 'ti-file-text' },
   { label: 'فاتورة بيع', target: 'المبيعات', icon: 'ti-receipt', kbd: 'F2' },
+  { label: 'شاشة الكاشير', target: '__pos__', icon: 'ti-cash-register' },
   { label: 'عرض سعر', target: '__quotations__', icon: 'ti-file-dollar' },
   { label: 'سند مردود بيع', target: '__sales_returns__', icon: 'ti-receipt-refund' },
   { header: 'الكشوفات', icon: 'ti-list-details' },
@@ -3478,6 +3480,7 @@ const SALES_SUBMENU = [
   { label: 'كشف الإقرار الضريبي', target: '__vat_report__', icon: 'ti-receipt-tax' },
   { header: 'التحليلات', icon: 'ti-chart-line' },
   { label: 'المتابعة اليومية', target: '__daily_followup__', icon: 'ti-calendar-stats' },
+  { label: 'تقرير الورديات', target: '__shifts_report__', icon: 'ti-report-money' },
   { label: 'كشف الأرباح والخسائر', target: '__profit_report__', icon: 'ti-chart-line' },
   { label: 'رسم بياني مبيعات ومشتريات', target: '__sales_chart__', icon: 'ti-chart-bar' },
   { label: 'أفضل الأصناف مبيعاً', target: '__top_selling__', icon: 'ti-trophy' },
@@ -3553,6 +3556,7 @@ const SUBMENUS = {
     { label: 'إعادة فتح مستند معتمد', target: '__reopen_doc__', icon: 'ti-lock-open' },
     { label: 'إقفال السنة المالية', target: '__fiscal_lock__', icon: 'ti-calendar-off' },
     { label: 'مركز صيانة الجهاز', target: '__desktop_maint__', icon: 'ti-tool' },
+    { label: 'أدوات قاعدة البيانات', target: '__desktop_dbtools__', icon: 'ti-database-cog' },
     { label: 'لوحة المصمم (الترخيص والاشتراك)', target: '__designer_panel__', icon: 'ti-key' },
     { label: 'لوحة متابعة كل العملاء', target: '__clients_board__', icon: 'ti-heartbeat' },
   ],
@@ -3825,7 +3829,9 @@ function fitInvoiceGrids() {
 }
 window.addEventListener('resize', () => fitInvoiceGrids());
 let _bbSig = '';
-new MutationObserver(() => {
+new MutationObserver((muts) => {
+  // تحديث الساعة كل ثانية ما يحتاج إعادة حساب المقاسات (كان بيعمل إعادة رسم للصفحة كل ثانية)
+  if (muts.every(m => m.target && m.target.closest && m.target.closest('#ws-clock,[id^="clk-"],.ws-clock'))) return;
   if (document.querySelector('.nav-drop')) navFitDrops();
   fitHome();
   if (document.querySelector('.sx-panel')) fitInvoiceGrids();
@@ -3901,6 +3907,7 @@ function wsEnsure() {
 function wsAnyModal(st) { st = st || state; return Object.keys(st).some(k => /^show[A-Z]/.test(k) && wsIsTabKey(k) && st[k] === true) || !!st.invStmt || !!st.accountForm || !!st.crmShowForm || !!st.crmShowDetail; }
 function wsTitle(st) {
   st = st || state;
+  if (st.pos && !st.pos.suspended) return { icon: 'ti-cash-register', t: 'الكاشير' };
   for (const [flag, icon, label, num] of WS_DOCS) if (st[flag]) { const n = num(st); return { icon, t: label + (n ? ' ' + n : ' جديد') }; }
   if (wsAnyModal(st) && st.tabLabel) return st.tabLabel;
   const sec = st.activeSection || 'الرئيسية', m = navSectionOf(sec), it = m ? SUBMENUS[m].find(i => i.target === sec) : null;
@@ -4007,6 +4014,7 @@ document.addEventListener('keydown', ev => {
   }
 }, true);
 function renderApp() {
+  if (state.pos && state.pos.suspended === 'return' && !state.showSalesReturnForm) { state.pos.suspended = null; state.activeSection = 'المبيعات'; state.showSalesForm = true; setTimeout(() => { posRefreshShift(); posFocus(); }, 60); }
   const items = filteredItems();
   const lowStock = state.items.filter(it => Number(it.qty) <= Number(it.reorder_at || 0)).length;
   const MENU = ['الرئيسية','الاصناف','المستودعات','المبيعات','المشتريات','الطلبيات','العملاء والموردين','شؤون الموظفين','المحاسبة','تقارير عامة','النظام','المساعدة','خروج'].filter(m =>
@@ -4131,6 +4139,8 @@ function renderApp() {
   ${state.showPricingRules ? renderPricingRulesModal() : ''}
   ${autoPostNoticeDue() ? renderAutoPostNotice() : ''}
   ${state.labels ? renderLabelsModal() : ''}
+  ${state.pos && !state.pos.suspended ? renderPosScreen() : ''}
+  ${state.showShiftsReport && state.sr ? renderShiftsReport() : ''}
   ${renderWsBar()}
   ${state.showWalkinPicker ? renderWalkinPicker() : ''}
   ${state.showOwnerDash ? renderOwnerDash() : ''}
@@ -4606,7 +4616,7 @@ function renderQuoteFormModal() {
         <div class="sx-panel">
           <div style="display:${tab==='items'?'block':'none'};max-height:300px;overflow:auto;">
             <div id="qt-item-info" style="display:none;"></div>
-            <select id="qt-item-select" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
+            <select id="qt-item-select" style="display:none;" data-item-select><option value="">اختر صنف...</option></select>
             <button id="qt-add-line" type="button" style="display:none;"></button>
             <table class="sx-grid">
               <thead><tr>
@@ -4734,9 +4744,11 @@ function printStyleVars() {
   return `font-family:'${font}','Segoe UI','Tahoma','Arial',sans-serif;font-size:${size}px;--print-accent:${accent};`;
 }
 
+const _fmtCache = {};
 function fmt(n) {
   const d = Math.max(0, Math.min(4, Number(feat('price_decimals') ?? 2)));
-  return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const f = _fmtCache[d] || (_fmtCache[d] = new Intl.NumberFormat('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
+  return f.format(Number(n || 0));
 }
 
 // تحويل رقم لمبلغ مكتوب بالعربي (ريال وهللة)
@@ -4954,7 +4966,7 @@ function renderPurchaseFormModal() {
         <div class="sx-panel">
           <div style="display:${ptabX==='معلومات الفاتورة'?'block':'none'};max-height:300px;overflow:auto;">
             <div id="pi-item-info" style="display:none;"></div>
-            <select id="pi-item-select" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
+            <select id="pi-item-select" style="display:none;" data-item-select><option value="">اختر صنف...</option></select>
             <button id="pi-add-line" type="button" style="display:none;"></button>
             <table id="pi-lines-table" class="sx-grid">
               <thead><tr>
@@ -5805,7 +5817,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.21-19';
+const APP_VERSION = '2026.10.24-23';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -5880,6 +5892,7 @@ function renderHomeSection() {
                 ${homeShortcut('ti-user-plus', t('sc_new_party'), 'العملاء والموردين')}
                 ${homeShortcut('ti-cash', t('sc_receipt'), '__receipt_vouchers__')}
                 ${homeShortcut('ti-chart-bar', t('sc_reports'), 'تقارير عامة')}
+                ${hasPerm('sales_invoice','can_add') && hasPerm('sales_invoice','can_approve') ? homeShortcut('ti-cash-register', 'شاشة الكاشير', '__pos__') : ''}
                 ${(isAdmin() || canViewReports()) ? homeShortcut('ti-calendar-stats', 'المتابعة اليومية', '__daily_followup__') : ''}
                 ${(isAdmin() || canViewReports()) ? homeShortcut('ti-hourglass', 'أعمار الديون والتحصيل', '__aging_report__') : ''}
               </div>
@@ -6239,7 +6252,7 @@ function renderSalesSection() {
         <div style="font-size:12px;color:#5F5E5A;margin-bottom:8px;">${list.length} فاتورة</div>
         ${renderDocListTable(list, 'sales')}
       </div>
-      ${state.showSalesForm ? renderSalesFormModal() : ''}`;
+      ${state.showSalesForm ? (state.pos && !state.pos.suspended ? `<div id="pos-sales-host" style="visibility:hidden;">${renderSalesFormModal()}</div>` : renderSalesFormModal()) : ''}`;
 }
 
 function sxStyles() {
@@ -6780,7 +6793,7 @@ function bindSalesSanmarUI() {
   const tax = $('si-item-tax');
   if (tax) tax.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); if (sel.value) addAndNext(); } };
   // الوقوف على خانة رقم الصنف تلقائياً
-  if ((state.salesTab || 'items') === 'items' && !f.approved && !state.showSalesPayDialog && !state.itemPickerOpen && !state.showPartyPicker
+  if (!state.pos && (state.salesTab || 'items') === 'items' && !f.approved && !state.showSalesPayDialog && !state.itemPickerOpen && !state.showPartyPicker
       && (!document.activeElement || document.activeElement === document.body)) sku.focus();
 }
 
@@ -6970,7 +6983,7 @@ function renderSalesFormModal() {
           <div style="display:${tab==='items'?'block':'none'};max-height:300px;overflow:auto;">
             <div id="si-item-info" style="display:none;"></div>
             <div id="si-last-prices" style="display:none;padding:4px 10px;background:#FDFBF3;border-bottom:1px solid #DEDACB;font-size:11.5px;"></div>
-            <select id="si-item-select" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
+            <select id="si-item-select" style="display:none;" data-item-select><option value="">اختر صنف...</option></select>
             <button id="si-add-line" type="button" style="display:none;"></button>
             <table id="si-lines-table" class="sx-grid">
               <thead><tr>
@@ -7773,7 +7786,7 @@ function renderStockCountFormModal() {
         ${!f.approved ? `
         <div class="no-print" id="sc-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
         <div class="no-print" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-          <select id="sc-item-select" class="input" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
+          <select id="sc-item-select" class="input" style="display:none;" data-item-select><option value="">اختر صنف...</option></select>
           ${itemPickerButton('sc-item-select',null,null,null,'sc-add-line')}
           <button id="sc-add-line" class="btn primary" style="padding:6px 14px;">إضافة صنف</button>
           <button id="sc-add-all" class="btn" style="padding:6px 14px;">تحميل كل الأصناف</button>
@@ -8233,7 +8246,7 @@ function renderTransferFormModal() {
         ${!locked ? `
         <div class="no-print" id="tr-item-info" style="display:none;margin-bottom:8px;padding:6px 12px;background:#E1F5EE;border:1px solid #0F6E56;border-radius:4px;font-size:12px;color:#0F6E56;font-weight:500;"></div>
         <div class="no-print" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
-          <select id="tr-item-select" class="input" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
+          <select id="tr-item-select" class="input" style="display:none;" data-item-select><option value="">اختر صنف...</option></select>
           ${itemPickerButton('tr-item-select','tr-item-qty',null,null,'tr-add-line')}
           <input id="tr-item-qty" class="input" style="max-width:80px;" placeholder="الكمية" />
           <button id="tr-add-line" class="btn primary" style="padding:6px 14px;">إضافة</button>
@@ -8281,6 +8294,7 @@ function renderWarehouseStockReportModal() {
   const totalsByWarehouse = {};
   state.warehouses.forEach(w => { totalsByWarehouse[w.id] = results.reduce((s,r) => s + (r.perWarehouse[w.id]||0), 0); });
   const grandTotal = results.reduce((s,r) => s + r.total, 0);
+  const wsrShown = state.wsrAll ? results : results.slice(0, 300);
   return `
   <div id="wsr-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;">
     <div class="print-area" style="background:#fff;border:1px solid #1B3352;border-radius:12px;width:100%;max-width:960px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
@@ -8309,7 +8323,7 @@ function renderWarehouseStockReportModal() {
               <th style="padding:7px 6px;background:var(--print-accent,#FFF2CC);color:#000;font-weight:600;font-size:10.5px;text-align:right;border-bottom:1px solid #000;">الإجمالي</th>
             </tr></thead>
             <tbody>
-              ${results.map((r,i) => `
+              ${wsrShown.map((r,i) => `
               <tr>
               <td class="mono" style="padding:6px;border-left:1px solid #ccc;border-bottom:1px solid #ccc;font-size:11px;white-space:nowrap;">${escapeHtml(r.sku)}</td>
               <td style="padding:6px;border-left:1px solid #ccc;border-bottom:1px solid #ccc;font-size:11px;">${escapeHtml(r.name)}</td>
@@ -8325,6 +8339,7 @@ function renderWarehouseStockReportModal() {
             </tbody>
           </table>
         </div>
+        ${results.length > wsrShown.length ? `<div class="no-print" style="text-align:center;padding:10px;font-size:12px;color:#5F5E5A;">معروض ${wsrShown.length.toLocaleString('en-US')} من ${results.length.toLocaleString('en-US')} صنف (الإجمالي محسوب على الكل) — <button type="button" class="btn" data-wsr-all style="padding:4px 12px;">عرض الكل</button> · الطباعة والـ Excel فيهم كل الأصناف</div>` : ''}
       </div>
       <div class="no-print" style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid #A9A48C;">
         ${iconBtn('wsr-exit', 'ti-door-exit', '#C0392B', t('btn_exit'))}
@@ -8382,7 +8397,7 @@ function renderOpeningInvFormModal() {
       <div style="padding:14px 16px;">
         ${!f.approved ? `
         <div style="display:flex;gap:8px;margin-bottom:10px;">
-          <select id="oif-item-select" class="input" style="display:none;"><option value="">اختر صنف...</option>${state.items.map(it => `<option value="${it.id}">${escapeHtml(it.name)} (${escapeHtml(it.sku)})</option>`).join('')}</select>
+          <select id="oif-item-select" class="input" style="display:none;" data-item-select><option value="">اختر صنف...</option></select>
           ${itemPickerButton('oif-item-select',null,null,null,'oif-add-line')}
           <button id="oif-add-line" class="btn primary" style="padding:6px 14px;">إضافة صنف</button>
         </div>` : ''}
@@ -8507,6 +8522,7 @@ function findAlternativeItems(it) {
 }
 function renderActiveItemBar() {
   if (!state.activeBarItemId) return '';
+  if (state.pos && !state.pos.suspended) return '';
   // شريط الصنف يظهر في شاشات الأصناف والفواتير بس (مش في الرئيسية والتقارير)
   if (!(state.showSalesForm || state.showPurchaseForm || state.showQuoteForm || state.showSalesReturnForm || state.showPurchaseReturnForm || state.showForm || state.activeSection === 'الاصناف')) return '';
   const it = state.items.find(x => x.id === state.activeBarItemId);
@@ -8692,7 +8708,7 @@ function installPriceHistoryDelegation() {
     if (altBtn) {
       const id = altBtn.dataset.barAltItem;
       const sel = document.getElementById('si-item-select') || document.getElementById('qt-item-select') || document.getElementById('pi-item-select');
-      if (sel && [...sel.options].some(o => o.value === id)) { sel.value = id; sel.dispatchEvent(new Event('change')); }
+      if (sel && (state.items || []).some(x => x.id === id)) { sel.value = id; sel.dispatchEvent(new Event('change')); }
       else { state.activeBarItemId = id; refreshActiveItemBar(); }
       return;
     }
@@ -10599,6 +10615,7 @@ const KB_FORMS = [
 ];
 function kbActiveForm() {
   if (state.cmdk || state.payChange || state.showSalesPayDialog || state.itemPickerOpen || state.priceReview) return null;
+  if (state.pos && !state.pos.suspended) return null;
   for (const [flag, prefix, sel, short] of KB_FORMS) if (state[flag]) { const root = document.querySelector(sel); if (root) return { prefix, root, short }; }
   return null;
 }
@@ -10635,7 +10652,624 @@ function renderPlaceholderSection() {
   </div>`;
 }
 
-function renderItemsSection(items, lowStock) {
+// اختيار صنف بالبحث (بدل قائمة فيها آلاف الأصناف): أول 30 نتيجة بس
+document.addEventListener('input', ev => {
+  const inp = ev.target; if (!inp.matches || !inp.matches('[data-item-pick]')) return;
+  const hid = document.getElementById(inp.dataset.itemPick), dl = document.getElementById(inp.getAttribute('list'));
+  const v = inp.value.trim(), low = v.toLowerCase();
+  const exact = (state.items || []).find(it => it.id !== state.editingId && (`${it.sku} - ${it.name}` === v || String(it.sku || '').toLowerCase() === low || String(it.barcode || '') === v));
+  if (hid) hid.value = exact ? exact.id : '';
+  if (!dl || exact || low.length < 1) return;
+  const res = []; for (const it of state.items || []) { if (it.id === state.editingId) continue; if (String(it.sku || '').toLowerCase().includes(low) || String(it.name || '').toLowerCase().includes(low)) { res.push(it); if (res.length >= 30) break; } }
+  dl.innerHTML = res.map(it => `<option value="${escapeHtml(it.sku + ' - ' + it.name)}"></option>`).join('');
+}, true);
+document.addEventListener('click', ev => {
+  if (!state.itemPickerOpen || !ev.target.closest || !ev.target.closest('[data-ipk-more]')) return;
+  const sc = document.getElementById('ipk-table-scroll'), top = sc ? sc.scrollTop : 0;
+  state.itemPickerLimit = (Number(state.itemPickerLimit) || 100) + 200; render();
+  const sc2 = document.getElementById('ipk-table-scroll'); if (sc2) sc2.scrollTop = top;
+}, true);
+// القوائم المخفية لاختيار الصنف (فاتورة البيع/الشراء/…) كانت فيها كل الأصناف (آلاف option مع كل رسم للشاشة)
+// الحين فاضية، ولما البرنامج يختار صنف بنضيف خياره وقتها بس
+(function () {
+  const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  if (!d || !d.set) return;
+  Object.defineProperty(HTMLSelectElement.prototype, 'value', {
+    configurable: true, enumerable: d.enumerable,
+    get() { return d.get.call(this); },
+    set(v) {
+      if (v && this.hasAttribute && this.hasAttribute('data-item-select')) {
+        const sv = String(v);
+        if (![...this.options].some(o => o.value === sv)) {
+          const it = ((typeof state !== 'undefined' && state && state.items) || []).find(x => x.id === sv);
+          if (it) { const o = document.createElement('option'); o.value = sv; o.textContent = `${it.name} (${it.sku})`; this.appendChild(o); }
+        }
+      }
+      d.set.call(this, v);
+    },
+  });
+})();
+// =====================================================================
+// 🛒 شاشة الكاشير (نقطة البيع): مسح باركود + أصناف مفضلة للمس + دفع وطباعة بضغطة
+// الفاتورة اللي تطلع منها = فاتورة بيع عادية (نفس الحفظ والترحيل الآمن: المخزون + القيد + الوردية)
+// فاتورة البيع الحقيقية مرسومة مخفية تحت الشاشة (عشان الحفظ والترحيل والطباعة يشتغلوا بنفس الكود)
+// =====================================================================
+const POS_FAV_KEY = 'cs_pos_fav', POS_FAV_HIDE = 'cs_pos_fav_hide';
+const posHeldKey = () => 'cs_pos_held_' + (state.session?.user?.id || '');
+const posLS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (_) { return d; } };
+const posSetLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+function posCanEditPrice() { return isAdmin() || canApprove(); }
+function posMethods() { const l = activePaymentMethods(); return l.length ? l : [{ name: 'نقدي' }]; }
+function posCashMethod() { return (posMethods().find(m => isCashMethod(m.name)) || posMethods()[0]).name; }
+function posBeep(ok) {
+  try {
+    const A = window.__posAudio || (window.__posAudio = new (window.AudioContext || window.webkitAudioContext)());
+    const o = A.createOscillator(), g = A.createGain(); o.connect(g); g.connect(A.destination);
+    o.frequency.value = ok ? 1250 : 330; o.type = ok ? 'sine' : 'square'; g.gain.value = ok ? 0.05 : 0.08;
+    o.start(); o.stop(A.currentTime + (ok ? 0.06 : 0.28));
+  } catch (_) {}
+}
+function posNewInvoice() {
+  state.salesForm = newSalesForm();
+  state.salesForm.invoice_number = nextDocNumber(state.salesInvoices, 'invoice_number', 'S', 4);
+  state.editingSalesId = null; state.docJournalNumbers = [];
+  if (state.pos) { state.pos.sel = -1; state.pos.received = ''; state.pos.mixed = null; state.pos.method = posCashMethod(); state.pos.dlg = null; }
+}
+async function openPos() {
+  if (!hasPerm('sales_invoice', 'can_add') || !hasPerm('sales_invoice', 'can_approve')) { showToast('شاشة الكاشير تحتاج صلاحية إضافة وترحيل فاتورة البيع — اطلبها من المدير', 'error'); return; }
+  state.openDropdown = null; state.cmdk = null;
+  if (!state.items || !state.items.length) await loadItems();
+  if (!state.parties || !state.parties.length) await loadParties();
+  if (!state.salesInvoices || !state.salesInvoices.length) await loadSalesInvoices();
+  state.pos = { sel: -1, received: '', method: posCashMethod(), mixed: null, dlg: null, msg: null, last: null, favHide: !!posLS(POS_FAV_HIDE, false), shiftC: null };
+  state.activeSection = 'المبيعات'; state.showSalesForm = true;
+  posNewInvoice();
+  await loadMyOpenShift();
+  render(); posFocus();
+  posRefreshShift();
+}
+function closePos() {
+  const f = state.salesForm;
+  if (f && f.lines.length && !f.approved && !confirm('في أصناف في الفاتورة الحالية — تقفل شاشة الكاشير وتلغيها؟\n(لو تبغى تحتفظ بيها: علّقها بـ F6)')) return;
+  state.pos = null; state.showSalesForm = false; render();
+}
+async function posRefreshShift() {
+  if (!state.pos || !state.shift) return;
+  try { state.pos.shiftC = await computeShiftTotals(state.shift); if (state.pos) renderPosLight(); } catch (_) {}
+}
+function posFocus() { setTimeout(() => { const el = document.getElementById('pos-scan'); if (el && !state.itemPickerOpen && !state.showPartyPicker && !state.showShift && !(state.pos && state.pos.dlg)) el.focus(); }, 30); }
+function posMsg(text, kind) { if (!state.pos) return; state.pos.msg = text ? { text, kind: kind || 'ok', at: Date.now() } : null; }
+// إعادة رسم الشاشة مع الحفاظ على المكتوب في خانة الباركود
+function renderPosLight() { const v = document.getElementById('pos-scan')?.value || ''; render(); const el = document.getElementById('pos-scan'); if (el) { el.value = v; } posFocus(); }
+
+function posFindItem(code) {
+  const c = String(code || '').trim().toLowerCase(); if (!c) return null;
+  return state.items.find(it => (it.barcode || '').toLowerCase() === c || (it.sku || '').toLowerCase() === c)
+    || state.items.find(it => (state.itemAltNumbersMap?.[it.id] || []).some(a => String(a).toLowerCase() === c)) || null;
+}
+// إضافة صنف (نفس قواعد فاتورة البيع: الرصيد، أقل من التكلفة، سعر العميل)
+function posAdd(item, qty) {
+  const f = state.salesForm; qty = roundQty(qty || 1);
+  if (!item) return false;
+  if (item.active === false) { posBeep(false); posMsg(`الصنف «${item.name}» موقوف`, 'err'); return false; }
+  const inForm = f.lines.filter(l => l.item_id === item.id).reduce((s, l) => s + Number(l.quantity || 0), 0);
+  const avail = itemQtyForUser(item);
+  if (qty + inForm > avail && !feat('allow_negative_stock')) {
+    posBeep(false); logLostSale(item.id, qty + inForm, avail, 'شاشة الكاشير');
+    posMsg(`الرصيد ما يكفي: «${item.name}» المتوفر ${avail}`, 'err'); return false;
+  }
+  if (pharmacyOn() && item.controlled && !confirm(`⚠️ "${item.name}" دواء مراقب.\n\nتأكد من الوصفة الطبية قبل الصرف. تكمل؟`)) return false;
+  const taxPct = f.no_tax ? 0 : (Number(f.default_tax) || 0);
+  const price = Number(getItemPriceForCustomer(item, f.customer_id)) || 0;
+  if (price <= 0) { posBeep(false); posMsg(`الصنف «${item.name}» ما عليه سعر بيع`, 'err'); return false; }
+  if (price < Number(item.cost || 0) && !feat('allow_below_cost')) { posBeep(false); posMsg(`سعر «${item.name}» أقل من التكلفة — راجع المدير`, 'err'); return false; }
+  const ex = f.lines.findIndex(l => l.item_id === item.id && Math.abs(Number(l.unit_price) - price) < 0.0001 && !Number(l.disc_pct));
+  if (ex >= 0) { f.lines[ex].quantity = roundQty(Number(f.lines[ex].quantity) + qty); state.pos.sel = ex; }
+  else { f.lines.push({ item_id: item.id, item_name: item.name, sku: item.sku, unit: item.unit, quantity: qty, unit_price: price, tax_percent: taxPct }); state.pos.sel = f.lines.length - 1; }
+  state.activeBarItemId = item.id; state.pos.received = ''; state.pos.mixed = null; state.pos.last = null;
+  posBeep(true); posMsg(null);
+  return true;
+}
+function posScan(raw) {
+  let s = String(raw || '').trim(); if (!s) return;
+  let qty = 1; const m = s.match(/^(\d+(?:\.\d+)?)\s*[*xX×]\s*(.+)$/); if (m) { qty = Number(m[1]); s = m[2].trim(); }
+  const it = posFindItem(s);
+  if (!it) {
+    const byName = state.items.filter(x => x.active !== false && (x.name || '').toLowerCase().includes(s.toLowerCase()));
+    if (byName.length === 1) { posAdd(byName[0], qty); return; }
+    posBeep(false); posMsg(`ما لقيت صنف بالرقم «${s}» — اضغط F1 للبحث`, 'err'); return;
+  }
+  posAdd(it, qty);
+}
+function posTotals() { const t = calcLineTotals(state.salesForm); t.grandTotal = Math.round(t.grandTotal * 100) / 100; return t; }
+function posSetQty(i, q) {
+  const f = state.salesForm, l = f.lines[i]; if (!l) return;
+  q = roundQty(q); if (!(q > 0)) { f.lines.splice(i, 1); state.pos.sel = Math.min(i, f.lines.length - 1); return; }
+  const it = state.items.find(x => x.id === l.item_id);
+  const other = f.lines.filter((x, j) => j !== i && x.item_id === l.item_id).reduce((s, x) => s + Number(x.quantity || 0), 0);
+  if (it && q + other > itemQtyForUser(it) && !feat('allow_negative_stock')) { posBeep(false); posMsg(`الرصيد ما يكفي: المتوفر ${itemQtyForUser(it)}`, 'err'); return; }
+  l.quantity = q; state.pos.received = ''; state.pos.mixed = null;
+}
+
+// ---------- الدفع
+function posPayments() {
+  const P = state.pos, total = posTotals().grandTotal;
+  if (P.mixed) {
+    const list = Object.entries(P.mixed).map(([method, a]) => ({ method, amount: Math.round((Number(a) || 0) * 100) / 100 })).filter(x => x.amount > 0);
+    return list;
+  }
+  return [{ method: P.method, amount: total }];
+}
+function posChange() {
+  const P = state.pos, total = posTotals().grandTotal;
+  if (P.mixed) { const cashPart = Object.entries(P.mixed).filter(([m]) => isCashMethod(m)).reduce((s, [, a]) => s + (Number(a) || 0), 0); const rec = Number(P.received) || 0; return rec > 0 ? Math.round((rec - cashPart) * 100) / 100 : null; }
+  if (!isCashMethod(P.method)) return null;
+  const rec = Number(String(P.received).replace(/,/g, '')) || 0; return rec > 0 ? Math.round((rec - total) * 100) / 100 : null;
+}
+async function posPay() {
+  const P = state.pos, f = state.salesForm;
+  if (!P || P.busy) return;
+  if (state.shiftsAvailable && !state.shift) { posBeep(false); posMsg('افتح الوردية أول (F11)', 'err'); renderPosLight(); return; }
+  if (!f.lines.length) { posBeep(false); posMsg('الفاتورة فاضية — امسح صنف أول', 'err'); renderPosLight(); return; }
+  const total = posTotals().grandTotal;
+  const pays = posPayments(), sum = Math.round(pays.reduce((s, x) => s + x.amount, 0) * 100) / 100;
+  if (Math.abs(sum - total) > 0.01) { posBeep(false); posMsg(`مجموع طرق الدفع (${fmt(sum)}) لازم يساوي الإجمالي (${fmt(total)})`, 'err'); renderPosLight(); return; }
+  const ch = posChange(); if (ch != null && ch < -0.005) { posBeep(false); posMsg(`المبلغ المستلم أقل من المطلوب بـ ${fmt(-ch)}`, 'err'); renderPosLight(); return; }
+  f.invoice_type = 'نقدي'; f.paid_amount = total.toFixed(2); f.payments = pays.map(x => ({ method: x.method, amount: x.amount })); f.payment_method = pays[0].method;
+  P.busy = true; posMsg('جاري الحفظ والترحيل…', 'info'); renderPosLight();
+  const lastChange = ch, lastPays = pays;
+  let ok = false;
+  try {
+    state.salesPayConfirmed = true; state.autoPosting = true;
+    render(); await _tick(40);
+    const sv = document.getElementById('sales-save');
+    if (!sv || typeof sv.onclick !== 'function') throw new Error('تعذّر حفظ الفاتورة');
+    await sv.onclick(); await _tick(40);
+    if (!state.editingSalesId) throw new Error(state.showSalesPayDialog ? 'أكمل شاشة الدفع' : 'الفاتورة ما اتحفظت');
+    render(); await _tick(40);
+    const ap = document.getElementById('sales-approve');
+    if (!ap || typeof ap.onclick !== 'function') throw new Error('تعذّر الترحيل — الفاتورة محفوظة كمسودة');
+    await ap.onclick(); await _tick(60);
+    ok = !!state.salesForm.approved;
+  } catch (e) { posMsg(e.message || String(e), 'err'); posBeep(false); }
+  finally { state.autoPosting = false; state.salesPayConfirmed = false; if (state.pos) state.pos.busy = false; }
+  if (!ok) { if (state.pos && !(state.pos.msg && state.pos.msg.kind === 'err')) posMsg('ما اترحّلت الفاتورة — راجع الرسالة', 'err'); renderPosLight(); return; }
+  // طباعة الإيصال (طابعة فاتورة البيع في الجهاز ده)
+  render(); await _tick(350);
+  if (state.pos.print !== false) { try { window.print(); } catch (_) {} }
+  const inv = { id: state.editingSalesId, number: state.salesForm.invoice_number, total, change: lastChange, pays: lastPays };
+  logActivity('بيع من شاشة الكاشير', `${inv.number} — ${fmt(total)}`);
+  posNewInvoice(); state.pos.last = inv;
+  posMsg(lastChange != null && lastChange > 0.004 ? `✓ تمت — الباقي للزبون ${fmt(lastChange)}` : '✓ تمت الفاتورة ' + inv.number, 'ok');
+  renderPosLight(); posRefreshShift();
+}
+async function posReprint() {
+  const P = state.pos; if (!P || !P.last) return;
+  const keep = { form: state.salesForm, id: state.editingSalesId };
+  await openSalesById(P.last.id); await _tick(350);
+  try { window.print(); } catch (_) {}
+  state.salesForm = keep.form; state.editingSalesId = keep.id; state.showSalesForm = true; renderPosLight();
+}
+// ---------- التعليق
+function posHold() {
+  const f = state.salesForm; if (!f.lines.length) return;
+  const h = posLS(posHeldKey(), []);
+  h.push({ id: Date.now(), at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }), lines: f.lines, customer_id: f.customer_id || '', walkin_customer_name: f.walkin_customer_name || '', discount: f.discount || '0', total: posTotals().grandTotal });
+  posSetLS(posHeldKey(), h.slice(-20));
+  posNewInvoice(); posMsg('⏸ اتعلّقت الفاتورة — ترجع لها من F7', 'ok');
+}
+function posRecall(id) {
+  const h = posLS(posHeldKey(), []), i = h.findIndex(x => x.id === id); if (i < 0) return;
+  const x = h[i];
+  if (state.salesForm.lines.length) posHold();
+  const rest = posLS(posHeldKey(), []).filter(y => y.id !== id); posSetLS(posHeldKey(), rest);
+  posNewInvoice();
+  Object.assign(state.salesForm, { lines: x.lines, customer_id: x.customer_id, walkin_customer_name: x.walkin_customer_name, discount: x.discount, cash_customer_mode: x.customer_id ? 'registered' : 'walkin' });
+  state.pos.dlg = null; state.pos.sel = x.lines.length - 1; posMsg('▶ رجعت الفاتورة المعلّقة', 'ok');
+}
+// ---------- المفضلة
+function posFavs() { return posLS(POS_FAV_KEY, []).map(id => state.items.find(x => x.id === id)).filter(Boolean); }
+function posToggleFav(id) {
+  let l = posLS(POS_FAV_KEY, []);
+  if (l.includes(id)) l = l.filter(x => x !== id); else { if (l.length >= 18) { posMsg('المفضلة 18 صنف بالكتير — شيل صنف الأول', 'err'); return; } l.push(id); }
+  posSetLS(POS_FAV_KEY, l);
+}
+
+function renderPosScreen() {
+  const P = state.pos, f = state.salesForm, t = posTotals(), cur = feat('currency_abbr_ar') || '';
+  const cust = f.customer_id ? state.parties.find(p => p.id === f.customer_id) : null;
+  const sel = f.lines[P.sel] ? f.lines[P.sel] : null, selIt = sel ? state.items.find(x => x.id === sel.item_id) : null;
+  const pieces = f.lines.reduce((s, l) => s + Number(l.quantity || 0), 0);
+  const ch = posChange(), favs = posFavs(), held = posLS(posHeldKey(), []);
+  const C = P.shiftC, noShift = state.shiftsAvailable && !state.shift;
+  if (state.shift && (!C || P.shiftId !== state.shift.id) && !P.shiftLoading) { P.shiftLoading = true; P.shiftId = state.shift.id; setTimeout(async () => { await posRefreshShift(); if (state.pos) state.pos.shiftLoading = false; }, 0); }
+  const msg = P.msg && Date.now() - P.msg.at < 15000 ? P.msg : null;
+  const methods = posMethods();
+  const fk = (k, l, cls) => `<button type="button" class="pos-k ${cls || ''}" data-pos-key="${k}"><i>${k}</i>${l}</button>`;
+  const alts = selIt ? (state.itemAltNumbersMap?.[selIt.id] || []).length : 0;
+  return `<div id="pos-root" class="no-print">
+  <style>
+    #pos-root{position:fixed;top:0;left:0;right:0;bottom:var(--bottom-h,0px);z-index:15;background:#ECE9D8;display:flex;flex-direction:column;font-family:Tahoma,'Segoe UI',Arial,sans-serif;color:#000;-webkit-user-select:none;user-select:none}
+    #pos-root .mono{font-family:Consolas,'Courier New',monospace;direction:ltr;unicode-bidi:isolate}
+    .pos-top{height:42px;background:linear-gradient(180deg,#2C4A6E,#1B3352);color:#fff;display:flex;align-items:center;gap:10px;padding:0 10px;flex-shrink:0}
+    .pos-top .t{font-size:16px;font-weight:700}.pos-top .chip{background:rgba(255,255,255,.13);padding:4px 10px;border-radius:3px;font-size:12px;white-space:nowrap}
+    .pos-top .sp{flex:1}.pos-top button{font:inherit;font-size:12px;background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:3px;padding:4px 12px;cursor:pointer}
+    .pos-main{flex:1;display:grid;grid-template-columns:1fr 380px;gap:8px;padding:8px;min-height:0}
+    .pos-sunk{background:#fff;border:1px solid;border-color:#808080 #fff #fff #808080;box-shadow:inset 1px 1px #404040}
+    .pos-btn{font:inherit;background:#F4F2EA;border:1px solid;border-color:#fff #404040 #404040 #fff;box-shadow:inset -1px -1px #808080;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;color:#000}
+    .pos-btn:active{border-color:#404040 #fff #fff #404040;box-shadow:inset 1px 1px #808080}
+    .pos-btn[disabled]{color:#999;cursor:default}
+    #pos-scan{flex:1;height:46px;font-size:22px;padding:0 12px;background:#FFFDE8;border:2px solid #1B5FA8;outline:none;font-family:Consolas,'Courier New',monospace;direction:ltr;text-align:right;-webkit-user-select:text;user-select:text}
+    #pos-scan::placeholder{direction:rtl;font-family:Tahoma,'Segoe UI',sans-serif;font-size:14px;color:#8B8A7A;letter-spacing:0}
+    #pos-received::placeholder,.pos-in::placeholder{font-family:Tahoma,sans-serif;font-size:13px;letter-spacing:0;direction:rtl}
+    .pos-lines{flex:1;overflow:auto;min-height:0}
+    .pos-lines table{width:100%;border-collapse:collapse}
+    .pos-lines th{position:sticky;top:0;background:linear-gradient(180deg,#3D6389,#1B3352);color:#fff;font-weight:400;padding:6px;font-size:12.5px;text-align:right;z-index:1}
+    .pos-lines td{padding:6px;border-bottom:1px solid #E4E2DA;font-size:15px}
+    .pos-lines tr[data-pos-line]{cursor:pointer}.pos-lines tr.on td{background:#CFE8FF}
+    .pos-q{display:inline-flex;align-items:center;gap:6px}.pos-q button{width:30px;height:28px;font-size:16px;font-weight:700}
+    .pos-num{text-align:left;font-family:Consolas,monospace}
+    .pos-led{background:#0B1A10;color:#3CFF7A;font-family:Consolas,monospace;text-align:left;padding:6px 14px;border:3px inset #444}
+    .pos-led .l{color:#9FDDB0;font-family:Tahoma;font-size:12px;text-align:right}.pos-led .v{font-size:46px;font-weight:700;line-height:1.1}
+    .pos-kv{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:6px 12px;font-size:13.5px}
+    .pos-pay{display:grid;grid-template-columns:1fr 1fr;gap:6px}.pos-pay .pos-btn{height:46px;font-size:15px;font-weight:700}
+    .pos-pay .pos-btn.on{background:#B8E0C8;border-color:#fff #0F6E56 #0F6E56 #fff}
+    .pos-in{height:38px;font-size:20px;width:100%;text-align:left;padding:0 10px;font-family:Consolas,monospace;border:1px solid #7F9DB9;-webkit-user-select:text;user-select:text}
+    .pos-change{background:#FFF2CC;border:2px solid #C9A227;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;font-weight:700}
+    .pos-change .pos-num{font-size:30px;color:#8A5A00}
+    .pos-fav{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:6px}
+    .pos-fav button{height:58px;background:linear-gradient(180deg,#FFF,#E9E6DA);border:1px solid #A9A48C;font:inherit;font-size:12px;line-height:1.3;cursor:pointer;overflow:hidden;padding:2px}
+    .pos-fav button b{display:block;color:#0F6E56;font-family:Consolas,monospace}
+    .pos-ibar{display:flex;flex-wrap:wrap;background:#FFF9C4;border:1px solid #C9A227;font-size:12px}
+    .pos-ibar div{padding:4px 10px;border-left:1px solid #E0D38A;white-space:nowrap}
+    .pos-keys{display:flex;gap:3px;padding:0 8px 8px;flex-shrink:0}
+    .pos-k{flex:1;height:44px;font:inherit;font-size:12px;background:#F4F2EA;border:1px solid;border-color:#fff #404040 #404040 #fff;box-shadow:inset -1px -1px #808080;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer}
+    .pos-k i{font-style:normal;font-family:Consolas,monospace;font-weight:700;color:#1B5FA8}
+    .pos-k.main{flex:1.4;background:#B8E0C8;font-weight:700}.pos-k.main i{color:#0F6E56}.pos-k.red i{color:#C0392B}.pos-k.small{flex:.8;font-size:11px}
+    .pos-msg{padding:6px 12px;font-weight:700;font-size:14px}.pos-msg.ok{background:#D6F2DE;color:#0F6E56}.pos-msg.err{background:#FFD8D8;color:#B00000}.pos-msg.info{background:#E3EEF9;color:#1B3352}
+    .pos-dlg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:16;display:flex;align-items:center;justify-content:center}
+    .pos-dlg .box{background:#ECE9D8;border:1px solid #1B3352;min-width:380px;max-width:640px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+    .pos-dlg .ttl{background:linear-gradient(180deg,#2C4A6E,#1B3352);color:#fff;font-weight:700;padding:6px 10px}
+    .pos-dlg .in{padding:14px}
+    .pos-block{position:absolute;inset:42px 0 0 0;background:rgba(236,233,216,.92);z-index:3;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-size:16px}
+  </style>
+  <div class="pos-top">
+    <span class="t">🛒 شاشة الكاشير</span>
+    <span class="chip">فاتورة <b class="mono">${escapeHtml(f.invoice_number || '')}</b></span>
+    <span class="chip">الكاشير: <b>${escapeHtml(state.profile?.display_name || state.profile?.username || '')}</b></span>
+    ${state.shiftsAvailable ? (state.shift ? `<span class="chip">🟢 الوردية من ${new Date(state.shift.opened_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}${C ? ` — <b class="mono">${C.salesCount}</b> فاتورة · <b class="mono">${fmt(C.salesTotal)}</b>` : ''}</span>` : '<span class="chip" style="background:#B03A2E;">🔴 الوردية مقفولة</span>') : ''}
+    <span class="sp"></span>
+    ${held.length ? `<span class="chip">معلّقة: <b>${held.length}</b></span>` : ''}
+    <span class="chip mono" id="pos-clock">${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+    <button type="button" data-pos-close>✕ خروج</button>
+  </div>
+  <div class="pos-main" style="position:relative;">
+    ${noShift ? `<div class="pos-block"><i class="ti ti-cash-register" style="font-size:54px;color:#1B5FA8;"></i><b>لازم تفتح الوردية قبل البيع</b><span style="font-size:13px;color:#555;">اكتب العهدة (الفكة اللي في الدرج) وافتح الوردية</span><button type="button" class="pos-btn" data-pos-key="F11" style="height:48px;padding:0 30px;font-size:16px;font-weight:700;background:#B8E0C8;">فتح الوردية</button></div>` : ''}
+    <div style="display:flex;flex-direction:column;gap:6px;min-height:0;">
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input id="pos-scan" autocomplete="off" placeholder="امسح الباركود أو اكتب رقم الصنف" ${P.busy ? 'disabled' : ''} />
+        <button type="button" class="pos-btn" data-pos-key="F1" style="height:46px;padding:0 12px;">🔍 بحث صنف <span class="mono" style="color:#1B5FA8;">F1</span></button>
+      </div>
+      ${msg ? `<div class="pos-msg ${msg.kind}">${escapeHtml(msg.text)}</div>` : ''}
+      <div class="pos-sunk pos-lines">
+        <table>
+          <tr><th style="width:34px;">م</th><th style="width:130px;">رقم الصنف</th><th>الصنف</th><th style="width:140px;">الكمية</th><th style="width:90px;">السعر</th><th style="width:60px;">خصم</th><th style="width:100px;">الإجمالي</th><th style="width:36px;"></th></tr>
+          ${f.lines.map((l, i) => `<tr data-pos-line="${i}" class="${i === P.sel ? 'on' : ''}"><td>${i + 1}</td><td class="mono">${escapeHtml(l.sku || '')}</td><td>${escapeHtml(l.item_name || '')}</td>
+            <td><span class="pos-q"><button type="button" class="pos-btn" data-pos-minus="${i}">−</button><b class="mono" style="min-width:34px;text-align:center;display:inline-block;">${roundQty(l.quantity)}</b><button type="button" class="pos-btn" data-pos-plus="${i}">+</button></span></td>
+            <td class="pos-num">${fmt(l.unit_price)}</td><td class="pos-num">${Number(l.disc_pct) ? Number(l.disc_pct) + '%' : '—'}</td><td class="pos-num">${fmt(lineAmt(l))}</td>
+            <td><button type="button" class="pos-btn" data-pos-del="${i}" style="width:28px;height:26px;color:#C0392B;font-weight:700;">✕</button></td></tr>`).join('')
+            || `<tr><td colspan="8" style="text-align:center;color:#888;padding:40px 10px;font-size:15px;">${P.last ? `آخر فاتورة: <b class="mono">${escapeHtml(P.last.number)}</b> — ${fmt(P.last.total)}${P.last.change > 0.004 ? ` — الباقي <b class="mono">${fmt(P.last.change)}</b>` : ''}<br><br>` : ''}امسح أول صنف للزبون الجاي<div style="font-size:12px;margin-top:8px;color:#999;">لأكتر من حبة: اكتب الكمية ثم * ثم رقم الصنف (مثلاً <span class="mono">3*90915-YZZD2</span>) — الأسهم ↑↓ للتنقل، + و − للكمية، Delete للحذف</div></td></tr>`}
+        </table>
+      </div>
+      ${selIt ? `<div class="pos-ibar"><div>المحدد: <b>${escapeHtml(selIt.name)}</b></div><div>الرصيد: <b class="mono">${itemQtyForUser(selIt)}</b></div>${posCanEditPrice() ? `<div>سعر 2: <b class="mono">${fmt(bprice(selIt, 'price2') || 0)}</b></div><div>سعر 3: <b class="mono">${fmt(bprice(selIt, 'price3') || 0)}</b></div>` : ''}<div>البدائل: <b>${alts}</b></div>${selIt.location1 ? `<div>الموقع: <b class="mono">${escapeHtml(selIt.location1)}</b></div>` : ''}<div style="cursor:pointer;color:#8A5A00;" data-pos-fav-toggle="${selIt.id}">${posLS(POS_FAV_KEY, []).includes(selIt.id) ? '★ شيله من المفضلة' : '☆ أضفه للمفضلة'}</div></div>` : ''}
+      <div class="pos-sunk" style="background:#F7F5EE;">
+        <div style="display:flex;justify-content:space-between;padding:4px 8px 0;font-size:12px;"><b style="color:#1B3352;">⭐ الأصناف المفضلة (للمس)</b><span style="cursor:pointer;color:#555;" data-pos-fav-hide>${P.favHide ? 'إظهار ▴' : 'إخفاء ▾'}</span></div>
+        ${P.favHide ? '' : `<div class="pos-fav">${favs.map(it => `<button type="button" data-pos-fav="${it.id}" title="${escapeHtml(it.name)}">${escapeHtml(it.name.length > 26 ? it.name.slice(0, 26) + '…' : it.name)}<b>${fmt(getItemPriceForCustomer(it, f.customer_id) || 0)}</b></button>`).join('')}${favs.length < 6 ? `<button type="button" disabled style="color:#888;border-style:dashed;cursor:default;">اختار صنف من الفاتورة<br>واضغط «☆ أضفه للمفضلة»</button>` : ''}</div>`}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;min-height:0;">
+      <div class="pos-led"><div class="l">الإجمالي المطلوب ${cur ? '(' + escapeHtml(cur) + ')' : ''}</div><div class="v">${fmt(t.grandTotal)}</div></div>
+      <div class="pos-sunk pos-kv">
+        <span>الأصناف / القطع</span><span class="pos-num">${f.lines.length} / ${roundQty(pieces)}</span>
+        <span>قبل الخصم</span><span class="pos-num">${fmt(t.subtotal)}</span>
+        ${t.discount ? `<span>الخصم</span><span class="pos-num" style="color:#C0392B;">− ${fmt(t.discount)}</span>` : ''}
+        ${t.taxTotal ? `<span>الضريبة</span><span class="pos-num">${fmt(t.taxTotal)}</span>` : ''}
+        <span>العميل</span><span><input type="hidden" id="pos-customer" value="${escapeHtml(f.customer_id || '')}" /><b>${escapeHtml(cust ? cust.name : 'عميل نقدي')}</b> <span style="color:#1B5FA8;font-size:11px;cursor:pointer;" data-pos-key="F2">(F2 تغيير)</span>${cust ? ` <span style="color:#C0392B;font-size:11px;cursor:pointer;" data-pos-nocust>✕</span>` : ''}</span>
+      </div>
+      <div class="pos-pay">${methods.slice(0, 3).map(m => `<button type="button" class="pos-btn ${!P.mixed && P.method === m.name ? 'on' : ''}" data-pos-method="${escapeHtml(m.name)}">${isCashMethod(m.name) ? '💵' : '💳'} ${escapeHtml(m.name)}</button>`).join('')}<button type="button" class="pos-btn ${P.mixed ? 'on' : ''}" data-pos-key="F8">➗ مختلط</button></div>
+      ${P.mixed ? `<div class="pos-sunk" style="padding:8px 12px;display:grid;grid-template-columns:110px 1fr;gap:5px;align-items:center;">${methods.map(m => `<span>${escapeHtml(m.name)}</span><input class="pos-in" data-pos-mix="${escapeHtml(m.name)}" value="${escapeHtml(P.mixed[m.name] || '')}" inputmode="decimal" style="height:32px;font-size:17px;" />`).join('')}
+        <span style="font-size:12px;color:${Math.abs(posPayments().reduce((s, x) => s + x.amount, 0) - t.grandTotal) <= 0.01 ? '#0F6E56' : '#B00000'};grid-column:1/-1;">المجموع ${fmt(posPayments().reduce((s, x) => s + x.amount, 0))} من ${fmt(t.grandTotal)}</span></div>` : ''}
+      ${(P.mixed || isCashMethod(P.method)) ? `<div class="pos-sunk" style="padding:8px 12px;display:grid;grid-template-columns:110px 1fr;gap:6px;align-items:center;"><span>المبلغ المستلم${P.mixed ? ' (كاش)' : ''}</span><input id="pos-received" class="pos-in" value="${escapeHtml(P.received)}" inputmode="decimal" placeholder="${P.mixed ? '' : 'فاضي = بالضبط'}" /></div>
+      <div class="pos-change"><span>الباقي للزبون</span><span class="pos-num">${ch != null ? fmt(Math.max(0, ch)) : '0.00'}</span></div>
+      ${ch != null && ch < -0.005 ? `<div class="pos-msg err" style="font-size:13px;">ناقص ${fmt(-ch)}</div>` : ''}` : ''}
+      <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:6px;">
+        <button type="button" class="pos-btn" data-pos-key="F9" ${P.busy || !f.lines.length ? 'disabled' : ''} style="height:58px;font-size:18px;font-weight:700;background:#B8E0C8;">${P.busy ? '…جاري' : '✔ دفع وطباعة'} <span class="mono" style="font-size:13px;color:#0F6E56;">F9</span></button>
+        <button type="button" class="pos-btn" data-pos-key="F6" ${!f.lines.length ? 'disabled' : ''} style="height:58px;font-size:15px;">⏸ تعليق <span class="mono" style="font-size:12px;color:#1B5FA8;">F6</span></button>
+      </div>
+      <div class="pos-sunk" style="padding:6px 12px;font-size:12px;line-height:1.9;">
+        ${P.last ? `<div style="display:flex;justify-content:space-between;"><span>آخر فاتورة: <b class="mono">${escapeHtml(P.last.number)}</b> — <b class="mono">${fmt(P.last.total)}</b></span><span style="color:#1B5FA8;cursor:pointer;" data-pos-reprint>🖨 إعادة طباعة</span></div>` : ''}
+        ${C ? `<div style="display:flex;justify-content:space-between;color:#444;"><span>الوردية: <b class="mono">${C.salesCount}</b> فاتورة</span><span>${Object.entries(C.byMethod || {}).map(([m, a]) => `${escapeHtml(m)} <b class="mono">${fmt(a)}</b>`).join(' · ')}</span></div>` : ''}
+        <label style="display:flex;gap:6px;align-items:center;color:#444;cursor:pointer;"><input type="checkbox" data-pos-print ${P.print !== false ? 'checked' : ''}> طباعة الإيصال بعد الدفع</label>
+      </div>
+    </div>
+  </div>
+  <div class="pos-keys">
+    ${fk('F1', 'بحث صنف')}${fk('F2', 'العميل')}${fk('F4', 'الكمية')}${posCanEditPrice() ? fk('F3', 'خصم', 'small') + fk('F5', 'السعر', 'small') : ''}${fk('F6', 'تعليق')}${fk('F7', 'المعلّقة' + (held.length ? ' (' + held.length + ')' : ''))}${fk('F9', 'دفع وطباعة', 'main')}${fk('F10', 'مرتجع', 'small')}${fk('F11', state.shift ? 'إقفال الوردية' : 'الوردية', 'small')}${fk('Esc', 'إلغاء الفاتورة', 'red small')}
+  </div>
+  ${renderPosDialog()}
+</div>`;
+}
+function renderPosDialog() {
+  const P = state.pos, d = P.dlg; if (!d) return '';
+  const f = state.salesForm, t = posTotals();
+  const box = (title, body, ok) => `<div class="pos-dlg"><div class="box"><div class="ttl">${title}</div><div class="in">${body}<div style="display:flex;gap:6px;justify-content:center;margin-top:12px;">${ok ? `<button type="button" class="pos-btn" data-pos-dlg-ok style="height:38px;padding:0 24px;font-weight:700;background:#B8E0C8;">موافق (Enter)</button>` : ''}<button type="button" class="pos-btn" data-pos-dlg-x style="height:38px;padding:0 20px;">إلغاء (Esc)</button></div></div></div></div>`;
+  const inp = (v, ph) => `<input id="pos-dlg-in" class="pos-in" value="${escapeHtml(v)}" placeholder="${ph || ''}" inputmode="decimal" style="font-size:24px;height:46px;" />`;
+  if (d.kind === 'qty') { const l = f.lines[P.sel]; return box('تعديل الكمية — ' + escapeHtml(l ? l.item_name : ''), inp(l ? roundQty(l.quantity) : '1'), true); }
+  if (d.kind === 'disc') return box('خصم على الفاتورة', `<div style="margin-bottom:6px;font-size:13px;">الإجمالي قبل الخصم: <b class="mono">${fmt(t.subtotal)}</b> — اكتب مبلغ أو نسبة (مثلاً <span class="mono">10%</span>)</div>${inp(Number(f.discount) ? f.discount : '', '0')}`, true);
+  if (d.kind === 'price') {
+    const l = f.lines[P.sel], it = l ? state.items.find(x => x.id === l.item_id) : null; if (!it) return '';
+    const opts = [['سعر 1', bprice(it, 'price')], ['سعر 2', bprice(it, 'price2')], ['سعر 3', bprice(it, 'price3')]].filter(x => Number(x[1]) > 0);
+    return box('سعر الصنف — ' + escapeHtml(it.name), `<div style="display:flex;gap:6px;margin-bottom:10px;">${opts.map(([n, v]) => `<button type="button" class="pos-btn" data-pos-price="${v}" style="flex:1;height:46px;flex-direction:column;">${n}<b class="mono">${fmt(v)}</b></button>`).join('')}</div>${inp(l.unit_price)}<div style="font-size:11.5px;color:#666;margin-top:6px;">التكلفة: <span class="mono">${fmt(it.cost)}</span></div>`, true);
+  }
+  if (d.kind === 'held') {
+    const h = posLS(posHeldKey(), []);
+    return box('الفواتير المعلّقة', h.length ? `<div class="pos-sunk" style="max-height:50vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;">${h.map(x => `<tr style="border-bottom:1px solid #EEE;"><td style="padding:8px;" class="mono">${escapeHtml(x.at)}</td><td style="padding:8px;">${x.lines.length} صنف${x.walkin_customer_name ? ' — ' + escapeHtml(x.walkin_customer_name) : ''}</td><td style="padding:8px;" class="pos-num">${fmt(x.total)}</td><td style="padding:4px;"><button type="button" class="pos-btn" data-pos-recall="${x.id}" style="height:34px;padding:0 14px;font-weight:700;background:#B8E0C8;">استرجاع</button></td><td style="padding:4px;"><button type="button" class="pos-btn" data-pos-drop="${x.id}" style="height:34px;padding:0 10px;color:#C0392B;">حذف</button></td></tr>`).join('')}</table></div>` : '<div style="padding:20px;text-align:center;color:#666;">ما في فواتير معلّقة</div>', false);
+  }
+  if (d.kind === 'cancel') return box('إلغاء الفاتورة', `<div style="font-size:15px;">تلغي الفاتورة الحالية (${f.lines.length} صنف — ${fmt(t.grandTotal)})؟</div>`, true);
+  return '';
+}
+function posDlgOk() {
+  const P = state.pos, d = P.dlg, f = state.salesForm; if (!d) return;
+  const v = String(document.getElementById('pos-dlg-in')?.value || '').trim().replace(/,/g, '');
+  if (d.kind === 'qty') { posSetQty(P.sel, Number(v)); }
+  else if (d.kind === 'disc') {
+    const sub = calcLineTotals(f).subtotal; let a = 0;
+    if (/%$/.test(v)) a = sub * (Number(v.replace('%', '')) || 0) / 100; else a = Number(v) || 0;
+    if (a < 0 || a > sub) { posBeep(false); posMsg('الخصم غير صحيح', 'err'); return; }
+    f.discount = (Math.round(a * 100) / 100).toFixed(2); P.received = ''; P.mixed = null;
+  } else if (d.kind === 'price') {
+    const l = f.lines[P.sel], it = l && state.items.find(x => x.id === l.item_id), pv = Number(v);
+    if (!(pv > 0)) { posBeep(false); return; }
+    if (it && pv < Number(it.cost || 0) && !feat('allow_below_cost')) { posBeep(false); posMsg('السعر أقل من التكلفة', 'err'); return; }
+    l.unit_price = pv; P.received = ''; P.mixed = null;
+  } else if (d.kind === 'cancel') { posNewInvoice(); posMsg('اتلغت الفاتورة', 'info'); }
+  P.dlg = null; renderPosLight();
+}
+async function posKey(k) {
+  const P = state.pos, f = state.salesForm; if (!P || P.busy) return;
+  if (k === 'F1') { openItemPicker({ targetSelectId: 'si-item-select', qtyId: 'si-item-qty', priceId: 'si-item-price', priceKey: 'price', addBtnId: 'si-add-line' }); return; }
+  if (k === 'F2') { state.partyPickerContext = { inputId: 'pos-customer', partyType: 'customer' }; state.partyPickerQuery = ''; state.showPartyPicker = true; render(); return; }
+  if (k === 'F4') { if (!f.lines[P.sel]) { posMsg('اختار صنف من الجدول أول', 'err'); renderPosLight(); return; } P.dlg = { kind: 'qty' }; }
+  else if (k === 'F3') { if (!posCanEditPrice()) return; if (!f.lines.length) return; P.dlg = { kind: 'disc' }; }
+  else if (k === 'F5') { if (!posCanEditPrice() || !f.lines[P.sel]) return; P.dlg = { kind: 'price' }; }
+  else if (k === 'F6') { posHold(); }
+  else if (k === 'F7') { P.dlg = { kind: 'held' }; }
+  else if (k === 'F8') { P.mixed = P.mixed ? null : { [posCashMethod()]: '' }; P.received = ''; }
+  else if (k === 'F9') { await posPay(); return; }
+  else if (k === 'F10') {
+    if (!hasPerm('sales_return', 'can_add')) { posMsg('ما عندك صلاحية المرتجعات', 'err'); renderPosLight(); return; }
+    if (!state.salesReturns || !state.salesReturns.length) await loadSalesReturns();
+    P.suspended = 'return';
+    state.salesReturnForm = newSalesReturnForm();
+    state.salesReturnForm.return_number = nextDocNumber(state.salesReturns, 'return_number', 'SR', 4);
+    state.salesReturnForm.payment_method = posCashMethod();
+    state.editingSalesReturnId = null; state.docJournalNumbers = [];
+    state.activeSection = '__sales_returns__'; state.showSalesForm = false; state.showSalesReturnForm = true; render(); return;
+  }
+  else if (k === 'F11') { await openShiftModal(); return; }
+  else if (k === 'Esc') { if (P.dlg) P.dlg = null; else if (f.lines.length) P.dlg = { kind: 'cancel' }; }
+  renderPosLight();
+  if (P.dlg) setTimeout(() => { const el = document.getElementById('pos-dlg-in'); if (el) { el.focus(); el.select(); } }, 30);
+}
+const POS_KEYS = { F1: 1, F2: 1, F3: 1, F4: 1, F5: 1, F6: 1, F7: 1, F8: 1, F9: 1, F10: 1, F11: 1, Escape: 1 };
+document.addEventListener('keydown', ev => {
+  const P = state.pos; if (!P || P.suspended) return;
+  if (state.itemPickerOpen || state.showPartyPicker || state.showShift || state.showSalesPayDialog || state.cmdk) return;
+  const k = ev.key;
+  if (P.dlg) {
+    if (k === 'Escape') { ev.preventDefault(); ev.stopImmediatePropagation(); P.dlg = null; renderPosLight(); return; }
+    if (k === 'Enter' && P.dlg.kind !== 'held') { ev.preventDefault(); ev.stopImmediatePropagation(); posDlgOk(); return; }
+    return;
+  }
+  if (POS_KEYS[k]) { ev.preventDefault(); ev.stopImmediatePropagation(); posKey(k === 'Escape' ? 'Esc' : k); return; }
+  if ((ev.ctrlKey || ev.metaKey) && (k === 'p' || k === 'P')) { ev.preventDefault(); ev.stopImmediatePropagation(); posKey('F9'); return; }
+  const t = ev.target, inScan = t && t.id === 'pos-scan', scanEmpty = inScan && !t.value;
+  if (inScan && k === 'Enter') {
+    ev.preventDefault(); ev.stopImmediatePropagation();
+    if (t.value.trim()) { const v = t.value; t.value = ''; posScan(v); renderPosLight(); }
+    else if (state.salesForm.lines.length) { const r = document.getElementById('pos-received'); if (r) { r.focus(); r.select(); } else posKey('F9'); }
+    return;
+  }
+  if (t && t.id === 'pos-received' && k === 'Enter') { ev.preventDefault(); ev.stopImmediatePropagation(); posKey('F9'); return; }
+  if ((scanEmpty || !inScan && !(t && /INPUT|TEXTAREA|SELECT/.test(t.tagName))) && ['ArrowUp', 'ArrowDown', '+', '-', 'Delete'].includes(k) && state.salesForm.lines.length) {
+    ev.preventDefault(); ev.stopImmediatePropagation();
+    const n = state.salesForm.lines.length;
+    if (k === 'ArrowUp') P.sel = Math.max(0, (P.sel < 0 ? n : P.sel) - 1);
+    else if (k === 'ArrowDown') P.sel = Math.min(n - 1, P.sel + 1);
+    else if (k === '+' && state.salesForm.lines[P.sel]) posSetQty(P.sel, Number(state.salesForm.lines[P.sel].quantity) + 1);
+    else if (k === '-' && state.salesForm.lines[P.sel]) posSetQty(P.sel, Number(state.salesForm.lines[P.sel].quantity) - 1);
+    else if (k === 'Delete' && state.salesForm.lines[P.sel]) { state.salesForm.lines.splice(P.sel, 1); P.sel = Math.min(P.sel, state.salesForm.lines.length - 1); P.received = ''; P.mixed = null; }
+    if (state.salesForm.lines[P.sel]) state.activeBarItemId = state.salesForm.lines[P.sel].item_id;
+    renderPosLight();
+  }
+}, true);
+document.addEventListener('click', ev => {
+  const P = state.pos; if (!P || P.suspended || !ev.target.closest) return;
+  const t = ev.target, root = t.closest('#pos-root'); if (!root) return;
+  const g = s => t.closest(s);
+  let b;
+  if (g('[data-pos-close]')) { closePos(); return; }
+  if ((b = g('[data-pos-key]'))) { posKey(b.dataset.posKey); return; }
+  if ((b = g('[data-pos-plus]'))) { const i = Number(b.dataset.posPlus); P.sel = i; posSetQty(i, Number(state.salesForm.lines[i].quantity) + 1); renderPosLight(); return; }
+  if ((b = g('[data-pos-minus]'))) { const i = Number(b.dataset.posMinus); P.sel = i; posSetQty(i, Number(state.salesForm.lines[i].quantity) - 1); renderPosLight(); return; }
+  if ((b = g('[data-pos-del]'))) { const i = Number(b.dataset.posDel); state.salesForm.lines.splice(i, 1); P.sel = Math.min(i, state.salesForm.lines.length - 1); P.received = ''; P.mixed = null; renderPosLight(); return; }
+  if ((b = g('[data-pos-line]'))) { P.sel = Number(b.dataset.posLine); state.activeBarItemId = state.salesForm.lines[P.sel]?.item_id; renderPosLight(); return; }
+  if ((b = g('[data-pos-fav]'))) { posAdd(state.items.find(x => x.id === b.dataset.posFav), 1); renderPosLight(); return; }
+  if ((b = g('[data-pos-fav-toggle]'))) { posToggleFav(b.dataset.posFavToggle); renderPosLight(); return; }
+  if (g('[data-pos-fav-hide]')) { P.favHide = !P.favHide; posSetLS(POS_FAV_HIDE, P.favHide); renderPosLight(); return; }
+  if ((b = g('[data-pos-method]'))) { P.method = b.dataset.posMethod; P.mixed = null; P.received = ''; renderPosLight(); if (isCashMethod(P.method)) setTimeout(() => document.getElementById('pos-received')?.focus(), 40); return; }
+  if (g('[data-pos-reprint]')) { posReprint(); return; }
+  if (g('[data-pos-dlg-ok]')) { posDlgOk(); return; }
+  if (g('[data-pos-dlg-x]')) { P.dlg = null; renderPosLight(); return; }
+  if ((b = g('[data-pos-recall]'))) { posRecall(Number(b.dataset.posRecall)); renderPosLight(); return; }
+  if ((b = g('[data-pos-drop]'))) { posSetLS(posHeldKey(), posLS(posHeldKey(), []).filter(x => x.id !== Number(b.dataset.posDrop))); renderPosLight(); return; }
+  if ((b = g('[data-pos-price]'))) { const el = document.getElementById('pos-dlg-in'); if (el) { el.value = b.dataset.posPrice; posDlgOk(); } return; }
+  // ضغطة على أي مكان فاضي ترجّع المؤشر لخانة الباركود
+  if (!g('input,button,select,textarea,[data-pos-line]')) posFocus();
+}, true);
+document.addEventListener('input', ev => {
+  const P = state.pos; if (!P || !ev.target) return;
+  if (ev.target.id === 'pos-received') { P.received = ev.target.value; clearTimeout(window.__posRT); window.__posRT = setTimeout(() => { const pos = ev.target.selectionStart; renderPosLight(); const el = document.getElementById('pos-received'); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (_) {} } }, 250); }
+  else if (ev.target.dataset && ev.target.dataset.posMix !== undefined) { P.mixed = P.mixed || {}; P.mixed[ev.target.dataset.posMix] = ev.target.value; clearTimeout(window.__posRT); const id = ev.target.dataset.posMix; window.__posRT = setTimeout(() => { renderPosLight(); const el = document.querySelector(`[data-pos-mix="${CSS.escape(id)}"]`); if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} } }, 350); }
+}, true);
+document.addEventListener('change', ev => { if (state.pos && ev.target.matches && ev.target.matches('[data-pos-print]')) state.pos.print = ev.target.checked; }, true);
+
+function posSetCustomer(id) {
+  const f = state.salesForm; f.customer_id = id || ''; f.cash_customer_mode = id ? 'registered' : 'walkin'; f.invoice_type = 'نقدي';
+  f.lines.forEach(l => { const it = state.items.find(x => x.id === l.item_id); if (it && !Number(l.disc_pct)) { const p = Number(getItemPriceForCustomer(it, f.customer_id)) || 0; if (p > 0) l.unit_price = p; } });
+  if (state.pos) { state.pos.received = ''; state.pos.mixed = null; }
+}
+document.addEventListener('change', ev => { if (state.pos && ev.target && ev.target.id === 'pos-customer') { posSetCustomer(ev.target.value); setTimeout(renderPosLight, 0); } }, true);
+document.addEventListener('click', ev => { if (state.pos && ev.target.closest && ev.target.closest('[data-pos-nocust]')) { posSetCustomer(''); renderPosLight(); } }, true);
+
+// =====================================================================
+// 📊 تقرير الورديات: اليوم / الأسبوع / الشهر / فترة — لكل وردية ولكل كاشير، مع العجز والزيادة
+// =====================================================================
+function srDate(d) { return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
+function srRange(kind) {
+  const now = new Date(), t = srDate(now), d = new Date(now);
+  if (kind === 'today') return [t, t];
+  if (kind === 'yesterday') { d.setDate(d.getDate() - 1); const y = srDate(d); return [y, y]; }
+  if (kind === 'week') { const s = new Date(now); s.setDate(s.getDate() - ((s.getDay() + 1) % 7)); return [srDate(s), t]; }   // الأسبوع يبدأ السبت
+  if (kind === 'month') return [t.slice(0, 8) + '01', t];
+  if (kind === 'lastmonth') { const s = new Date(now.getFullYear(), now.getMonth() - 1, 1), e = new Date(now.getFullYear(), now.getMonth(), 0); return [srDate(s), srDate(e)]; }
+  return null;
+}
+async function openShiftsReport(kind) {
+  if (!(isAdmin() || canApprove() || canViewReports())) { showToast('تقرير الورديات للمدير أو من عنده صلاحية التقارير', 'error'); return; }
+  const r = srRange(kind || 'today');
+  state.sr = { kind: kind || 'today', from: r[0], to: r[1], user: '', rows: null, loading: true };
+  state.showShiftsReport = true; state.openDropdown = null; render();
+  await loadShiftsReport();
+}
+async function loadShiftsReport() {
+  const S = state.sr; if (!S) return;
+  S.loading = true; render();
+  const from = new Date(S.from + 'T00:00:00').toISOString(), to = new Date(S.to + 'T23:59:59.999').toISOString();
+  let q = brq(sb.from('cashier_shifts').select('*')).gte('opened_at', from).lte('opened_at', to).order('opened_at');
+  const { data, error } = await q;
+  if (error) { S.rows = []; S.error = /cashier_shifts|relation|schema cache/i.test(error.message) ? 'جدول الورديات غير موجود — شغّل ملف 35_ورديات_الكاشير.sql' : error.message; S.loading = false; render(); return; }
+  S.error = null;
+  const rows = data || [];
+  // الورديات المفتوحة: نحسب أرقامها الحالية
+  await Promise.all(rows.filter(r => !r.closed_at).map(async r => { try { r.totals = await computeShiftTotals(r); r.expected_cash = r.totals.expected; } catch (_) {} }));
+  S.rows = rows; S.loading = false; render();
+}
+function srCalc(rows) {
+  const other = t => Object.entries((t && t.byMethod) || {}).filter(([m]) => !isCashMethod(m)).reduce((s, [, a]) => s + Number(a || 0), 0);
+  return rows.map(r => {
+    const t = r.totals || {};
+    return { r, user: r.username || '—', open: !r.closed_at, count: Number(t.salesCount || 0), sales: Number(t.salesTotal || 0), cash: Number(t.salesCash || 0), other: other(t),
+      credit: Number(t.creditSales || 0), returns: Number(t.returnsTotal || 0), opening: Number(r.opening_cash || 0), expected: Number(r.expected_cash ?? t.expected ?? 0),
+      counted: r.closed_at ? Number(r.counted_cash || 0) : null, diff: r.closed_at ? Number(r.difference || 0) : null };
+  });
+}
+function renderShiftsReport() {
+  const S = state.sr, cur = feat('currency_abbr_ar') || '';
+  const all = srCalc(S.rows || []), users = [...new Set(all.map(x => x.user))];
+  const list = S.user ? all.filter(x => x.user === S.user) : all;
+  const sum = (a, k) => a.reduce((s, x) => s + (Number(x[k]) || 0), 0);
+  const byUser = users.filter(u => !S.user || u === S.user).map(u => { const a = all.filter(x => x.user === u); return { u, n: a.length, count: sum(a, 'count'), sales: sum(a, 'sales'), cash: sum(a, 'cash'), other: sum(a, 'other'), returns: sum(a, 'returns'), diff: sum(a.filter(x => x.diff != null), 'diff'), short: a.filter(x => x.diff != null && x.diff < -0.009).length, over: a.filter(x => x.diff != null && x.diff > 0.009).length }; });
+  const dcol = v => v == null ? '' : Math.abs(v) < 0.01 ? 'color:#0F6E56;' : v < 0 ? 'color:#C0392B;font-weight:700;' : 'color:#BA7517;font-weight:700;';
+  const dtxt = v => v == null ? '<span style="color:#1B5FA8;">مفتوحة</span>' : Math.abs(v) < 0.01 ? '✓ مطابق' : (v < 0 ? 'عجز ' : 'زيادة ') + fmt(Math.abs(v));
+  const dt = s => s ? new Date(s).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  const qb = (k, l) => `<button type="button" class="sx-btn" data-sr-kind="${k}" style="height:26px;min-width:0;padding:0 10px;flex-direction:row;${S.kind === k ? 'background:#B8E0C8;font-weight:700;' : ''}">${l}</button>`;
+  const box = (l, v, c) => `<div style="background:#fff;border:2px inset #D4D0C8;padding:5px 8px;text-align:center;"><div style="font-size:11px;">${l}</div><div class="mono" style="font-size:15px;font-weight:800;color:${c || '#1B3352'};">${v}</div></div>`;
+  const totDiff = sum(list.filter(x => x.diff != null), 'diff');
+  return `${sxStyles()}
+  <div id="sr-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20;">
+    <div class="print-area sx-win" style="border:1px solid #1B3352;border-radius:6px;width:100%;max-width:1200px;max-height:94vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
+      <div class="win-title"><span>تقرير الورديات</span><button data-sr-close class="no-print" style="width:18px;height:18px;background:#D9534F;border:none;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-x" style="color:#fff;font-size:12px;"></i></button></div>
+      <div class="no-print" style="padding:10px 14px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        ${qb('today', 'اليوم')}${qb('yesterday', 'أمس')}${qb('week', 'هذا الأسبوع')}${qb('month', 'هذا الشهر')}${qb('lastmonth', 'الشهر الماضي')}
+        <span class="sx-lbl" style="margin-inline-start:10px;">من</span><input type="date" class="sx-in" data-sr-from value="${escapeHtml(S.from)}" style="width:140px;" />
+        <span class="sx-lbl">إلى</span><input type="date" class="sx-in" data-sr-to value="${escapeHtml(S.to)}" style="width:140px;" />
+        <span class="sx-lbl" style="margin-inline-start:10px;">الكاشير</span><select class="sx-in" data-sr-user style="width:150px;"><option value="">الكل</option>${users.map(u => `<option ${S.user === u ? 'selected' : ''}>${escapeHtml(u)}</option>`).join('')}</select>
+      </div>
+      <div class="print-only" style="padding:10px 14px 0;text-align:center;${printStyleVars()}"><div style="font-weight:800;font-size:15px;">${escapeHtml(state.company?.name_ar || '')}</div><div style="font-weight:700;margin-top:4px;">تقرير الورديات من ${escapeHtml(S.from)} إلى ${escapeHtml(S.to)}${S.user ? ' — ' + escapeHtml(S.user) : ''}</div></div>
+      ${S.error ? `<div style="margin:10px 14px;padding:8px 12px;background:#FFD8D8;color:#B00000;font-weight:700;">${escapeHtml(S.error)}</div>` : ''}
+      <div style="padding:10px 14px 0;display:grid;grid-template-columns:repeat(6,1fr);gap:6px;">
+        ${box('عدد الورديات', list.length)}${box('عدد الفواتير', sum(list, 'count'))}${box('المبيعات', fmt(sum(list, 'sales')))}${box('كاش', fmt(sum(list, 'cash')), '#0F6E56')}${box('شبكة / تحويل', fmt(sum(list, 'other')), '#1B5FA8')}${box('العجز / الزيادة', (totDiff < -0.009 ? '− ' : totDiff > 0.009 ? '+ ' : '') + fmt(Math.abs(totDiff)), Math.abs(totDiff) < 0.01 ? '#0F6E56' : totDiff < 0 ? '#C0392B' : '#BA7517')}
+      </div>
+      <div style="padding:10px 14px 0;">
+        <div class="sx-lbl" style="text-align:right;margin-bottom:4px;">الورديات</div>
+        <div style="max-height:min(36vh,330px);overflow:auto;border:1px solid #919B9C;background:#fff;" class="print-scroll">
+          <table class="sx-grid" style="border:none;">
+            <tr><th style="width:30px;">م</th><th>الكاشير</th><th style="width:100px;">فتح</th><th style="width:100px;">إقفال</th><th style="width:60px;">فواتير</th><th style="width:95px;">المبيعات</th><th style="width:90px;">كاش</th><th style="width:90px;">شبكة/تحويل</th><th style="width:80px;">مرتجعات</th><th style="width:80px;">العهدة</th><th style="width:90px;">المتوقع بالدرج</th><th style="width:90px;">الفعلي</th><th style="width:110px;">النتيجة</th></tr>
+            ${S.loading ? `<tr><td colspan="13" style="text-align:center;padding:18px;color:#666;">جاري التحميل…</td></tr>` : list.map((x, i) => `<tr><td class="sx-num" style="text-align:center;">${i + 1}</td><td>${escapeHtml(x.user)}</td><td class="mono">${dt(x.r.opened_at)}</td><td class="mono">${dt(x.r.closed_at)}</td>
+              <td class="sx-num" style="text-align:center;">${x.count}</td><td class="sx-num">${fmt(x.sales)}</td><td class="sx-num">${fmt(x.cash)}</td><td class="sx-num">${fmt(x.other)}</td><td class="sx-num">${x.returns ? fmt(x.returns) : ''}</td>
+              <td class="sx-num">${fmt(x.opening)}</td><td class="sx-num">${fmt(x.expected)}</td><td class="sx-num">${x.counted == null ? '' : fmt(x.counted)}</td><td style="${dcol(x.diff)}">${dtxt(x.diff)}</td></tr>`).join('') || `<tr><td colspan="13" style="text-align:center;padding:18px;color:#666;">ما في ورديات في الفترة دي</td></tr>`}
+          </table>
+        </div>
+      </div>
+      <div style="padding:10px 14px 0;">
+        <div class="sx-lbl" style="text-align:right;margin-bottom:4px;">ملخص لكل كاشير</div>
+        <table class="sx-grid">
+          <tr><th>الكاشير</th><th style="width:70px;">ورديات</th><th style="width:70px;">فواتير</th><th style="width:100px;">المبيعات</th><th style="width:95px;">كاش</th><th style="width:95px;">شبكة/تحويل</th><th style="width:90px;">مرتجعات</th><th style="width:110px;">صافي العجز/الزيادة</th><th style="width:80px;">مرات العجز</th><th style="width:80px;">مرات الزيادة</th></tr>
+          ${byUser.map(u => `<tr><td><b>${escapeHtml(u.u)}</b></td><td class="sx-num" style="text-align:center;">${u.n}</td><td class="sx-num" style="text-align:center;">${u.count}</td><td class="sx-num">${fmt(u.sales)}</td><td class="sx-num">${fmt(u.cash)}</td><td class="sx-num">${fmt(u.other)}</td><td class="sx-num">${u.returns ? fmt(u.returns) : ''}</td>
+            <td class="sx-num" style="${dcol(u.diff)}">${Math.abs(u.diff) < 0.01 ? '✓ 0.00' : (u.diff < 0 ? '− ' : '+ ') + fmt(Math.abs(u.diff))}</td><td class="sx-num" style="text-align:center;${u.short ? 'color:#C0392B;font-weight:700;' : ''}">${u.short || ''}</td><td class="sx-num" style="text-align:center;">${u.over || ''}</td></tr>`).join('') || `<tr><td colspan="10" style="text-align:center;color:#666;">—</td></tr>`}
+        </table>
+        <div class="no-print" style="font-size:10.5px;color:#6E6D5F;margin-top:6px;">المتوقع بالدرج = العهدة + مبيعات الكاش + سندات القبض كاش − المرتجعات الكاش − سندات الصرف كاش. الورديات المفتوحة أرقامها لحظية ونتيجتها بتظهر بعد الإقفال.</div>
+      </div>
+      <div class="no-print" style="display:flex;justify-content:center;gap:3px;padding:10px 14px 12px;">
+        <button type="button" class="sx-btn" data-sr-reload><i class="ti ti-refresh" style="color:#1B5FA8;"></i>تحديث</button>
+        <button type="button" class="sx-btn" data-sr-print><i class="ti ti-printer" style="color:#2C4A6E;"></i>طباعة</button>
+        <button type="button" class="sx-btn" data-sr-excel><i class="ti ti-file-spreadsheet" style="color:#1D6F42;"></i>Excel</button>
+        <button type="button" class="sx-btn" data-sr-close><i class="ti ti-door-exit" style="color:#C0392B;"></i>خروج</button>
+      </div>
+    </div>
+  </div>`;
+}
+document.addEventListener('click', async ev => {
+  if (!state.showShiftsReport || !ev.target.closest) return;
+  const t = ev.target, S = state.sr; let b;
+  if (t.closest('[data-sr-close]')) { state.showShiftsReport = false; state.sr = null; render(); return; }
+  if ((b = t.closest('[data-sr-kind]'))) { const r = srRange(b.dataset.srKind); S.kind = b.dataset.srKind; S.from = r[0]; S.to = r[1]; await loadShiftsReport(); return; }
+  if (t.closest('[data-sr-reload]')) { await loadShiftsReport(); return; }
+  if (t.closest('[data-sr-print]')) { window.print(); return; }
+  if (t.closest('[data-sr-excel]')) {
+    const list = srCalc(S.rows || []).filter(x => !S.user || x.user === S.user);
+    exportFormattedAccountingSheet(`تقرير الورديات ${S.from} - ${S.to}.xlsx`, 'الورديات', ['الكاشير', 'فتح', 'إقفال', 'فواتير', 'المبيعات', 'كاش', 'شبكة/تحويل', 'مرتجعات', 'العهدة', 'المتوقع', 'الفعلي', 'الفرق'],
+      list.map(x => [x.user, x.r.opened_at ? new Date(x.r.opened_at).toLocaleString('en-GB') : '', x.r.closed_at ? new Date(x.r.closed_at).toLocaleString('en-GB') : 'مفتوحة', x.count, x.sales, x.cash, x.other, x.returns, x.opening, x.expected, x.counted == null ? '' : x.counted, x.diff == null ? '' : x.diff]));
+  }
+}, true);
+document.addEventListener('change', async ev => {
+  if (!state.showShiftsReport || !ev.target.matches) return;
+  const S = state.sr;
+  if (ev.target.matches('[data-sr-from]') || ev.target.matches('[data-sr-to]')) { S.kind = 'custom'; S.from = document.querySelector('[data-sr-from]').value || S.from; S.to = document.querySelector('[data-sr-to]').value || S.to; await loadShiftsReport(); }
+  if (ev.target.matches('[data-sr-user]')) { S.user = ev.target.value; render(); }
+}, true);
+
+// قائمة الأصناف بصفحات (آلاف الأصناف ما تنرسم مرة وحدة)
+function itemsPageInfo(total) {
+  const size = Number(state.itemsPageSize) || 100, pages = Math.max(1, Math.ceil(total / size));
+  const page = Math.min(Math.max(0, Number(state.itemsPage) || 0), pages - 1);
+  return { size, pages, page, from: page * size, to: Math.min(total, (page + 1) * size) };
+}
+function renderItemsPager(total) {
+  if (total <= 50) return '';
+  const P = itemsPageInfo(total), btn = (pg, lbl, dis) => `<button type="button" class="btn" data-items-page="${pg}" ${dis ? 'disabled' : ''} style="padding:4px 10px;min-width:0;">${lbl}</button>`;
+  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:space-between;padding:8px 2px 0;font-size:12px;color:#5F5E5A;">
+    <span>عرض <b class="mono">${(P.from + 1).toLocaleString('en-US')}–${P.to.toLocaleString('en-US')}</b> من <b class="mono">${total.toLocaleString('en-US')}</b></span>
+    <span style="display:flex;gap:4px;align-items:center;">${btn(0, '⏮ الأول', P.page === 0)}${btn(P.page - 1, '‹ السابق', P.page === 0)}
+      <span class="mono" style="padding:0 6px;">صفحة ${P.page + 1} / ${P.pages}</span>${btn(P.page + 1, 'التالي ›', P.page >= P.pages - 1)}${btn(P.pages - 1, 'الأخير ⏭', P.page >= P.pages - 1)}
+      <select data-items-size class="input" style="width:auto;height:28px;padding:0 6px;">${[50, 100, 200, 500].map(n => `<option value="${n}" ${P.size === n ? 'selected' : ''}>${n} بالصفحة</option>`).join('')}</select></span>
+  </div>`;
+}
+document.addEventListener('click', ev => { const b = ev.target.closest && ev.target.closest('[data-items-page]'); if (!b || b.disabled) return; state.itemsPage = Number(b.dataset.itemsPage) || 0; render(); }, true);
+document.addEventListener('change', ev => { if (ev.target.matches && ev.target.matches('[data-items-size]')) { state.itemsPageSize = Number(ev.target.value) || 100; state.itemsPage = 0; render(); } }, true);
+function renderItemsSection(itemsAll, lowStock) {
+  const PI = itemsPageInfo(itemsAll.length), items = itemsAll.slice(PI.from, PI.to);
   return `
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
@@ -10670,6 +11304,7 @@ function renderItemsSection(items, lowStock) {
           }).join('')}
           ${items.length === 0 ? `<div style="padding:20px;text-align:center;font-size:12.5px;color:#6E6D5F;">${t('no_results')}</div>` : ''}
         </div>
+        ${renderItemsPager(itemsAll.length)}
       </div>`;
 }
 
@@ -13249,7 +13884,7 @@ function renderTabContent() {
     return `<div>
       <div class="ic-grid" style="grid-template-columns:110px 1fr 60px 90px auto;">
         <label class="sx-lbl">الصنف المكوّن</label>
-        <select id="bundle-item-select" class="sx-in"><option value="">اختر صنف...</option>${others.map(it => `<option value="${it.id}">${escapeHtml(it.sku)} - ${escapeHtml(it.name)}</option>`).join('')}</select>
+        <input id="bundle-item-q" class="sx-in" data-item-pick="bundle-item-select" list="bundle-item-dl" placeholder="اكتب رقم الصنف أو اسمه..." autocomplete="off" /><datalist id="bundle-item-dl"></datalist><input type="hidden" id="bundle-item-select" value="" />
         <label class="sx-lbl">الكمية</label>
         <input id="bundle-qty" class="sx-in mono" style="text-align:left;" value="1" />
         <button id="bundle-add-btn" type="button" class="sx-btn"><i class="ti ti-plus" style="color:#0F6E56;"></i>إضافة</button>
@@ -13266,7 +13901,7 @@ function renderTabContent() {
     return `<div>
       <div class="ic-grid" style="grid-template-columns:110px 1fr auto;">
         <label class="sx-lbl">الصنف البديل</label>
-        <select id="relation-item-select" class="sx-in"><option value="">اختر صنف...</option>${others.map(it => `<option value="${it.id}">${escapeHtml(it.sku)} - ${escapeHtml(it.name)}</option>`).join('')}</select>
+        <input id="relation-item-q" class="sx-in" data-item-pick="relation-item-select" list="relation-item-dl" placeholder="اكتب رقم الصنف أو اسمه..." autocomplete="off" /><datalist id="relation-item-dl"></datalist><input type="hidden" id="relation-item-select" value="" />
         <button id="relation-add-btn" type="button" class="sx-btn"><i class="ti ti-link" style="color:#1B5FA8;"></i>ربط</button>
       </div>
       <div style="font-size:11px;color:#6E6D5F;margin:6px 0 10px;">الأصناف البديلة أو المكمّلة — بتظهر في شريط معلومات الصنف أسفل الشاشة.</div>
@@ -17272,7 +17907,7 @@ function menuFeatureOk(target) {
   if (['__warehouses__','__transfers__','__warehouse_stock_report__'].includes(target)) return !!feat('multi_warehouse');
   if (target === '__barcode_labels__') return !!feat('barcode');
   if (target === '__expiry__') return pharmacyOn();
-  if (target === '__desktop_maint__') return isDesktopApp() && isDesigner();
+  if (target === '__desktop_maint__' || target === '__desktop_dbtools__') return isDesktopApp() && isDesigner();
   return true;
 }
 // إخفاء عناصر داخل الشاشات حسب المميزات (بعد كل رسم)
@@ -17343,7 +17978,7 @@ function nextDocNumber(list, field, prefix, pad) {
 
 function openItemPicker(ctx) {
   state.itemPickerOpen = true;
-  state.itemPickerQuery = '';
+  state.itemPickerQuery = ''; state.itemPickerLimit = 100;
   state.itemPickerSelectedId = null;
   state.itemPickerMultiSelected = {};
   state.itemPickerContext = ctx;
@@ -17351,10 +17986,17 @@ function openItemPicker(ctx) {
   loadItemsSoldQuantities();
 }
 // يحسب إجمالي الكمية المباعة تاريخياً لكل صنف (من فواتير البيع المعتمدة فقط) — دفعة واحدة لكل الأصناف
-async function loadItemsSoldQuantities() {
-  const { data } = await sb.from('sales_invoice_items').select('item_id, quantity, sales_invoices!inner(approved)').eq('sales_invoices.approved', true);
+async function loadItemsSoldQuantities(force) {
+  // مخزّنة 5 دقايق — قبل كدا كانت بتجيب كل سطور فواتير البيع مع كل فتح لشاشة الأصناف
+  if (!force && state.itemsSoldQuantitiesAt && Date.now() - state.itemsSoldQuantitiesAt < 5 * 60000) return;
+  state.itemsSoldQuantitiesAt = Date.now();
   const totals = {};
-  (data || []).forEach(r => { totals[r.item_id] = (totals[r.item_id] || 0) + Number(r.quantity || 0); });
+  const r = await sb.rpc('items_sold_totals');
+  if (!r.error && Array.isArray(r.data)) r.data.forEach(x => { totals[x.item_id] = Number(x.qty) || 0; });
+  else {
+    const { data } = await sb.from('sales_invoice_items').select('item_id, quantity, sales_invoices!inner(approved)').eq('sales_invoices.approved', true);
+    (data || []).forEach(x => { totals[x.item_id] = (totals[x.item_id] || 0) + Number(x.quantity || 0); });
+  }
   state.itemsSoldQuantities = totals;
   if (state.itemPickerOpen) render();
 }
@@ -17468,6 +18110,11 @@ function renderItemPickerModal() {
     (state.itemAltNumbersMap[it.id]||[]).some(alt => alt.toLowerCase().includes(q))
   );
   const selectedItem = state.items.find(it => it.id === state.itemPickerSelectedId);
+  // نرسم أول دفعة بس (الآلاف بتعلّق الشاشة) — زر «عرض المزيد» تحت، والبحث بيدوّر في الكل
+  const ipkLimit = Math.max(100, Number(state.itemPickerLimit) || 100);
+  const resultsAll = results;
+  const shown = resultsAll.slice(0, ipkLimit);
+  if (selectedItem && !shown.includes(selectedItem) && resultsAll.includes(selectedItem)) shown.unshift(selectedItem);
   const multiCount = Object.keys(state.itemPickerMultiSelected || {}).length;
   const columns = getItemPickerColumns();
   const gridTemplate = columns.map(c => c.width+'px').join(' ');
@@ -17496,7 +18143,7 @@ function renderItemPickerModal() {
               </div>`).join('')}
           </div>
         </div>
-        ${results.map((it,i) => {
+        ${shown.map((it,i) => {
           const isSelected = it.id === state.itemPickerSelectedId;
           const isMultiChecked = !!(state.itemPickerMultiSelected && state.itemPickerMultiSelected[it.id]);
           const baseColor = it.qty<=0?'#FCEBEB':i%2?'#F4F1EA':'#FFFDF6';
@@ -17511,6 +18158,8 @@ function renderItemPickerModal() {
             </div>
           </div>`;
         }).join('') || `<div style="padding:24px;text-align:center;font-size:12.5px;color:#6E6D5F;min-width:${totalWidth}px;">ما فيه أصناف مطابقة للبحث</div>`}
+        ${resultsAll.length > shown.length ? `<div style="padding:10px;text-align:center;min-width:${totalWidth + 30}px;"><button type="button" class="btn" data-ipk-more style="padding:6px 18px;">عرض المزيد (${Math.min(200, resultsAll.length - shown.length).toLocaleString('en-US')} من ${(resultsAll.length - shown.length).toLocaleString('en-US')} باقي)</button>
+          <div style="font-size:10.5px;color:#8B8A7A;margin-top:4px;">أو اكتب في البحث عشان توصل للصنف أسرع</div></div>` : ''}
       </div>
       ${selectedItem ? `
       <div class="no-print" style="padding:10px 14px;border-top:2px solid #2C4A6E;background:#F0F7FF;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -17519,7 +18168,7 @@ function renderItemPickerModal() {
         ${ctx.priceId ? `<label style="font-size:11.5px;">${ctx.priceKey==='cost'?'التكلفة':'السعر'} <input id="ipk-price" class="input" style="max-width:100px;display:inline-block;" value="${ctx.priceKey ? selectedItem[ctx.priceKey] : ''}" /></label>` : ''}
         <button id="ipk-confirm-add" class="btn primary" style="padding:7px 16px;margin-right:auto;">${ctx.addBtnId ? 'إضافة للفاتورة' : 'اختيار'}</button>
       </div>` : `
-      <div style="padding:8px 14px;border-top:1px solid #A9A48C;font-size:11px;color:#5F5E5A;">${results.length} صنف — اضغط على أي صف لاختياره وتحديد الكمية والسعر، أو علّم أكثر من صنف بالمربّع أول كل صف للإضافة الجماعية</div>`}
+      <div style="padding:8px 14px;border-top:1px solid #A9A48C;font-size:11px;color:#5F5E5A;">${results.length.toLocaleString('en-US')} صنف${results.length > shown.length ? ` (معروض ${shown.length.toLocaleString('en-US')})` : ''} — اضغط على أي صف لاختياره وتحديد الكمية والسعر، أو علّم أكثر من صنف بالمربّع أول كل صف للإضافة الجماعية</div>`}
       ${(ctx.addBtnId && multiCount > 0) ? `
       <div class="no-print" style="padding:10px 14px;border-top:2px solid #6C3FA8;background:#F5EEFF;display:flex;align-items:center;gap:10px;">
         <div style="font-size:12.5px;font-weight:600;color:#5B2D91;">${multiCount} صنف محدّد بالاختيار المتعدد</div>
@@ -17888,11 +18537,16 @@ function bindAppEvents() {
     });
     const searchEl = document.getElementById('ipk-search');
     searchEl.oninput = (ev) => {
-      state.itemPickerQuery = ev.target.value;
-      const pos = ev.target.selectionStart;
-      render();
-      const el = document.getElementById('ipk-search');
-      if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+      // تأخير بسيط: الكتابة السريعة ما ترسم الشاشة مع كل حرف
+      state.itemPickerQuery = ev.target.value; state.itemPickerLimit = 100;
+      clearTimeout(window.__ipkT);
+      window.__ipkT = setTimeout(() => {
+        const cur = document.getElementById('ipk-search'); const pos = cur ? cur.selectionStart : null;
+        if (cur) state.itemPickerQuery = cur.value;
+        render();
+        const el = document.getElementById('ipk-search');
+        if (el) { el.focus(); if (pos != null) el.setSelectionRange(pos, pos); }
+      }, 140);
     };
     document.querySelectorAll('[data-pick-item]').forEach(row => {
       row.onclick = async () => {
@@ -18103,6 +18757,8 @@ function bindAppEvents() {
       if (target === '__quotations__') { await loadParties(); await loadQuotations(); state.activeSection = '__quotations__'; render(); return; }
       if (target === '__owner_dash__') { openOwnerDash(); return; }
       if (target === '__daily_followup__') { openDailyFollowup(); return; }
+      if (target === '__pos__') { openPos(); return; }
+      if (target === '__shifts_report__') { openShiftsReport('today'); return; }
       if (target === '__aging_report__') { openAgingReport('customer'); return; }
       if (target === '__branch_compare__') { openBranchCompare(); return; }
       if (target === '__branch_reorder__') { openBranchReorder(); return; }
@@ -18142,7 +18798,10 @@ function bindAppEvents() {
       if (!canOpenTarget(target)) { showToast('ما عندك صلاحية فتح هذه الشاشة — اطلبها من المدير', 'error'); return; }
       if (target === '__expiry__') { state.openDropdown = null; openExpiryReport(); return; }
       if (target === '__desktop_maint__') { state.openDropdown = null; render(); window.open('/__maint__'); return; }
+      if (target === '__desktop_dbtools__') { state.openDropdown = null; render(); window.open('/__dbtools__'); return; }
       if (target === '__daily_followup__') { state.openDropdown = null; openDailyFollowup(); return; }
+      if (target === '__pos__') { state.openDropdown = null; openPos(); return; }
+      if (target === '__shifts_report__') { state.openDropdown = null; openShiftsReport('today'); return; }
       if (target === '__pricing_rules__') { state.openDropdown = null; await loadCompany(); state.showPricingRules = true; render(); return; }
       if (target === '__print_doctor__') { state.openDropdown = null; checkPrintLogo(); state.showPrintDoctor = true; render(); return; }
       if (target === '__report_sales_invoices__') { openInvStmt('sales'); return; }
@@ -21174,7 +21833,7 @@ function bindAppEvents() {
   }
   if (document.getElementById('search-input')) {
   document.getElementById('search-input').oninput = (ev) => {
-    state.query = ev.target.value;
+    state.query = ev.target.value; state.itemsPage = 0;
     render();
     document.getElementById('search-input').focus();
     document.getElementById('search-input').setSelectionRange(state.query.length, state.query.length);
@@ -24474,10 +25133,11 @@ function bindAppEvents() {
   }
 
   if (state.showWarehouseStockReport) {
-    const closeWsr = () => { state.showWarehouseStockReport = false; render(); };
+    const closeWsr = () => { state.showWarehouseStockReport = false; state.wsrAll = false; render(); };
+    document.querySelectorAll('[data-wsr-all]').forEach(b => b.onclick = () => { state.wsrAll = true; render(); });
     document.getElementById('wsr-close').onclick = closeWsr;
     document.getElementById('wsr-exit').onclick = closeWsr;
-    document.getElementById('wsr-print').onclick = () => { window.print(); };
+    document.getElementById('wsr-print').onclick = () => { if (!state.wsrAll) { state.wsrAll = true; render(); setTimeout(() => window.print(), 80); } else window.print(); };
     document.getElementById('wsr-search').oninput = (ev) => {
       state.warehouseStockReportQuery = ev.target.value;
       const pos = ev.target.selectionStart;
@@ -25170,7 +25830,8 @@ function getPartyAccountCode(partyId, partyType) {
 
 // معالج الاختصارات الشاملة — يشتغل بكل الشاشات، يتجاهل الاختصارات لو المستخدم يكتب بحقل نصي عادي (غير مقصود)
 function handleGlobalShortcuts(ev) {
-  if (!state.session) return; // الاختصارات تشتغل بعد تسجيل الدخول بس
+  if (!state.session) return;
+  if (state.pos && !state.pos.suspended) return;   // شاشة الكاشير ليها أزرارها // الاختصارات تشتغل بعد تسجيل الدخول بس
   const tag = (ev.target.tagName || '').toLowerCase();
   const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || ev.target.isContentEditable;
 
