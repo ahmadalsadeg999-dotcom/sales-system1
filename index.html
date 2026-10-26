@@ -2037,7 +2037,8 @@ function payChangeRefresh() {
 }
 async function savePayChange() {
   const pc = state.payChange; const d = PAY_CHANGE_DOCS[pc.p]; const f = d.form(); const docId = d.id();
-  const rows = pc.rows.filter(r => Number(r.amount) > 0).map(r => ({ method: r.method, amount: Math.round(Number(r.amount) * 100) / 100, ref: r.ref || '', account_code: cashOrBankAccount(r.method) }));
+  const pcBox = Object.values(CASHBOX_TABLES).includes(d.table) ? await cashBoxForRow(d.table, docId) : null, pcAcc = m => { const a = cashOrBankAccount(m); return pcBox && a === acc('cash') ? pcBox : a; };
+  const rows = pc.rows.filter(r => Number(r.amount) > 0).map(r => ({ method: r.method, amount: Math.round(Number(r.amount) * 100) / 100, ref: r.ref || '', account_code: pcAcc(r.method) }));
   if (rows.some(r => !r.account_code)) { pc.err = 'في طريقة دفع ما مربوطة بحساب — اربطها من «طرق الدفع»'; render(); return; }
   // تنبيه لو يوم المستند صندوقه اتطابق
   try {
@@ -2047,7 +2048,7 @@ async function savePayChange() {
     if (rec && rec.length && !confirm(`تنبيه: صندوق يوم ${d.date(f)} اتطابق قبل كدا — التغيير ده بيغيّر رصيد الصندوق لليوم ده. تكمل؟`)) return;
   } catch (e) {}
   pc.busy = true; pc.err = ''; render();
-  const old = pc.old.map(o => ({ account_code: cashOrBankAccount(o.method), amount: Number(o.amount) }));
+  const old = pc.old.map(o => ({ account_code: pcAcc(o.method), amount: Number(o.amount) }));
   const { data, error } = await sb.rpc('change_payment_method', { p_table: d.table, p_id: docId, p_new: rows, p_old: old });
   if (error) {
     const missing = /change_payment_method|PGRST202|schema cache|does not exist/i.test(error.message || '');
@@ -3338,6 +3339,10 @@ async function loadMyPermissions() {
     ['can_read','can_add','can_edit','can_delete','can_print','can_approve'].forEach(k => { if (up[k] !== null && up[k] !== undefined) merged[key][k] = up[k]; });
   });
   state.myPermissions = merged;
+  // حد الخصم المسموح للمستخدم (من ملفه، وإلا من مجموعته) — يستخدمه الكاشير لتخفيض السعر بدون رمز المدير
+  let md = state.profile?.max_discount_percent;
+  if ((md === null || md === undefined) && state.profile?.role_id) { try { const { data: rr } = await sb.from('permission_roles').select('max_discount_percent').eq('id', state.profile.role_id).maybeSingle(); md = rr?.max_discount_percent; } catch (_) {} }
+  state.myMaxDiscount = Number(md) || 0;
 }
 
 // يتحقق هل المستخدم الحالي يقدر يسوي إجراء معيّن (read/add/edit/delete/print/approve) بشاشة معيّنة
@@ -3964,8 +3969,16 @@ function renderStatusItems() {
     ${item('ti-calendar-event', `<span class="mono">${now.toLocaleDateString('en-CA')}</span>`, 'التاريخ')}
     ${item('ti-clock', `<span id="ws-clock" class="mono">${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>`, 'الوقت')}
     ${item(online ? 'ti-wifi' : 'ti-wifi-off', online ? 'متصل' : 'بدون اتصال', online ? 'متصل بقاعدة البيانات' : 'شغال بدون اتصال', online ? '#0F6E56' : '#C0392B')}
+    ${state.desktopUpdate ? `<span class="ws-st" data-desk-upd style="color:#fff;background:#B8860B;padding:0 8px;border-radius:3px;cursor:pointer;" title="التحديث يتم من أداة قاعدة البيانات"><i class="ti ti-download"></i>تحديث ${escapeHtml(state.desktopUpdate.latest || '')} متاح</span>` : ''}
   </span>`;
 }
+// نسخة الويندوز: تنبيه بوجود إصدار جديد (التثبيت من «CoinSoft DataBase Tools» عشان ما يقطع شغل الكاشير)
+if (window.csDesktop && typeof window.csDesktop.onUpdate === 'function') window.csDesktop.onUpdate(u => { if (u && u.latest) { state.desktopUpdate = u; if (!state.pos) render(); } });
+document.addEventListener('click', ev => {
+  if (!ev.target.closest || !ev.target.closest('[data-desk-upd]')) return;
+  const u = state.desktopUpdate || {};
+  if (confirm(`في إصدار جديد من البرنامج: ${u.latest || ''}\n\nالتحديث بيتم من أيقونة «CoinSoft DataBase Tools» على سطح المكتب ← تبويب «التحديث» (بياخد نسخة احتياطية تلقائياً).\nيُفضّل آخر اليوم بعد إقفال الورديات.\n\nتفتح أداة قاعدة البيانات الآن؟`)) window.open('/__dbtools__');
+}, true);
 setInterval(() => { const c = document.getElementById('ws-clock'); if (c) c.textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }, 15000);
 function renderWsBar() {
   if (!state.session) return '';
@@ -5336,6 +5349,14 @@ function shiftCountedTotal() {
   if (c.manual !== undefined && c.manual !== '') return Number(c.manual) || 0;
   return SHIFT_DENOMS.reduce((s, d) => s + d * (Number(c[d]) || 0), 0);
 }
+function shiftBoxOf(sh) { const b = String((sh && sh.box_account) || state.profile?.cash_account_code || '').trim(); return b && b !== acc('cash') ? b : null; }
+function shiftToday() { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
+async function shiftUpdate(id, patch, extra) {
+  let r = await sb.from('cashier_shifts').update({ ...patch, ...extra }).eq('id', id).is('closed_at', null);
+  if (r.error && extra && /box_account|open_entry_id|close_entry_id|column/i.test(r.error.message || '')) r = await sb.from('cashier_shifts').update(patch).eq('id', id).is('closed_at', null);
+  return r;
+}
+async function dropJournalEntry(e) { if (!e) return; try { await sb.from('journal_entry_lines').delete().eq('entry_id', e.id); await sb.from('journal_entries').delete().eq('id', e.id); } catch (_) {} }
 function renderShiftModal() {
   const sh = state.shift, C = state.shiftCalc, cur = feat('currency_abbr_ar') || '';
   const tab = state.shiftTab;
@@ -5396,6 +5417,13 @@ function renderShiftModal() {
           </div>
         </div>
       </div>
+      ${(() => { const box = shiftBoxOf(sh); const dests = [...new Set([acc('cash'), ...activePaymentMethods().map(m => cashOrBankAccount(m.name))])].filter(c => c && c !== box);
+        return `<div style="margin-top:10px;background:#F4F1EA;border:1px solid #DEDACB;border-radius:6px;padding:8px 10px;font-size:12.5px;line-height:1.9;">
+          <b style="color:#1B3352;"><i class="ti ti-transfer"></i> الترحيل عند الإقفال</b><br>
+          ${box ? `صندوق الكاشير: <b class="mono">${escapeHtml(box)}</b> ${escapeHtml(voucherAccName(box) || '')}<br>
+          تحويل المبلغ المعدود إلى: <select id="shift-dest" class="input" style="display:inline-block;width:auto;padding:3px 6px;font-size:12px;">${dests.map(c => `<option value="${escapeHtml(c)}" ${c === (state.shiftCount.dest || acc('cash')) ? 'selected' : ''}>${escapeHtml(c)} — ${escapeHtml(voucherAccName(c) || '')}</option>`).join('')}</select><br>` : `<span style="color:#666;">الكاشير على الصندوق العام — بيترحّل العجز أو الزيادة فقط</span><br>`}
+          <span style="color:#666;">العجز ← ${escapeHtml(acc('cash_shortage'))} ${escapeHtml(voucherAccName(acc('cash_shortage')) || '')} · الزيادة ← ${escapeHtml(acc('cash_overage'))} ${escapeHtml(voucherAccName(acc('cash_overage')) || '')}</span>
+        </div>`; })()}
       <textarea id="shift-notes" class="input" rows="2" style="margin-top:10px;" placeholder="ملاحظات (اختياري) — مثلاً سبب العجز">${escapeHtml(state.shiftCount.notes || '')}</textarea>
       <div style="display:flex;gap:8px;justify-content:space-between;margin-top:12px;flex-wrap:wrap;">
         <button id="shift-refresh" class="btn"><i class="ti ti-refresh"></i> تحديث الملخص</button>
@@ -5444,6 +5472,16 @@ function bindShiftModal() {
     const { data, error } = await sb.from('cashier_shifts').insert({ user_id: state.session.user.id, username: state.profile?.username || '', opening_cash: opening }).select().single();
     state.shiftBusy = false;
     if (error) { showToast(/one_open|duplicate/.test(error.message) ? 'عندك وردية مفتوحة مسبقاً' : 'تعذّر فتح الوردية: ' + error.message, 'error'); await loadMyOpenShift(); render(); return; }
+    const box = shiftBoxOf(null);
+    if (box) {
+      let e = null;
+      if (opening > 0) e = await postJournalEntry(shiftToday(), `عهدة وردية الكاشير ${state.profile?.username || ''}`, 'cashier_shift', data.id, [
+        { account_code: box, debit: opening, credit: 0, description: 'عهدة افتتاحية لصندوق الكاشير' },
+        { account_code: acc('cash'), debit: 0, credit: opening, description: 'صرف عهدة للكاشير' }]);
+      const { error: bxErr } = await sb.from('cashier_shifts').update({ box_account: box, open_entry_id: e ? e.id : null }).eq('id', data.id);
+      if (!bxErr) { data.box_account = box; data.open_entry_id = e ? e.id : null; }
+      if (opening > 0 && !e) showToast('الوردية انفتحت لكن قيد العهدة ما اترحّل — راجع المحاسب', 'error');
+    }
     state.shift = data; state.shiftCalc = await computeShiftTotals(data);
     logActivity('فتح وردية', `العهدة ${fmt(opening)}`);
     showToast('تم فتح الوردية ✅'); render();
@@ -5458,18 +5496,36 @@ function bindShiftModal() {
   document.querySelectorAll('[data-denom]').forEach(inp => { inp.oninput = () => { state.shiftCount[inp.dataset.denom] = inp.value; if ($('shift-manual')) { $('shift-manual').value = ''; delete state.shiftCount.manual; } refreshResult(); }; });
   if ($('shift-manual')) $('shift-manual').oninput = (ev) => { state.shiftCount.manual = ev.target.value; refreshResult(); };
   if ($('shift-notes')) $('shift-notes').oninput = (ev) => { state.shiftCount.notes = ev.target.value; };
+  if ($('shift-dest')) $('shift-dest').onchange = (ev) => { state.shiftCount.dest = ev.target.value; };
   if ($('shift-refresh')) $('shift-refresh').onclick = async () => { state.shiftCalc = null; render(); state.shiftCalc = await computeShiftTotals(state.shift); render(); };
   if ($('shift-close-btn')) $('shift-close-btn').onclick = async () => {
     const sh = state.shift; if (!sh) return;
     const C = await computeShiftTotals(sh); state.shiftCalc = C;
     const counted = shiftCountedTotal(); const diff = Math.round((counted - C.expected) * 100) / 100;
-    if (!confirm(`إقفال الوردية:\nالنقد المتوقع: ${fmt(C.expected)}\nالنقد المعدود: ${fmt(counted)}\nالفرق: ${fmt(diff)}\n\nمتأكد؟ بعد الإقفال ما يمكن التعديل.`)) return;
+    const box = shiftBoxOf(sh), dest = ($('shift-dest') && $('shift-dest').value) || acc('cash'), drawer = box || acc('cash'), who = sh.username || state.profile?.username || '';
+    const lines = [];
+    if (box && counted > 0.004) lines.push({ account_code: dest, debit: counted, credit: 0, description: 'استلام نقدية وردية ' + who }, { account_code: box, debit: 0, credit: counted, description: 'تسليم نقدية الوردية' });
+    let diffOk = true;
+    if (Math.abs(diff) > 0.004) {
+      const need = diff < 0 ? acc('cash_shortage') : acc('cash_overage');
+      const { data: ex } = await sb.from('chart_of_accounts').select('code').eq('code', need).limit(1);
+      if (!ex || !ex.length) { diffOk = false; if (!confirm(`حساب ${diff < 0 ? 'عجز' : 'زيادة'} الصندوق (${need}) مو موجود في شجرة الحسابات.\nشغّل ملف 36 في قاعدة البيانات أو اربطه من «أرقام الحسابات».\n\nتقفل الوردية بدون ترحيل الفرق؟`)) return; }
+      else if (diff < 0) lines.push({ account_code: need, debit: -diff, credit: 0, description: 'عجز صندوق الكاشير ' + who }, { account_code: drawer, debit: 0, credit: -diff, description: 'عجز صندوق الكاشير' });
+      else lines.push({ account_code: drawer, debit: diff, credit: 0, description: 'زيادة صندوق الكاشير' }, { account_code: need, debit: 0, credit: diff, description: 'زيادة صندوق الكاشير ' + who });
+    }
+    const postTxt = [box && counted > 0.004 ? `• تحويل ${fmt(counted)} من صندوق الكاشير إلى ${dest} ${voucherAccName(dest) || ''}` : '', Math.abs(diff) > 0.004 && diffOk ? `• ${diff < 0 ? 'عجز' : 'زيادة'} ${fmt(Math.abs(diff))} يترحّل على ${diff < 0 ? acc('cash_shortage') : acc('cash_overage')}` : ''].filter(Boolean).join('\n');
+    if (!confirm(`إقفال الوردية:\nالنقد المتوقع: ${fmt(C.expected)}\nالنقد المعدود: ${fmt(counted)}\nالفرق: ${fmt(diff)}${postTxt ? '\n\nالقيد اللي بيترحّل:\n' + postTxt : ''}\n\nمتأكد؟ بعد الإقفال ما يمكن التعديل.`)) return;
     state.shiftBusy = true; render();
     const notes = state.shiftCount.notes || null;
-    const { error } = await sb.from('cashier_shifts').update({ closed_at: new Date().toISOString(), expected_cash: C.expected, counted_cash: counted, difference: diff, totals: C, notes }).eq('id', sh.id).is('closed_at', null);
+    let entry = null;
+    if (lines.length) {
+      entry = await postJournalEntry(shiftToday(), `إقفال وردية الكاشير ${who}`, 'cashier_shift', sh.id, lines);
+      if (!entry) { state.shiftBusy = false; showToast('ما اترحّل قيد الإقفال — الوردية ما اتقفلت', 'error'); render(); return; }
+    }
+    const { error } = await shiftUpdate(sh.id, { closed_at: new Date().toISOString(), expected_cash: C.expected, counted_cash: counted, difference: diff, totals: { ...C, posted_to: box ? dest : null, entry_number: entry ? entry.entry_number : null }, notes }, { close_entry_id: entry ? entry.id : null });
     state.shiftBusy = false;
-    if (error) { showToast('تعذّر إقفال الوردية: ' + error.message, 'error'); render(); return; }
-    logActivity('إقفال وردية', `المتوقع ${fmt(C.expected)} · المعدود ${fmt(counted)} · الفرق ${fmt(diff)}`);
+    if (error) { await dropJournalEntry(entry); showToast('تعذّر إقفال الوردية: ' + error.message, 'error'); render(); return; }
+    logActivity('إقفال وردية', `المتوقع ${fmt(C.expected)} · المعدود ${fmt(counted)} · الفرق ${fmt(diff)}${entry ? ' · قيد ' + entry.entry_number : ''}`);
     if (confirm('تم إقفال الوردية ✅\n\nتبي تطبع تقرير الوردية؟')) printShiftReport(sh, C, counted, diff, notes);
     state.shift = null; state.shiftCalc = null; state.shiftCount = {}; state.showShift = false;
     render();
@@ -5817,7 +5873,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.24-23';
+const APP_VERSION = '2026.10.25-24';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
@@ -6384,6 +6440,7 @@ async function postDocAtomic(docTable, docId, { stock = [], parties = [], date, 
   lines = lines.map(l => ({ ...l, debit: r2(l.debit), credit: r2(l.credit) })).filter(l => l.debit || l.credit);
   const dd = r2(lines.reduce((a, l) => a + l.debit - l.credit, 0));
   if (Math.abs(dd) > 0 && Math.abs(dd) < 0.05) { const L = lines.find(l => l.credit > 0); if (L) L.credit = r2(L.credit + dd); }
+  lines = await cashBoxRemap(sourceType, docId, lines);
   const { error } = await sb.rpc('post_document', { p: { doc_table: docTable, doc_id: docId, stock, parties: parties.filter(x => x.party_id && r2(x.delta)).map(x => ({ ...x, delta: r2(x.delta) })),
     entry: { date, description, source_type: sourceType, lines } } });
   if (!error) return true;
@@ -6419,6 +6476,7 @@ async function postReturnAtomic(kind, f, t, returnCost) {
   }
   const dd = lines.reduce((a, l) => a + l.debit - l.credit, 0);
   if (Math.abs(dd) > 0 && Math.abs(dd) < 0.05) { const L = lines.find(l => l.credit > 0); if (L) L.credit = r2(L.credit + dd); }
+  if (isS) lines = await cashBoxRemap('sales_return', docId, lines);
   const { error } = await sb.rpc('post_document', { p: {
     doc_table: isS ? 'sales_returns' : 'purchase_returns', doc_id: docId, stock, parties,
     entry: { date: f.return_date, description: (isS ? 'مردود بيع ' : 'مردود شراء ') + f.return_number, source_type: isS ? 'sales_return' : 'purchase_return', lines } } });
@@ -9562,7 +9620,7 @@ function voucherHijri(d) {
   try { return new Date(d + 'T12:00:00').toLocaleDateString('en-US-u-ca-islamic-umalqura', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\s*AH$/, '').replace(/(\d+)\/(\d+)\/(\d+)/, '$3/$1/$2'); } catch (e) { return ''; }
 }
 function voucherAccName(code) {
-  if (!(state.chartOfAccounts || []).length && !window.__coaLoading && typeof loadChartOfAccounts === 'function') { window.__coaLoading = true; loadChartOfAccounts().then(() => { if (state.showReceiptVoucherForm || state.showPaymentVoucherForm) render(); }).catch(() => {}); }
+  if (!(state.chartOfAccounts || []).length && !window.__coaLoading && typeof loadChartOfAccounts === 'function') { window.__coaLoading = true; loadChartOfAccounts().then(() => { if (!(state.pos && state.pos.busy)) render(); }).catch(() => {}); }
   const a = (state.chartOfAccounts || []).find(x => x.code === code); return a ? (a.name_ar || a.name || '') : '';
 }
 // تغيير طريقة الدفع في السند يحدّث «حساب النقدية» على طول
@@ -10698,7 +10756,13 @@ const POS_FAV_KEY = 'cs_pos_fav', POS_FAV_HIDE = 'cs_pos_fav_hide';
 const posHeldKey = () => 'cs_pos_held_' + (state.session?.user?.id || '');
 const posLS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (_) { return d; } };
 const posSetLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
-function posCanEditPrice() { return isAdmin() || canApprove(); }
+function posCanEditPrice() { return isAdmin() || !!state.profile?.pos_manager; }
+// تخفيض السعر/الخصم: المدير وصاحب الاعتماد مباشرة، والكاشير في حدود «حد الخصم» حقه، والباقي يحتاج رمز المدير
+function posDiscOk(pct) { return posCanEditPrice() || (Number(state.myMaxDiscount) > 0 && pct <= Number(state.myMaxDiscount) + 0.0001); }
+function posAskManager(why, onOk) {
+  if (posCanEditPrice()) { onOk(null); return; }
+  state.pos.dlg = { kind: 'pin', why, onOk, err: '' };
+}
 function posMethods() { const l = activePaymentMethods(); return l.length ? l : [{ name: 'نقدي' }]; }
 function posCashMethod() { return (posMethods().find(m => isCashMethod(m.name)) || posMethods()[0]).name; }
 function posBeep(ok) {
@@ -10740,7 +10804,7 @@ async function posRefreshShift() {
 function posFocus() { setTimeout(() => { const el = document.getElementById('pos-scan'); if (el && !state.itemPickerOpen && !state.showPartyPicker && !state.showShift && !(state.pos && state.pos.dlg)) el.focus(); }, 30); }
 function posMsg(text, kind) { if (!state.pos) return; state.pos.msg = text ? { text, kind: kind || 'ok', at: Date.now() } : null; }
 // إعادة رسم الشاشة مع الحفاظ على المكتوب في خانة الباركود
-function renderPosLight() { const v = document.getElementById('pos-scan')?.value || ''; render(); const el = document.getElementById('pos-scan'); if (el) { el.value = v; } posFocus(); }
+function renderPosLight() { const v = document.getElementById('pos-scan')?.value || ''; render(); const el = document.getElementById('pos-scan'); if (el) { el.value = v; } posFocus(); if (state.pos && state.pos.dlg) setTimeout(() => { const d = document.getElementById('pos-dlg-in'); if (d && document.activeElement !== d && !d.disabled) d.focus(); }, 30); }
 
 function posFindItem(code) {
   const c = String(code || '').trim().toLowerCase(); if (!c) return null;
@@ -10843,13 +10907,112 @@ async function posPay() {
   posMsg(lastChange != null && lastChange > 0.004 ? `✓ تمت — الباقي للزبون ${fmt(lastChange)}` : '✓ تمت الفاتورة ' + inv.number, 'ok');
   renderPosLight(); posRefreshShift();
 }
-async function posReprint() {
-  const P = state.pos; if (!P || !P.last) return;
-  const keep = { form: state.salesForm, id: state.editingSalesId };
-  await openSalesById(P.last.id); await _tick(350);
+async function posReprint(id) {
+  const P = state.pos; if (!P || !(id || P.last)) return;
+  const keep = { form: state.salesForm, id: state.editingSalesId, dlg: P.dlg };
+  P.dlg = null;
+  await openSalesById(id || P.last.id); await _tick(350);
   try { window.print(); } catch (_) {}
-  state.salesForm = keep.form; state.editingSalesId = keep.id; state.showSalesForm = true; renderPosLight();
+  state.salesForm = keep.form; state.editingSalesId = keep.id; state.showSalesForm = true; P.dlg = keep.dlg; renderPosLight();
 }
+// ---------- كشف مبيعات الكاشير (F12): فواتير ومرتجعات الكاشير في الوردية / اليوم / فترة، مع الإجماليات وإعادة الطباعة
+async function posOpenStmt() {
+  const P = state.pos, t = shiftToday();
+  P.stmt = { range: state.shift ? 'shift' : 'today', from: t, to: t, user: state.session.user.id, inv: null, ret: null, loading: true, err: '' };
+  P.dlg = { kind: 'stmt' }; renderPosLight();
+  if (isAdmin() && (!state.users || !state.users.length)) { try { await loadUsers(); } catch (_) {} }
+  await posLoadStmt();
+}
+async function posLoadStmt() {
+  const P = state.pos, S = P && P.stmt; if (!S) return;
+  S.loading = true; S.err = ''; renderPosLight();
+  let since, until;
+  if (S.range === 'shift' && state.shift) { since = state.shift.opened_at; until = new Date(Date.now() + 60000).toISOString(); }
+  else { if (S.range === 'today') { S.from = S.to = shiftToday(); } since = new Date(S.from + 'T00:00:00').toISOString(); until = new Date(S.to + 'T23:59:59.999').toISOString(); }
+  const q = (t) => fetchAllQ(() => { let x = sb.from(t).select('*').eq('approved', true).gte('created_at', since).lte('created_at', until).order('created_at'); if (S.user) x = x.eq('created_by', S.user); return x; });
+  try {
+    const [a, b] = await Promise.all([q('sales_invoices'), q('sales_returns')]);
+    if (a.error) throw a.error;
+    S.inv = a.data || []; S.ret = (b && b.data) || [];
+  } catch (e) { S.err = e.message || String(e); S.inv = []; S.ret = []; }
+  S.loading = false; if (state.pos && state.pos.stmt === S) renderPosLight();
+}
+function posStmtCalc(S) {
+  const byMethod = {}; let total = 0, credit = 0;
+  (S.inv || []).forEach(inv => {
+    total += Number(inv.total || 0);
+    const ps = Array.isArray(inv.payment_details) && inv.payment_details.length ? inv.payment_details : (Number(inv.paid_amount) > 0 ? [{ method: inv.payment_method || 'نقدي', amount: inv.paid_amount }] : []);
+    let paid = 0; ps.forEach(p => { const a = Number(p.amount || 0); paid += a; byMethod[p.method || 'نقدي'] = (byMethod[p.method || 'نقدي'] || 0) + a; });
+    if (Number(inv.total || 0) - paid > 0.005) credit += Number(inv.total || 0) - paid;
+  });
+  const rets = (S.ret || []).reduce((s, r) => s + Number(r.total || 0), 0);
+  return { count: (S.inv || []).length, total, credit, byMethod, retCount: (S.ret || []).length, rets, net: total - rets };
+}
+function posStmtPayTxt(inv) {
+  const ps = Array.isArray(inv.payment_details) && inv.payment_details.length ? inv.payment_details : (Number(inv.paid_amount) > 0 ? [{ method: inv.payment_method || 'نقدي', amount: inv.paid_amount }] : []);
+  const paid = ps.reduce((s, p) => s + Number(p.amount || 0), 0);
+  return (ps.map(p => p.method || 'نقدي').join(' + ') || '') + (Number(inv.total || 0) - paid > 0.005 ? (ps.length ? ' + ' : '') + 'آجل' : '');
+}
+function posStmtUserName(id) { if (!id) return 'كل الكاشيرين'; if (id === state.session?.user?.id) return state.profile?.display_name || state.profile?.username || ''; const u = (state.users || []).find(x => x.id === id); return u ? (u.display_name || u.username || '') : ''; }
+function posStmtCust(inv) { const p = inv.customer_id ? (state.parties || []).find(x => x.id === inv.customer_id) : null; return p ? p.name : (inv.walkin_customer_name || 'عميل نقدي'); }
+function renderPosStmt() {
+  const P = state.pos, S = P.stmt; if (!S) return '';
+  const T = S.inv ? posStmtCalc(S) : null, tm = d => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }), dt = d => new Date(d).toLocaleDateString('en-GB');
+  const multiDay = S.range === 'range' && S.from !== S.to;
+  const rb = (k, l) => `<button type="button" class="pos-btn" data-pos-st-range="${k}" style="height:32px;padding:0 12px;${S.range === k ? 'background:#1B3352;color:#fff;' : ''}" ${k === 'shift' && !state.shift ? 'disabled' : ''}>${l}</button>`;
+  const users = isAdmin() ? (state.users || []).filter(u => u.active !== false) : [];
+  return `<div class="pos-dlg"><div class="box" style="width:min(980px,96vw);max-width:none;">
+    <div class="ttl" style="display:flex;justify-content:space-between;align-items:center;"><span>📋 كشف مبيعات الكاشير — ${escapeHtml(posStmtUserName(S.user))}</span><button type="button" class="pos-btn" data-pos-dlg-x style="height:24px;padding:0 10px;">✕</button></div>
+    <div class="in" style="padding:10px;">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+        ${rb('shift', 'الوردية الحالية')}${rb('today', 'اليوم')}${rb('range', 'فترة')}
+        ${S.range === 'range' ? `<input type="date" class="pos-in" data-pos-st-from value="${S.from}" style="width:150px;height:32px;font-size:14px;" /> إلى <input type="date" class="pos-in" data-pos-st-to value="${S.to}" style="width:150px;height:32px;font-size:14px;" /><button type="button" class="pos-btn" data-pos-st-go style="height:32px;padding:0 12px;font-weight:700;">عرض</button>` : ''}
+        <span style="flex:1"></span>
+        ${posCanEditPrice() ? `<select class="pos-in" data-pos-st-user style="width:auto;height:32px;font-size:13px;font-family:Tahoma;"><option value="${state.session.user.id}" ${S.user === state.session.user.id ? 'selected' : ''}>مبيعاتي</option><option value="" ${!S.user ? 'selected' : ''}>كل الكاشيرين</option>${users.filter(u => u.id !== state.session.user.id).map(u => `<option value="${u.id}" ${S.user === u.id ? 'selected' : ''}>${escapeHtml(u.display_name || u.username || '')}</option>`).join('')}</select>` : ''}
+        <button type="button" class="pos-btn" data-pos-st-print style="height:32px;padding:0 14px;font-weight:700;" ${!T ? 'disabled' : ''}>🖨 طباعة الكشف</button>
+      </div>
+      ${S.err ? `<div class="pos-msg err">${escapeHtml(S.err)}</div>` : ''}
+      ${T ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;margin-bottom:8px;">
+        ${[['عدد الفواتير', T.count, ''], ['إجمالي المبيعات', fmt(T.total), '#1B3352'], ...Object.entries(T.byMethod).map(([m, a]) => [(isCashMethod(m) ? '💵 ' : '💳 ') + m, fmt(a), '']), ...(T.credit ? [['آجل', fmt(T.credit), '#8A5A00']] : []), ['المرتجعات (' + T.retCount + ')', T.rets ? '− ' + fmt(T.rets) : '0.00', '#C0392B'], ['الصافي', fmt(T.net), '#0F6E56']].map(([l, v, c]) => `<div class="pos-sunk" style="padding:6px 10px;"><div style="font-size:11.5px;color:#555;">${escapeHtml(String(l))}</div><b class="mono" style="font-size:18px;${c ? 'color:' + c + ';' : ''}">${v}</b></div>`).join('')}
+      </div>` : ''}
+      <div class="pos-sunk pos-lines" style="max-height:52vh;">
+        ${S.loading ? '<div style="padding:30px;text-align:center;color:#666;">جاري التحميل…</div>' : `<table>
+          <tr><th style="width:34px;">م</th><th>رقم الفاتورة</th><th>${multiDay ? 'التاريخ / ' : ''}الوقت</th><th>العميل</th>${!S.user ? '<th>الكاشير</th>' : ''}<th>الدفع</th><th>الإجمالي</th><th style="width:44px;"></th></tr>
+          ${(S.inv || []).map((inv, i) => `<tr><td>${i + 1}</td><td class="mono">${escapeHtml(inv.invoice_number || '')}</td><td class="mono">${multiDay ? dt(inv.created_at) + ' ' : ''}${tm(inv.created_at)}</td><td>${escapeHtml(posStmtCust(inv))}</td>${!S.user ? `<td>${escapeHtml(posStmtUserName(inv.created_by) || '—')}</td>` : ''}<td style="font-size:13px;">${escapeHtml(posStmtPayTxt(inv))}</td><td class="pos-num"><b>${fmt(inv.total)}</b></td><td><button type="button" class="pos-btn" data-pos-st-reprint="${inv.id}" title="إعادة طباعة" style="width:34px;height:26px;">🖨</button></td></tr>`).join('')}
+          ${(S.ret || []).map(r => `<tr style="background:#FFF1F0;"><td>↩</td><td class="mono">${escapeHtml(r.return_number || '')}</td><td class="mono">${multiDay ? dt(r.created_at) + ' ' : ''}${tm(r.created_at)}</td><td>مرتجع — ${escapeHtml(posStmtCust(r))}</td>${!S.user ? `<td>${escapeHtml(posStmtUserName(r.created_by) || '—')}</td>` : ''}<td style="font-size:13px;">${escapeHtml(r.payment_method || '')}</td><td class="pos-num" style="color:#C0392B;">− ${fmt(r.total)}</td><td></td></tr>`).join('')}
+          ${!(S.inv || []).length && !(S.ret || []).length ? `<tr><td colspan="8" style="text-align:center;color:#888;padding:30px;">ما في مبيعات في الفترة دي</td></tr>` : ''}
+        </table>`}
+      </div>
+    </div></div></div>`;
+}
+function posPrintStmt() {
+  const S = state.pos?.stmt; if (!S || !S.inv) return;
+  const T = posStmtCalc(S), cur = feat('currency_abbr_ar') || '';
+  const period = S.range === 'shift' && state.shift ? 'الوردية من ' + new Date(state.shift.opened_at).toLocaleString('en-GB') : (S.from === S.to ? S.from : S.from + ' — ' + S.to);
+  const w = window.open('', '_blank', 'width=420,height=760'); if (!w) return;
+  const line = (l, v) => `<tr><td>${l}</td><td style="text-align:left;" class="m">${v}</td></tr>`;
+  w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><title>كشف مبيعات الكاشير</title><style>body{font-family:Tahoma,sans-serif;width:72mm;margin:0 auto;font-size:11.5px}h3{text-align:center;margin:6px 0}table{width:100%;border-collapse:collapse}td{padding:2px 0;border-bottom:1px dashed #bbb;vertical-align:top}.m{font-family:monospace;font-weight:bold}.t{font-size:13px;font-weight:bold}</style></head><body>
+    <h3>${escapeHtml(state.company?.name_ar || '')}</h3><div style="text-align:center;font-weight:bold;">كشف مبيعات الكاشير</div>
+    <div style="text-align:center;">${escapeHtml(posStmtUserName(S.user))}<br>${escapeHtml(period)}</div><br>
+    <table>${(S.inv || []).map(inv => `<tr><td class="m">${escapeHtml(inv.invoice_number || '')}</td><td>${new Date(inv.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</td><td>${escapeHtml(posStmtPayTxt(inv))}</td><td style="text-align:left;" class="m">${fmt(inv.total)}</td></tr>`).join('')}
+    ${(S.ret || []).map(r => `<tr><td class="m">${escapeHtml(r.return_number || '')}</td><td>مرتجع</td><td>${escapeHtml(r.payment_method || '')}</td><td style="text-align:left;" class="m">-${fmt(r.total)}</td></tr>`).join('')}</table><br>
+    <table>${line('عدد الفواتير', T.count)}${line('إجمالي المبيعات', fmt(T.total))}${Object.entries(T.byMethod).map(([m, a]) => line('• ' + escapeHtml(m), fmt(a))).join('')}${T.credit ? line('• آجل', fmt(T.credit)) : ''}${line('المرتجعات (' + T.retCount + ')', '-' + fmt(T.rets))}${line('<span class="t">الصافي</span>', fmt(T.net) + ' ' + cur)}</table>
+    <br><div style="text-align:center;font-size:10px;">طُبع ${new Date().toLocaleString('en-GB')}</div>
+    <script>window.onload=()=>{window.print();}<\/script></body></html>`);
+  w.document.close();
+}
+document.addEventListener('click', ev => {
+  const P = state.pos; if (!P || !P.stmt || !(P.dlg && P.dlg.kind === 'stmt') || !ev.target.closest) return;
+  const t = ev.target; let b;
+  if ((b = t.closest('[data-pos-st-range]'))) { ev.stopImmediatePropagation(); P.stmt.range = b.dataset.posStRange; if (P.stmt.range === 'range') renderPosLight(); else posLoadStmt(); return; }
+  if (t.closest('[data-pos-st-go]')) { ev.stopImmediatePropagation(); const f = document.querySelector('[data-pos-st-from]'), to = document.querySelector('[data-pos-st-to]'); if (f && f.value) P.stmt.from = f.value; if (to && to.value) P.stmt.to = to.value; if (P.stmt.from > P.stmt.to) [P.stmt.from, P.stmt.to] = [P.stmt.to, P.stmt.from]; posLoadStmt(); return; }
+  if (t.closest('[data-pos-st-print]')) { ev.stopImmediatePropagation(); posPrintStmt(); return; }
+  if ((b = t.closest('[data-pos-st-reprint]'))) { ev.stopImmediatePropagation(); posReprint(b.dataset.posStReprint); return; }
+}, true);
+document.addEventListener('change', ev => {
+  const P = state.pos; if (!P || !P.stmt || !ev.target.matches) return;
+  if (ev.target.matches('[data-pos-st-user]')) { P.stmt.user = ev.target.value; posLoadStmt(); }
+}, true);
 // ---------- التعليق
 function posHold() {
   const f = state.salesForm; if (!f.lines.length) return;
@@ -10956,7 +11119,7 @@ function renderPosScreen() {
           <tr><th style="width:34px;">م</th><th style="width:130px;">رقم الصنف</th><th>الصنف</th><th style="width:140px;">الكمية</th><th style="width:90px;">السعر</th><th style="width:60px;">خصم</th><th style="width:100px;">الإجمالي</th><th style="width:36px;"></th></tr>
           ${f.lines.map((l, i) => `<tr data-pos-line="${i}" class="${i === P.sel ? 'on' : ''}"><td>${i + 1}</td><td class="mono">${escapeHtml(l.sku || '')}</td><td>${escapeHtml(l.item_name || '')}</td>
             <td><span class="pos-q"><button type="button" class="pos-btn" data-pos-minus="${i}">−</button><b class="mono" style="min-width:34px;text-align:center;display:inline-block;">${roundQty(l.quantity)}</b><button type="button" class="pos-btn" data-pos-plus="${i}">+</button></span></td>
-            <td class="pos-num">${fmt(l.unit_price)}</td><td class="pos-num">${Number(l.disc_pct) ? Number(l.disc_pct) + '%' : '—'}</td><td class="pos-num">${fmt(lineAmt(l))}</td>
+            <td class="pos-num">${fmt(l.unit_price)}${l.price_ok_by ? ` <span title="وافق ${escapeHtml(l.price_ok_by)}" style="color:#8A5A00;">🔐</span>` : ''}</td><td class="pos-num">${Number(l.disc_pct) ? Number(l.disc_pct) + '%' : '—'}</td><td class="pos-num">${fmt(lineAmt(l))}</td>
             <td><button type="button" class="pos-btn" data-pos-del="${i}" style="width:28px;height:26px;color:#C0392B;font-weight:700;">✕</button></td></tr>`).join('')
             || `<tr><td colspan="8" style="text-align:center;color:#888;padding:40px 10px;font-size:15px;">${P.last ? `آخر فاتورة: <b class="mono">${escapeHtml(P.last.number)}</b> — ${fmt(P.last.total)}${P.last.change > 0.004 ? ` — الباقي <b class="mono">${fmt(P.last.change)}</b>` : ''}<br><br>` : ''}امسح أول صنف للزبون الجاي<div style="font-size:12px;margin-top:8px;color:#999;">لأكتر من حبة: اكتب الكمية ثم * ثم رقم الصنف (مثلاً <span class="mono">3*90915-YZZD2</span>) — الأسهم ↑↓ للتنقل، + و − للكمية، Delete للحذف</div></td></tr>`}
         </table>
@@ -10994,7 +11157,7 @@ function renderPosScreen() {
     </div>
   </div>
   <div class="pos-keys">
-    ${fk('F1', 'بحث صنف')}${fk('F2', 'العميل')}${fk('F4', 'الكمية')}${posCanEditPrice() ? fk('F3', 'خصم', 'small') + fk('F5', 'السعر', 'small') : ''}${fk('F6', 'تعليق')}${fk('F7', 'المعلّقة' + (held.length ? ' (' + held.length + ')' : ''))}${fk('F9', 'دفع وطباعة', 'main')}${fk('F10', 'مرتجع', 'small')}${fk('F11', state.shift ? 'إقفال الوردية' : 'الوردية', 'small')}${fk('Esc', 'إلغاء الفاتورة', 'red small')}
+    ${fk('F1', 'بحث صنف')}${fk('F2', 'العميل')}${fk('F4', 'الكمية')}${fk('F3', 'خصم', 'small')}${fk('F5', 'السعر', 'small')}${fk('F6', 'تعليق')}${fk('F7', 'المعلّقة' + (held.length ? ' (' + held.length + ')' : ''))}${fk('F9', 'دفع وطباعة', 'main')}${fk('F10', 'مرتجع', 'small')}${fk('F11', state.shift ? 'إقفال الوردية' : 'الوردية', 'small')}${fk('F12', 'كشف مبيعاتي', 'small')}${fk('Esc', 'إلغاء الفاتورة', 'red small')}
   </div>
   ${renderPosDialog()}
 </div>`;
@@ -11008,9 +11171,13 @@ function renderPosDialog() {
   if (d.kind === 'disc') return box('خصم على الفاتورة', `<div style="margin-bottom:6px;font-size:13px;">الإجمالي قبل الخصم: <b class="mono">${fmt(t.subtotal)}</b> — اكتب مبلغ أو نسبة (مثلاً <span class="mono">10%</span>)</div>${inp(Number(f.discount) ? f.discount : '', '0')}`, true);
   if (d.kind === 'price') {
     const l = f.lines[P.sel], it = l ? state.items.find(x => x.id === l.item_id) : null; if (!it) return '';
+    const base = Number(getItemPriceForCustomer(it, f.customer_id)) || 0;
     const opts = [['سعر 1', bprice(it, 'price')], ['سعر 2', bprice(it, 'price2')], ['سعر 3', bprice(it, 'price3')]].filter(x => Number(x[1]) > 0);
-    return box('سعر الصنف — ' + escapeHtml(it.name), `<div style="display:flex;gap:6px;margin-bottom:10px;">${opts.map(([n, v]) => `<button type="button" class="pos-btn" data-pos-price="${v}" style="flex:1;height:46px;flex-direction:column;">${n}<b class="mono">${fmt(v)}</b></button>`).join('')}</div>${inp(l.unit_price)}<div style="font-size:11.5px;color:#666;margin-top:6px;">التكلفة: <span class="mono">${fmt(it.cost)}</span></div>`, true);
+    return box('سعر الصنف — ' + escapeHtml(it.name), `<div style="display:flex;gap:6px;margin-bottom:10px;">${opts.map(([n, v]) => `<button type="button" class="pos-btn" data-pos-price="${v}" style="flex:1;height:46px;flex-direction:column;">${n}<b class="mono">${fmt(v)}</b></button>`).join('')}</div>${inp(l.unit_price)}
+      <div style="font-size:12px;color:#444;margin-top:6px;line-height:1.7;">سعر البيع: <b class="mono">${fmt(base)}</b>${posCanEditPrice() ? ` · التكلفة: <span class="mono">${fmt(it.cost)}</span>` : (Number(state.myMaxDiscount) > 0 ? ` · تقدر تنزّل لحد <b class="mono">${Number(state.myMaxDiscount)}%</b> بدون المدير` : '')}<br><span style="color:#8A5A00;">${posCanEditPrice() ? 'ممنوع البيع بأقل من التكلفة' : 'السعر الأقل من سعر البيع يحتاج رمز المدير'}</span></div>`, true);
   }
+  if (d.kind === 'pin') return box('🔐 موافقة المدير', `<div style="font-size:14px;margin-bottom:8px;max-width:420px;">${escapeHtml(d.why || '')}</div><div style="font-size:12.5px;color:#444;margin-bottom:6px;">خلّي المدير يكتب رمزه السري:</div><input id="pos-dlg-in" class="pos-in" type="password" autocomplete="new-password" inputmode="numeric" style="font-size:26px;height:48px;text-align:center;letter-spacing:6px;" ${d.busy ? 'disabled' : ''} />${d.err ? `<div class="pos-msg err" style="margin-top:8px;font-size:13px;">${escapeHtml(d.err)}</div>` : ''}`, true);
+  if (d.kind === 'stmt') return renderPosStmt();
   if (d.kind === 'held') {
     const h = posLS(posHeldKey(), []);
     return box('الفواتير المعلّقة', h.length ? `<div class="pos-sunk" style="max-height:50vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;">${h.map(x => `<tr style="border-bottom:1px solid #EEE;"><td style="padding:8px;" class="mono">${escapeHtml(x.at)}</td><td style="padding:8px;">${x.lines.length} صنف${x.walkin_customer_name ? ' — ' + escapeHtml(x.walkin_customer_name) : ''}</td><td style="padding:8px;" class="pos-num">${fmt(x.total)}</td><td style="padding:4px;"><button type="button" class="pos-btn" data-pos-recall="${x.id}" style="height:34px;padding:0 14px;font-weight:700;background:#B8E0C8;">استرجاع</button></td><td style="padding:4px;"><button type="button" class="pos-btn" data-pos-drop="${x.id}" style="height:34px;padding:0 10px;color:#C0392B;">حذف</button></td></tr>`).join('')}</table></div>` : '<div style="padding:20px;text-align:center;color:#666;">ما في فواتير معلّقة</div>', false);
@@ -11018,20 +11185,41 @@ function renderPosDialog() {
   if (d.kind === 'cancel') return box('إلغاء الفاتورة', `<div style="font-size:15px;">تلغي الفاتورة الحالية (${f.lines.length} صنف — ${fmt(t.grandTotal)})؟</div>`, true);
   return '';
 }
-function posDlgOk() {
+async function posDlgOk() {
   const P = state.pos, d = P.dlg, f = state.salesForm; if (!d) return;
+  if (d.kind === 'stmt' || d.kind === 'held') return;
   const v = String(document.getElementById('pos-dlg-in')?.value || '').trim().replace(/,/g, '');
   if (d.kind === 'qty') { posSetQty(P.sel, Number(v)); }
   else if (d.kind === 'disc') {
     const sub = calcLineTotals(f).subtotal; let a = 0;
     if (/%$/.test(v)) a = sub * (Number(v.replace('%', '')) || 0) / 100; else a = Number(v) || 0;
     if (a < 0 || a > sub) { posBeep(false); posMsg('الخصم غير صحيح', 'err'); return; }
-    f.discount = (Math.round(a * 100) / 100).toFixed(2); P.received = ''; P.mixed = null;
+    a = Math.round(a * 100) / 100;
+    const costTotal = f.lines.reduce((s2, l) => { const it = state.items.find(x => x.id === l.item_id); return s2 + Number(l.quantity || 0) * Number(it?.cost || 0); }, 0);
+    if (a > 0 && sub - a < costTotal - 0.005 && !feat('allow_below_cost')) { posBeep(false); posMsg(posCanEditPrice() ? `الخصم ينزّل الفاتورة تحت التكلفة (${fmt(costTotal)})` : 'الخصم أكبر من المسموح', 'err'); P.dlg = null; renderPosLight(); return; }
+    const applyDisc = (mgr) => { f.discount = a.toFixed(2); P.received = ''; P.mixed = null; P.dlg = null; if (mgr) { logActivity('موافقة مدير — خصم كاشير', `خصم ${fmt(a)} على فاتورة ${f.invoice_number} — وافق ${mgr.name}`); posMsg(`✓ وافق ${mgr.name} على الخصم`, 'ok'); } renderPosLight(); };
+    if (a > 0 && !posDiscOk(sub > 0 ? a / sub * 100 : 100)) { posAskManager(`خصم ${fmt(a)} على الفاتورة (${fmt(sub > 0 ? a / sub * 100 : 0)}%)`, applyDisc); renderPosLight(); return; }
+    applyDisc(null); return;
   } else if (d.kind === 'price') {
-    const l = f.lines[P.sel], it = l && state.items.find(x => x.id === l.item_id), pv = Number(v);
-    if (!(pv > 0)) { posBeep(false); return; }
-    if (it && pv < Number(it.cost || 0) && !feat('allow_below_cost')) { posBeep(false); posMsg('السعر أقل من التكلفة', 'err'); return; }
-    l.unit_price = pv; P.received = ''; P.mixed = null;
+    const l = f.lines[P.sel], it = l && state.items.find(x => x.id === l.item_id), pv = Math.round(Number(v) * 10000) / 10000;
+    if (!(pv > 0) || !l) { posBeep(false); return; }
+    if (it && pv < Number(it.cost || 0) - 0.0001 && !feat('allow_below_cost')) { posBeep(false); posMsg(posCanEditPrice() ? `ممنوع البيع بأقل من التكلفة (${fmt(it.cost)})` : 'السعر أقل من الحد المسموح — ممنوع', 'err'); renderPosLight(); return; }
+    const base = it ? Number(getItemPriceForCustomer(it, f.customer_id)) || 0 : 0;
+    const applyPrice = (mgr) => { l.unit_price = pv; P.received = ''; P.mixed = null; P.dlg = null; if (mgr) { l.price_ok_by = mgr.name; logActivity('موافقة مدير — تخفيض سعر', `«${l.item_name}» من ${fmt(base)} إلى ${fmt(pv)} — فاتورة ${f.invoice_number} — وافق ${mgr.name}`); posMsg(`✓ وافق ${mgr.name} على السعر`, 'ok'); } renderPosLight(); };
+    if (base > 0 && pv < base - 0.0001 && !posDiscOk((base - pv) / base * 100)) { posAskManager(`تخفيض سعر «${l.item_name}» من ${fmt(base)} إلى ${fmt(pv)}`, applyPrice); renderPosLight(); return; }
+    applyPrice(null); return;
+  } else if (d.kind === 'pin') {
+    if (d.busy) return;
+    if (!v) { d.err = 'اكتب الرمز'; renderPosLight(); return; }
+    d.busy = true; d.err = ''; renderPosLight();
+    let res = null, err = null;
+    try { const r = await sb.rpc('verify_pos_pin', { p_pin: v }); res = r.data; err = r.error; } catch (e) { err = e; }
+    if (state.pos?.dlg !== d) return;
+    d.busy = false;
+    if (err) { d.err = /verify_pos_pin|PGRST202|schema cache|does not exist/i.test(err.message || '') ? 'ميزة رمز المدير محتاجة تشغيل ملف 36 في قاعدة البيانات' : (err.message || 'خطأ'); posBeep(false); renderPosLight(); return; }
+    const m = Array.isArray(res) ? res[0] : res;
+    if (!m || !m.manager_id) { d.err = 'الرمز غلط'; posBeep(false); renderPosLight(); return; }
+    P.dlg = null; d.onOk({ id: m.manager_id, name: m.manager_name || 'المدير' }); return;
   } else if (d.kind === 'cancel') { posNewInvoice(); posMsg('اتلغت الفاتورة', 'info'); }
   P.dlg = null; renderPosLight();
 }
@@ -11040,8 +11228,9 @@ async function posKey(k) {
   if (k === 'F1') { openItemPicker({ targetSelectId: 'si-item-select', qtyId: 'si-item-qty', priceId: 'si-item-price', priceKey: 'price', addBtnId: 'si-add-line' }); return; }
   if (k === 'F2') { state.partyPickerContext = { inputId: 'pos-customer', partyType: 'customer' }; state.partyPickerQuery = ''; state.showPartyPicker = true; render(); return; }
   if (k === 'F4') { if (!f.lines[P.sel]) { posMsg('اختار صنف من الجدول أول', 'err'); renderPosLight(); return; } P.dlg = { kind: 'qty' }; }
-  else if (k === 'F3') { if (!posCanEditPrice()) return; if (!f.lines.length) return; P.dlg = { kind: 'disc' }; }
-  else if (k === 'F5') { if (!posCanEditPrice() || !f.lines[P.sel]) return; P.dlg = { kind: 'price' }; }
+  else if (k === 'F3') { if (!f.lines.length) return; P.dlg = { kind: 'disc' }; }
+  else if (k === 'F5') { if (!f.lines[P.sel]) { posMsg('اختار صنف من الجدول أول', 'err'); renderPosLight(); return; } P.dlg = { kind: 'price' }; }
+  else if (k === 'F12') { await posOpenStmt(); return; }
   else if (k === 'F6') { posHold(); }
   else if (k === 'F7') { P.dlg = { kind: 'held' }; }
   else if (k === 'F8') { P.mixed = P.mixed ? null : { [posCashMethod()]: '' }; P.received = ''; }
@@ -11061,14 +11250,14 @@ async function posKey(k) {
   renderPosLight();
   if (P.dlg) setTimeout(() => { const el = document.getElementById('pos-dlg-in'); if (el) { el.focus(); el.select(); } }, 30);
 }
-const POS_KEYS = { F1: 1, F2: 1, F3: 1, F4: 1, F5: 1, F6: 1, F7: 1, F8: 1, F9: 1, F10: 1, F11: 1, Escape: 1 };
+const POS_KEYS = { F1: 1, F2: 1, F3: 1, F4: 1, F5: 1, F6: 1, F7: 1, F8: 1, F9: 1, F10: 1, F11: 1, F12: 1, Escape: 1 };
 document.addEventListener('keydown', ev => {
   const P = state.pos; if (!P || P.suspended) return;
   if (state.itemPickerOpen || state.showPartyPicker || state.showShift || state.showSalesPayDialog || state.cmdk) return;
   const k = ev.key;
   if (P.dlg) {
     if (k === 'Escape') { ev.preventDefault(); ev.stopImmediatePropagation(); P.dlg = null; renderPosLight(); return; }
-    if (k === 'Enter' && P.dlg.kind !== 'held') { ev.preventDefault(); ev.stopImmediatePropagation(); posDlgOk(); return; }
+    if (k === 'Enter' && P.dlg.kind !== 'held' && P.dlg.kind !== 'stmt') { ev.preventDefault(); ev.stopImmediatePropagation(); posDlgOk(); return; }
     return;
   }
   if (POS_KEYS[k]) { ev.preventDefault(); ev.stopImmediatePropagation(); posKey(k === 'Escape' ? 'Esc' : k); return; }
@@ -13255,8 +13444,10 @@ function renderUsersModal() {
               <label><input type="checkbox" data-perm="can_approve" data-perm-user="${u.id}" ${(u.role==='admin'||u.can_approve)?'checked':''} ${u.role==='admin'?'disabled':''} /> اعتماد الفواتير والسندات</label>
               <label><input type="checkbox" data-perm="can_manage_company" data-perm-user="${u.id}" ${(u.role==='admin'||u.can_manage_company)?'checked':''} ${u.role==='admin'?'disabled':''} /> بيانات الشركة وطرق الدفع</label>
               <label><input type="checkbox" data-perm="can_manage_backup" data-perm-user="${u.id}" ${(u.role==='admin'||u.can_manage_backup)?'checked':''} ${u.role==='admin'?'disabled':''} /> النسخ الاحتياطية والصيانة</label>
+              <label title="يغيّر السعر ويعطي خصم في الكاشير بدون رمز، ورمزه يوافق للكاشيرين"><input type="checkbox" data-perm="pos_manager" data-perm-user="${u.id}" ${(u.role==='admin'||u.pos_manager)?'checked':''} ${u.role==='admin'?'disabled':''} /> مدير الكاشير (السعر والخصم)</label>
               ${u.role==='admin' ? `<span style="color:#A9A48C;">(المدير عنده كل الصلاحيات تلقائياً)</span>` : ''}
             </div>
+            ${u.is_support ? '' : renderUserCashierRow(u)}
             ${state.branchesReady && state.branches.length ? `<div style="padding:0 8px 8px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:#1B3352;">
               <i class="ti ti-building-store"></i><span style="font-weight:500;">الفرع:</span>
               <select data-branch-for="${u.id}" class="input" style="padding:3px 6px;font-size:11.5px;max-width:200px;" ${u.is_support ? 'disabled title="المصمم يشوف كل الفروع"' : ''}>
@@ -13284,6 +13475,68 @@ function renderUsersModal() {
     </div>
   </div>`;
 }
+
+// صندوق الكاشير ورمز المدير في شاشة المستخدمين
+function cashBoxAccounts() {
+  const main = acc('cash'), coa = state.chartOfAccounts || [];
+  const parent = (coa.find(a => a.code === main) || {}).parent_code || main.slice(0, 4);
+  return coa.filter(a => a.is_posting_account !== false && a.active !== false && a.code !== main && (a.parent_code === parent || a.code.startsWith(parent)) && !/بنك|شبكة|bank|مصرف/i.test(a.name || ''));
+}
+function renderUserCashierRow(u) {
+  if (!(state.chartOfAccounts || []).length) voucherAccName(acc('cash'));
+  if (!state.posPinUsersLoaded) { state.posPinUsersLoaded = true; sb.rpc('pos_pin_users').then(r => { if (!r.error) { state.posPinUsers = (r.data || []).map(x => typeof x === 'string' ? x : (x.pos_pin_users || Object.values(x)[0])); render(); } }).catch(() => {}); }
+  const box = u.cash_account_code || '', boxes = cashBoxAccounts();
+  const isMgr = u.role === 'admin' || u.pos_manager, hasPin = (state.posPinUsers || []).includes(u.id);
+  return `<div style="padding:0 8px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;font-size:11.5px;color:#1B3352;">
+    <i class="ti ti-cash-register"></i><span style="font-weight:500;">صندوق الكاشير:</span>
+    <select data-box-for="${u.id}" class="input" style="padding:3px 6px;font-size:11.5px;max-width:260px;">
+      <option value="">الصندوق العام (${escapeHtml(acc('cash'))} ${escapeHtml(voucherAccName(acc('cash')))})</option>
+      ${boxes.map(a => `<option value="${escapeHtml(a.code)}" ${box === a.code ? 'selected' : ''}>${escapeHtml(a.code)} — ${escapeHtml(a.name || '')}</option>`).join('')}
+      ${box && !boxes.some(a => a.code === box) ? `<option value="${escapeHtml(box)}" selected>${escapeHtml(box)}</option>` : ''}
+      <option value="__new__">＋ إنشاء صندوق جديد باسمه</option>
+    </select>
+    ${isMgr ? `<span style="margin-inline-start:10px;font-weight:500;"><i class="ti ti-lock"></i> رمز المدير للكاشير:</span>
+      <span style="color:${hasPin ? '#0F6E56' : '#8B8A7A'};">${hasPin ? '✅ معيّن' : 'غير معيّن'}</span>
+      ${u.id === state.session.user.id || isAdmin() ? `<input data-pin-in="${u.id}" type="password" inputmode="numeric" autocomplete="new-password" class="input mono" placeholder="4-8 أرقام" style="width:100px;padding:3px 6px;font-size:12px;" />
+      <button type="button" class="btn" data-pin-set="${u.id}" style="padding:3px 10px;font-size:11.5px;">${hasPin ? 'تغيير' : 'حفظ'}</button>
+      ${hasPin ? `<button type="button" class="btn" data-pin-del="${u.id}" style="padding:3px 8px;font-size:11.5px;color:#C0392B;">حذف</button>` : ''}` : ''}` : ''}
+  </div>`;
+}
+document.addEventListener('change', async ev => {
+  const sel = ev.target; if (!sel || !sel.matches || !sel.matches('[data-box-for]')) return;
+  const u = (state.users || []).find(x => x.id === sel.dataset.boxFor); if (!u) return;
+  let code = sel.value;
+  if (code === '__new__') {
+    const main = acc('cash'), coa = state.chartOfAccounts || [], parent = (coa.find(a => a.code === main) || {}).parent_code || main.slice(0, 4);
+    const nums = coa.filter(a => /^\d+$/.test(a.code) && a.code.startsWith(parent) && a.code.length === parent.length + 2).map(a => Number(a.code));
+    code = String(Math.max(Number(parent + '00'), ...nums) + 1);
+    const name = 'صندوق الكاشير - ' + (u.display_name || u.username || '');
+    const { error: ce } = await sb.from('chart_of_accounts').insert({ code, parent_code: parent, name, account_type: 'asset', level: 4, is_posting_account: true, active: true });
+    if (ce) { showToast('تعذّر إنشاء الحساب: ' + ce.message, 'error'); render(); return; }
+    await loadChartOfAccounts();
+    showToast(`انفتح حساب ${code} ${name} ✓`);
+  }
+  const { error } = await sb.from('profiles').update({ cash_account_code: code || null }).eq('id', u.id);
+  if (error) { showToast(/cash_account_code/.test(error.message) ? 'شغّل ملف 36 في قاعدة البيانات أولاً' : 'فشل الحفظ: ' + error.message, 'error'); render(); return; }
+  logActivity('صندوق كاشير', `${u.username || ''} → ${code || 'الصندوق العام'}`);
+  if (u.id === state.session.user.id && state.profile) state.profile.cash_account_code = code || null;
+  state.cashBoxCache = {};
+  showToast('تم ✓ — مبيعاته النقدية بتدخل ' + (code ? 'صندوقه ' + code : 'الصندوق العام'));
+  await loadUsers(); render();
+}, true);
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest && ev.target.closest('[data-pin-set],[data-pin-del]'); if (!b) return;
+  const uid = b.dataset.pinSet || b.dataset.pinDel, del = !!b.dataset.pinDel;
+  const pin = del ? '' : String(document.querySelector(`[data-pin-in="${uid}"]`)?.value || '').trim();
+  if (!del && !/^\d{4,8}$/.test(pin)) { showToast('الرمز لازم يكون من 4 إلى 8 أرقام', 'error'); return; }
+  if (del && !confirm('تحذف رمز المدير؟')) return;
+  const { error } = await sb.rpc('set_pos_pin', { p_user: uid, p_pin: pin });
+  if (error) { showToast(/set_pos_pin|PGRST202|schema cache/.test(error.message) ? 'شغّل ملف 36 في قاعدة البيانات أولاً' : error.message, 'error'); return; }
+  const u = (state.users || []).find(x => x.id === uid);
+  logActivity(del ? 'حذف رمز مدير الكاشير' : 'تعيين رمز مدير الكاشير', u?.username || '');
+  state.posPinUsers = (state.posPinUsers || []).filter(x => x !== uid); if (!del) state.posPinUsers.push(uid);
+  showToast(del ? 'اتحذف الرمز' : 'اتحفظ الرمز ✓'); render();
+}, true);
 
 // كرت الصنف: لو كتبت السعر شامل الضريبة بيتحسب السعر قبل الضريبة
 document.addEventListener('input', ev => {
@@ -17569,9 +17822,28 @@ async function unapproveSimpleVoucher(table, sourceType, sourceId, partyId, bala
   return true;
 }
 
+// ---------- صندوق الكاشير: النقد في مستندات الكاشير يدخل حساب صندوقه بدل الصندوق العام
+const CASHBOX_TABLES = { sales_invoice: 'sales_invoices', sales_return: 'sales_returns', receipt_voucher: 'receipt_vouchers', payment_voucher: 'payment_vouchers' };
+async function cashBoxOf(uid) {
+  if (!uid) return null;
+  if (uid === state.session?.user?.id) return String(state.profile?.cash_account_code || '').trim() || null;
+  const c = state.cashBoxCache || (state.cashBoxCache = {});
+  if (!(uid in c)) { try { const { data, error } = await sb.rpc('user_cash_box', { p_user: uid }); c[uid] = error ? null : (data || null); } catch (_) { c[uid] = null; } }
+  return c[uid];
+}
+async function cashBoxForRow(table, id) {
+  if (!table || !id) return null;
+  try { const { data } = await sb.from(table).select('created_by').eq('id', id).maybeSingle(); return await cashBoxOf(data?.created_by || state.session?.user?.id); } catch (_) { return null; }
+}
+async function cashBoxRemap(sourceType, docId, lines) {
+  if (!CASHBOX_TABLES[sourceType] || !(lines || []).some(l => l.account_code === acc('cash'))) return lines;
+  const box = await cashBoxForRow(CASHBOX_TABLES[sourceType], docId);
+  return box && box !== acc('cash') ? lines.map(l => l.account_code === acc('cash') ? { ...l, account_code: box } : l) : lines;
+}
 async function postJournalEntry(entryDate, description, sourceType, sourceId, lines, voucherNumber) {
   lines = lines.filter(l => Math.abs(l.debit||0) > 0.001 || Math.abs(l.credit||0) > 0.001); // إسقاط أي سطر بقيمة صفر
   if (lines.length === 0) return null;
+  lines = await cashBoxRemap(sourceType, sourceId, lines);
   // حماية الفترة المقفلة: لا يُسمح بأي قيد جديد بتاريخ يساوي أو يسبق آخر إقفال سنوي (إلا قيد الإقفال نفسه)
   if (sourceType !== 'closing') {
     const { data: latestClosing } = await sb.from('fiscal_closings').select('closing_date').order('closing_date', { ascending: false }).limit(1).maybeSingle();
@@ -17609,6 +17881,8 @@ async function postJournalEntry(entryDate, description, sourceType, sourceId, li
 const ACCOUNT_ROLES = [
   { group:'الصندوق والبنوك', key:'cash', label:'حساب الصندوق (الافتراضي)', def:'110101' },
   { group:'الصندوق والبنوك', key:'bank', label:'حساب البنك (الافتراضي)', def:'110102' },
+  { group:'الصندوق والبنوك', key:'cash_shortage', label:'حساب عجز صندوق الكاشير', def:'5405' },
+  { group:'الصندوق والبنوك', key:'cash_overage', label:'حساب زيادة صندوق الكاشير', def:'4203' },
   { group:'العملاء والموردون', key:'customers_control', label:'حساب العملاء الرئيسي (تُفتح تحته حسابات العملاء)', def:'110201', parentOk:true },
   { group:'العملاء والموردون', key:'suppliers_control', label:'حساب الموردين الرئيسي (تُفتح تحته حسابات الموردين)', def:'210101', parentOk:true },
   { group:'المبيعات', key:'sales_cash', label:'حساب المبيعات النقدية', def:'410101' },
@@ -20613,6 +20887,7 @@ function bindAppEvents() {
           // موازنة فرق التقريب (هللة) على سطر الإيراد
           const dd = payload.entry.lines.reduce((s, l) => s + l.debit - l.credit, 0);
           if (Math.abs(dd) > 0 && Math.abs(dd) < 0.05) { const rev = payload.entry.lines.find(l => l.credit > 0); if (rev) rev.credit = round2(rev.credit + dd); }
+          payload.entry.lines = await cashBoxRemap('sales_invoice', state.editingSalesId, payload.entry.lines);
           const { error: postErr } = await sb.rpc('post_document', { p: payload });
           if (!postErr) {
             if (!f.customer_id && due > 0.005) showToast(`تنبيه: يوجد مبلغ غير مدفوع ${fmt(due)} لعميل غير مسجّل — لن يُحفظ كدين قابل للمتابعة`, 'error');
