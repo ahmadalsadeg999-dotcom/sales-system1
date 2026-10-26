@@ -3969,10 +3969,13 @@ function renderStatusItems() {
     ${item('ti-calendar-event', `<span class="mono">${now.toLocaleDateString('en-CA')}</span>`, 'التاريخ')}
     ${item('ti-clock', `<span id="ws-clock" class="mono">${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>`, 'الوقت')}
     ${item(online ? 'ti-wifi' : 'ti-wifi-off', online ? 'متصل' : 'بدون اتصال', online ? 'متصل بقاعدة البيانات' : 'شغال بدون اتصال', online ? '#0F6E56' : '#C0392B')}
+    ${state.desktopBackupDays != null ? `<span class="ws-st" data-desk-bak style="color:#fff;background:#B03A2E;padding:0 8px;border-radius:3px;cursor:pointer;" title="النسخ الاحتياطي"><i class="ti ti-alert-triangle"></i>${state.desktopBackupDays >= 999 ? 'ما في نسخة احتياطية!' : 'آخر نسخة احتياطية من ' + state.desktopBackupDays + ' يوم'}</span>` : ''}
     ${state.desktopUpdate ? `<span class="ws-st" data-desk-upd style="color:#fff;background:#B8860B;padding:0 8px;border-radius:3px;cursor:pointer;" title="التحديث يتم من أداة قاعدة البيانات"><i class="ti ti-download"></i>تحديث ${escapeHtml(state.desktopUpdate.latest || '')} متاح</span>` : ''}
   </span>`;
 }
 // نسخة الويندوز: تنبيه بوجود إصدار جديد (التثبيت من «CoinSoft DataBase Tools» عشان ما يقطع شغل الكاشير)
+if (window.csDesktop && typeof window.csDesktop.onNotice === 'function') window.csDesktop.onNotice(n => { if (n && n.kind === 'backup') { state.desktopBackupDays = n.days; if (!state.pos) render(); } });
+document.addEventListener('click', ev => { if (ev.target.closest && ev.target.closest('[data-desk-bak]')) { if (confirm('النسخ الاحتياطي متأخر — لو الجهاز اتعطل ممكن تضيع البيانات.\n\nاعمل نسخة الآن من «CoinSoft DataBase Tools» ← «النسخ الاحتياطي»، أو حدّد ساعة نسخ تلقائي ومجلد إضافي (فلاشة/Google Drive).\n\nتفتح أداة قاعدة البيانات الآن؟')) window.open('/__dbtools__'); } }, true);
 if (window.csDesktop && typeof window.csDesktop.onUpdate === 'function') window.csDesktop.onUpdate(u => { if (u && u.latest) { state.desktopUpdate = u; if (!state.pos) render(); } });
 document.addEventListener('click', ev => {
   if (!ev.target.closest || !ev.target.closest('[data-desk-upd]')) return;
@@ -5873,7 +5876,7 @@ function homeShortcut(icon, label, target) {
     <span style="font-size:12px;color:#fff;font-weight:500;">${label}</span>
   </button>`;
 }
-const APP_VERSION = '2026.10.25-24';
+const APP_VERSION = '2026.10.26-25';
 function renderHomeSection() {
   const c = state.company || {};
   const phones = [
